@@ -12,6 +12,7 @@ import { XLINK, ser, MM_PER, num, esc, parseLen, parseSvg, readViewBox, aiId, pa
 import { tick, asciiOnly } from './core/util.js';
 import { ensureLibs, pdfSource } from './lib/pdf.js';
 import { initPresets } from './presets.js';
+import { buildNameCardsPdf, parseNames } from './lib/namecards.js';
 import { makeZip, readZipPlts } from './core/zip.js';
 
 function sheetSizeMm() {
@@ -38,7 +39,7 @@ const ui = {
   dropNote: $('#dropNote'), sheetInfo: $('#sheetInfo'), dpiRow: $('#dpiRow'), tplFile: $('#tplFile'), tplReset: $('#tplReset'),
   exAll: $('#exAll'), exPrint: $('#exPrint'), exCut: $('#exCut'), exPlt: $('#exPlt'), showArt: $('#showArt'), lgKiss: $('#lgKiss'), lgDie: $('#lgDie')
 };
-const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'cPerfDie', 'cTieCut', 'cTie', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
+const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'cPerfDie', 'cTieCut', 'cTie', 'winSrc', 'winW', 'winH', 'winFont', 'winSize', 'winColor', 'winBoth', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
 const designs = [];
 let template = null, layout = null, gen = 0, nextId = 1, sheetCache = null, timer = null;
 
@@ -49,7 +50,7 @@ function readOpts() {
     kiss: n('kiss', 2, 0), die: n('die', 2, 0), gap: n('gap', 2, 0), lineW: n('lineW', 0.1, 0.01), overcut: n('overcut', 0.5, 0), bladeOffset: n('bladeOffset', 0.35, 0),
     pltForce: document.getElementById('pltForce').checked, kissForce: n('kissForce', 60, 1), dieForce: n('dieForce', 60, 1), cutSpeed: n('cutSpeed', 13, 1), upSpeed: n('upSpeed', 13, 1),
     cBleed: n('cBleed', 2, 0), cGap: n('cGap', 4, 0), cCutStyle: v('cCutStyle').value, mSize: v('mSize').value, cRadius: n('cRadius', 0, 0), cFlip: v('cFlip').value,
-    cPerfDie: v('cPerfDie').checked, cTieCut: n('cTieCut', 6, 0.5), cTie: n('cTie', 0.8, 0.1), cOffX: parseFloat(v('cOffX').value) || 0, cOffY: parseFloat(v('cOffY').value) || 0,
+    winSrc: v('winSrc').value, winW: n('winW', 100, 20), winH: n('winH', 100, 20), winFont: v('winFont').value, winSize: Math.min(200, n('winSize', 28, 6)), winColor: v('winColor').value, winBoth: v('winBoth').checked, cPerfDie: v('cPerfDie').checked, cTieCut: n('cTieCut', 6, 0.5), cTie: n('cTie', 0.8, 0.1), cOffX: parseFloat(v('cOffX').value) || 0, cOffY: parseFloat(v('cOffY').value) || 0,
     cFold: v('cFoldOn').checked ? 'perf' : 'none', cFoldDir: v('cFoldDir').value, gGap: n('gSpace', 4, 0), gAuto: v('gAutoGap').checked, deckSets: Math.max(1, Math.round(n('deckSets', 10, 1))), deckOrder: v('deckOrder').value, winCopies: Math.max(1, Math.round(n('winCopies', 1, 1))), sheetSize: v('sheetSize').value, sheetW: n('sheetW', 310, 60), sheetH: n('sheetH', 440, 60), sheetFeed: v('sheetFeed').checked, sheetFeedMm: n('sheetFeedMm', 60, 0), gPages: v('gPages').value, gMarksBack: v('gMarksBack').checked, gEachSets: Math.max(1, Math.round(n('gEachSets', 1, 1))), gMarkLen: n('gMarkLen', 5, 1), gMarkOff: n('gMarkOff', 3, 0), gMargin: n('gEdge', 0, 0), gSize: v('gSize').value, gScale: n('gScale', 100, 5), cFoldPos: n('cFoldPos', 0, 0), cPerfCut: n('cPerfCut', 1, 0.2), cPerfGap: n('cPerfGap', 1, 0.2),
     vWidth: n('vWidth', 300, 20), vLength: n('vLength', 1000, 20), vMargin: n('vMargin', 5, 0), vGap: n('vGap', 3, 0),
     vWeed: v('vWeed').value, vWeedMargin: n('vWeedMargin', 3, 0), vMirror: v('vMirror').checked, penForce: n('penForce', 40, 1), penFill: v('penFill').checked, penStyle: v('penStyle').value, penSpacing: n('penSpacing', 0.4, 0.1), penAngle: parseFloat(v('penAngle').value) || 0, batchMix: v('batchMix').checked, ggFormat: v('ggFormat').value, ggW: n('ggW', 100, 5), ggH: n('ggH', 150, 5), ggBleed: n('ggBleed', 2, 0), ggFit: v('ggFit').value, ggAuto: v('ggAuto').checked, ggGap: n('ggGap', 4, 0), ggMarkLen: n('ggMarkLen', 5, 1), ggMarkOff: n('ggMarkOff', 3, 0), ggEdge: n('ggEdge', 0, 0), spDpi: parseFloat(v('spDpi').value) || 72, sqW: n('sqW', 50, 5), sqH: n('sqH', 50, 5), sqSheetW: n('sqSheetW', 320, 20), sqSheetH: n('sqSheetH', 450, 20), sqMargin: n('sqMargin', 10, 0), sqGap: n('sqGap', 0, 0),
@@ -1002,7 +1003,7 @@ function backMarks(L, o) {
 const KIND = {
   cards: { title: 'Business cards', one: 'card', many: 'cards', file: 'business-cards', hint: 'One PDF: page 1 is the front, page 2 the back, both with bleed (e.g. 94 × 54 mm for a 90 × 50 card). Or one or two images (PNG, JPG, WebP…): front, then back. You can also drop them on the sheet.' },
   morgana: { title: 'Morgana CardXtra', one: 'card', many: 'cards', file: 'morgana', hint: 'One PDF of a 90 × 55, 90 × 50 or 85 × 55 card (set the cut size) with bleed: page 1 the front, page 2 the back. Or one or two images (front, back): they are cut at the CardXtra size, at 100 % from their dpi. Imposed 20-up on SRA3 (450 × 320) on the CardXtra template slots, each card in the bottom-left corner of its slot, with the black reading mark on both sides. You can also drop it on the sheet.' },
-  winietka: { title: 'Winietki', one: 'card', many: 'cards', file: 'winietki', hint: 'Add one or more PDFs, every page one winietka (all the same size, with bleed). Single-sided, printed on the sheet with registration marks and cut with straight lines like business cards; every sheet uses the same PLT. You can also drop the PDFs on the sheet.' },
+  winietka: { title: 'Winietki', one: 'card', many: 'cards', file: 'winietki', hint: 'Add one or more PDFs, every page one winietka (all the same size, with bleed), or make them from a list of names. Single-sided, printed on the sheet with registration marks and cut with straight lines like business cards; every sheet uses the same PLT. You can also drop the PDFs on the sheet.' },
   deck: { title: 'Card deck', one: 'card', many: 'cards', file: 'deck', hint: 'One multi-page PDF with bleed: pages 1 and 2 are the front and back of card 1, pages 3 and 4 card 2, and so on. Set how many complete sets you need; you get double-sided sheets (310 × 440 or the size chosen under Sheet) with crop marks. You can also drop it on the sheet.' },
   guillotine: { title: 'Guillotine', one: 'copy', many: 'copies', file: 'guillotine', hint: 'One PDF with bleed: page 1 the front, page 2 the back (optional). Copies are laid out on the chosen sheet (310 × 440 by default) with crop marks for the guillotine. A multi-page PDF of different one-sided cards: set PDF pages to “every page a separate card”. You can also drop it on the sheet.' },
   vouchers: { title: 'Vouchers', one: 'voucher', many: 'vouchers', file: 'vouchers', hint: 'One PDF of the opened-out voucher: page 1 the outside, page 2 the inside, with bleed. The fold is perforated across the long side. You can also drop it on the sheet.' }
@@ -1121,8 +1122,7 @@ function syncImgRows() {
   document.getElementById('rowIcExtend').hidden = fit === 'stretch';
   document.getElementById('rowIcSize').hidden = appMode === 'morgana';
   document.getElementById('icSwap').hidden = !on || cards.imgSrc.imgs.length !== 2;
-  // with 100% / fit the bleed comes from the image itself; the field only drives the stretch mode
-  document.getElementById('cBleed').closest('.row').hidden = on && fit !== 'stretch';
+  syncBleedRow();
 }
 for (const id of ['icW', 'icH', 'icDpi']) document.getElementById(id).addEventListener('input', rebuildCardImages);
 document.getElementById('icFit').addEventListener('change', () => { syncImgRows(); rebuildCardImages(); });
@@ -1322,7 +1322,7 @@ function cardSheetLoops() {
 }
 // Perforated die cut (business cards): the cut lines become cuts with uncut bridges, so the sheet holds together
 // without a cutting mat. Business cards only for now.
-const perfDie = o => appMode === 'cards' && o.cPerfDie;
+const perfDie = o => (appMode === 'cards' || appMode === 'winietka') && o.cPerfDie;
 // Every card cut line on the sheet, in sheet mm, the way it is cut:
 // loops (closed outlines), folds (fold perforation), v and h (grid lines, cut in this exact order),
 // dashes (perforated outlines, any order).
@@ -1345,7 +1345,7 @@ function cardCuts() {
   return { loops: [], folds, v: [], h: [], dashes: opens(cardSheetLoops().flatMap(l => perforate(l, true, o.cTieCut, o.cTie))) };
 }
 function syncPerfDie() {
-  const on = appMode === 'cards';
+  const on = appMode === 'cards' || appMode === 'winietka';
   document.getElementById('perfDie').hidden = !on;
   document.getElementById('perfDieRows').hidden = !on || !document.getElementById('cPerfDie').checked;
 }
@@ -1625,35 +1625,118 @@ function winItem(s, j) {
   const wp = winPlan(readOpts()), k = s * wp.N + j;
   return wp.N && k < wp.total ? Math.floor(k / wp.copies) : null;
 }
+// Add every page of a PDF as a winietka. labels: names for the pages (else file name + page);
+// bleed: the exact bleed of generated pages (else read from the trim box).
+async function winIngest(bytes, fileName, { labels = null, bleed = null } = {}) {
+  const pdf = await window.pdfjsLib.getDocument(pdfSource(bytes.slice())).promise;
+  const lib = await window.PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+  for (let i = 0; i < pdf.numPages; i++) {
+    const lp = lib.getPage(i), mb = lp.getMediaBox(), tb = lp.getTrimBox();
+    if (!cards.items.length) { // the first card sets the size and the bleed
+      cards.pageW = mb.width / PT; cards.pageH = mb.height / PT; cards.mbx = mb.x; cards.mby = mb.y; cards.bleed = null;
+      if (bleed != null) cards.bleed = bleed;
+      else if (tb.width < mb.width - 0.5 && tb.height < mb.height - 0.5) cards.bleed = Math.round((mb.width - tb.width) / 2 / PT * 100) / 100;
+      if (cards.bleed != null) document.getElementById('cBleed').value = cards.bleed;
+    }
+    const pg = await pdf.getPage(i + 1), vp = pg.getViewport({ scale: 6 / PT });
+    const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+    await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+    cards.items.push({ name: labels ? labels[i] : pdf.numPages > 1 ? `${fileName} p.${i + 1}` : fileName, bytes, page: i, w: mb.width, h: mb.height, mbx: mb.x, mby: mb.y, preview: cv.toDataURL('image/jpeg', 0.85) });
+    cv.width = cv.height = 1;
+    if (i % 20 === 19) await tick();
+  }
+}
 async function winAddFiles(list) {
+  if (document.getElementById('winSrc').value === 'names') { setCardMsg('Switch “Cards from” to PDF files to add PDFs.', true); return; }
   const files = Array.from(list || []).filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
   if (!files.length) { setCardMsg('Load PDF files (one card per page, with bleed).', true); return; }
   setCardMsg('Reading the PDFs…');
   try {
     await ensureLibs();
     cards.items = cards.items || [];
-    for (const f of files) {
-      const bytes = new Uint8Array(await f.arrayBuffer());
-      const pdf = await window.pdfjsLib.getDocument(pdfSource(bytes.slice())).promise;
-      const lib = await window.PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
-      for (let i = 0; i < pdf.numPages; i++) {
-        const lp = lib.getPage(i), mb = lp.getMediaBox(), tb = lp.getTrimBox();
-        if (!cards.items.length) { // the first card sets the size and the bleed
-          cards.pageW = mb.width / PT; cards.pageH = mb.height / PT; cards.mbx = mb.x; cards.mby = mb.y; cards.bleed = null;
-          if (tb.width < mb.width - 0.5 && tb.height < mb.height - 0.5) { cards.bleed = Math.round((mb.width - tb.width) / 2 / PT * 100) / 100; document.getElementById('cBleed').value = cards.bleed; }
-        }
-        const pg = await pdf.getPage(i + 1), vp = pg.getViewport({ scale: 6 / PT });
-        const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
-        await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-        cards.items.push({ name: pdf.numPages > 1 ? `${f.name} p.${i + 1}` : f.name, bytes, page: i, w: mb.width, h: mb.height, mbx: mb.x, mby: mb.y, preview: cv.toDataURL('image/jpeg', 0.85) });
-        cv.width = cv.height = 1;
-      }
-    }
+    for (const f of files) await winIngest(new Uint8Array(await f.arrayBuffer()), f.name);
     winSync();
   } catch (e) {
     setCardMsg(`Couldn’t read the PDF: ${e.message || e}`, true);
   }
 }
+
+/* ---------- winietki from a list of names ---------- */
+const winNames = { bg: null, bgName: '', fontFile: null, fontName: '', timer: null, gen: 0 };
+try { document.getElementById('winNames').value = localStorage.getItem('stickerSheet.winNames') || ''; } catch (e) { /* storage unavailable */ }
+const winNamesOn = () => appMode === 'winietka' && document.getElementById('winSrc').value === 'names';
+// the fold as the names see it (same rules as cardFoldLines), in card mm
+function winFold(o, W, H) {
+  if (o.cFold !== 'perf') return null;
+  const vert = o.cFoldDir === 'v' ? true : o.cFoldDir === 'h' ? false : W > H + 0.01, along = vert ? W : H;
+  return { dir: vert ? 'v' : 'h', pos: o.cFoldPos > 0 && o.cFoldPos < along ? o.cFoldPos : along / 2 };
+}
+// The "Bleed in the PDF" field is hidden where the bleed is known exactly: card images in 100 % / fit mode
+// (the bleed comes from the image) and winietki from names (2 mm with a background, none without).
+function syncBleedRow() {
+  const img = isPrintMode() && appMode !== 'winietka' && cards.imgSrc && document.getElementById('icFit').value !== 'stretch';
+  document.getElementById('cBleed').closest('.row').hidden = !!img || winNamesOn();
+}
+function syncWinRows() {
+  const names = document.getElementById('winSrc').value === 'names';
+  document.getElementById('winPdfRows').hidden = names;
+  document.getElementById('winNameRows').hidden = !names;
+  document.getElementById('rowWinFontFile').hidden = document.getElementById('winFont').value !== 'custom';
+  document.getElementById('winBgClear').hidden = !winNames.bg;
+  syncBleedRow();
+}
+async function winBuildNames() {
+  const my = ++winNames.gen, o = readOpts(), list = parseNames(document.getElementById('winNames').value);
+  try { localStorage.setItem('stickerSheet.winNames', document.getElementById('winNames').value); } catch (e) { /* storage unavailable */ }
+  const info = document.getElementById('winNamesInfo');
+  info.textContent = list.length ? `${list.length} ${list.length === 1 ? 'name' : 'names'}.` : 'Type or paste the names, one per line.';
+  if (!list.length) { cards.items = []; winSync(); return; }
+  if (o.winFont === 'custom' && !winNames.fontFile) { info.textContent += ' Load a font file, or pick one of the fonts.'; return; }
+  setCardMsg('Setting the names…');
+  try {
+    const W = o.winW, H = o.winH;
+    const r = await buildNameCardsPdf({ names: list, W, H, bg: winNames.bg, font: o.winFont, fontFile: winNames.fontFile, size: o.winSize, color: o.winColor, fold: winFold(o, W, H), both: o.winBoth });
+    if (my !== winNames.gen) return;
+    const items = [], saved = cards.items;
+    cards.items = items;
+    try { await winIngest(r.bytes, 'names', { labels: list, bleed: r.bleed }); }
+    catch (e) { cards.items = saved; throw e; }
+    if (my !== winNames.gen) return;
+    if (r.shrunk) info.textContent += ` ${r.shrunk} long ${r.shrunk === 1 ? 'name was' : 'names were'} set smaller to fit.`;
+    winSync();
+  } catch (e) { setCardMsg(`Couldn’t make the cards: ${e.message || e}`, true); }
+}
+function winNamesChanged() {
+  syncWinRows();
+  if (!winNamesOn()) return;
+  clearTimeout(winNames.timer);
+  winNames.timer = setTimeout(winBuildNames, 350);
+}
+for (const id of ['winNames', 'winW', 'winH', 'winSize', 'winColor', 'winBoth', 'winFont', 'cFoldOn', 'cFoldDir', 'cFoldPos'])
+  document.getElementById(id).addEventListener(id === 'winNames' || id === 'winW' || id === 'winH' || id === 'winSize' || id === 'cFoldPos' ? 'input' : 'change', winNamesChanged);
+document.getElementById('winSrc').addEventListener('change', () => { cards.items = []; winSync(); winNamesChanged(); });
+document.getElementById('winBg').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  try {
+    if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') winNames.bg = { kind: 'pdf', bytes: new Uint8Array(await f.arrayBuffer()), page: 0 };
+    else { const im = await readCardImage(f); winNames.bg = { kind: im.kind, bytes: im.bytes }; }
+    winNames.bgName = f.name;
+    document.getElementById('winBgInfo').textContent = `Background: ${f.name}. It fills each card plus 2 mm bleed on every side (proportions kept, centred).`;
+  } catch (err) { setCardMsg(`Couldn’t use the background: ${err.message || err}`, true); return; }
+  winNamesChanged();
+});
+document.getElementById('winBgClear').addEventListener('click', () => {
+  winNames.bg = null; winNames.bgName = '';
+  document.getElementById('winBgInfo').textContent = 'No background: plain white cards without bleed. A background fills the card plus 2 mm bleed on every side (proportions kept, centred).';
+  winNamesChanged();
+});
+document.getElementById('winFontFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  winNames.fontFile = new Uint8Array(await f.arrayBuffer()); winNames.fontName = f.name;
+  winNamesChanged();
+});
 function winSync() {
   const it = cards.items || [];
   cards.bytes = it.length ? true : null; cards.pages = 1;
@@ -1743,7 +1826,7 @@ function setAppMode(m) {
     document.getElementById('winRows').hidden = m !== 'winietka';
     document.getElementById('cardLoadRow').hidden = m === 'winietka';
     for (const id of ['rowCOffX', 'rowCOffY']) document.getElementById(id).hidden = m === 'winietka';
-    if (m === 'winietka') winList();
+    if (m === 'winietka') { winList(); syncWinRows(); if (winNamesOn() && !(cards.items || []).length) winNamesChanged(); }
     syncImgRows();
     document.getElementById('exCardPdf').textContent = m === 'winietka' ? 'Print PDF' : 'Print PDF (both sides)';
     document.getElementById('gRows').hidden = m !== 'guillotine' && m !== 'deck';
@@ -2916,6 +2999,7 @@ function syncOptionRows() {
   document.getElementById('rowGGGap').hidden = document.getElementById('ggAuto').checked;
   syncImgRows();
   syncPerfDie();
+  syncWinRows();
 }
 // Saved settings: the mode plus every option field.
 function snapshotSettings() { return { mode: appMode, settings: optionValues() }; }
@@ -2932,6 +3016,7 @@ function applySettings({ mode, settings }) {
   if (cards.imgSrc) rebuildCardImages();
   if (sp.text) analyseSvgPlt();
   setAppMode(mode);
+  if (winNamesOn()) winNamesChanged();
 }
 
 loadOpts();

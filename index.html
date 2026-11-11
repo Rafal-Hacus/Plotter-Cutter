@@ -57,8 +57,26 @@
       </div>
       <p class="hint" id="cardInfo">One PDF: page 1 is the front, page 2 the back, both with bleed (e.g. 94 × 54 mm for a 90 × 50 card). Or one or two images (PNG, JPG, WebP…). You can also drop them on the sheet.</p>
       <div id="winRows" hidden>
-        <div class="actions"><label class="btn primary">Add winietki (PDF)<input id="winFile" type="file" accept="application/pdf,.pdf" multiple></label><button type="button" class="link" id="winClear" hidden>Remove all</button></div>
-        <ul class="designs" id="winList"></ul>
+        <div class="row"><label for="winSrc">Cards from</label><select id="winSrc"><option value="pdf">PDF files (a card per page)</option><option value="names">A list of names</option></select></div>
+        <div id="winPdfRows">
+          <div class="actions"><label class="btn primary">Add winietki (PDF)<input id="winFile" type="file" accept="application/pdf,.pdf" multiple></label><button type="button" class="link" id="winClear" hidden>Remove all</button></div>
+          <ul class="designs" id="winList"></ul>
+        </div>
+        <div id="winNameRows" hidden>
+          <label class="blocklabel" for="winNames">Names, one per line</label>
+          <textarea id="winNames" rows="8" spellcheck="false" placeholder="Anna Kowalska&#10;Jan Nowak&#10;Zofia Wiśniewska"></textarea>
+          <p class="hint" id="winNamesInfo"></p>
+          <div class="row"><label for="winW">Card size (flat, before folding)</label><span class="mm"><input id="winW" type="number" min="20" step="1" value="100" aria-label="Card width">×<input id="winH" type="number" min="20" step="1" value="100" aria-label="Card height">mm</span></div>
+          <div class="row"><label>Background graphic</label><span class="mm"><label class="btn">Load image or PDF<input id="winBg" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif,application/pdf,.pdf,.png,.jpg,.jpeg,.webp"></label></span></div>
+          <p class="hint" id="winBgInfo">No background: plain white cards without bleed. A background fills the card plus 2 mm bleed on every side (proportions kept, centred).</p>
+          <div class="actions"><button type="button" class="link" id="winBgClear" hidden>Remove the background</button></div>
+          <div class="row"><label for="winFont">Font</label><select id="winFont"><option value="sans">Montserrat (sans serif)</option><option value="serif">Playfair Display (serif)</option><option value="script">Great Vibes (script)</option><option value="custom">Your own font file…</option></select></div>
+          <div class="row" id="rowWinFontFile" hidden><label>Font file (TTF or OTF)</label><span class="mm"><label class="btn">Load font<input id="winFontFile" type="file" accept=".ttf,.otf,font/ttf,font/otf"></label></span></div>
+          <div class="row"><label for="winSize">Text size (long names get smaller)</label><span class="mm"><input id="winSize" type="number" min="6" max="200" step="1" value="28">pt</span></div>
+          <div class="row"><label for="winColor">Text colour</label><input id="winColor" type="color" value="#1f2a24"></div>
+          <div class="row"><label for="winBoth">Name on both halves (tent card, upside down on the back)</label><input id="winBoth" type="checkbox" checked></div>
+          <p class="hint">Turn on the fold below for a standing card: with a horizontal fold the name sits in the middle of the lower half (and upside down in the upper half); with a vertical fold on the right half.</p>
+        </div>
         <div class="row"><label for="winCopies">Copies of each</label><span class="mm"><input id="winCopies" type="number" min="1" step="1" value="1">pcs</span></div>
         <div class="row"><label for="winSheet">Preview</label><select id="winSheet"><option value="0">Sheet 1</option></select></div>
       </div>
@@ -81,8 +99,9 @@
         <div id="perfRows" hidden>
         <div class="row"><label for="cFoldDir">Fold line runs</label><select id="cFoldDir"><option value="auto">Across the longer side</option><option value="h">Horizontally (tent card)</option><option value="v">Vertically (booklet)</option></select></div>
         <div class="row"><label for="cFoldPos">Fold position from the edge (0 = middle)</label><span class="mm"><input id="cFoldPos" type="number" min="0" step="0.5" value="0">mm</span></div>
-        <div class="row"><label for="cPerfCut">Perforation cut length</label><span class="mm"><input id="cPerfCut" type="number" min="0.2" step="0.1" value="1">mm</span></div>
-        <div class="row"><label for="cPerfGap">Perforation gap</label><span class="mm"><input id="cPerfGap" type="number" min="0.2" step="0.1" value="1">mm</span></div>
+        <p class="hint">The fold perforation has its own cut and gap; the perforated die cut settings don’t change it.</p>
+        <div class="row"><label for="cPerfCut">Fold perforation: cut length</label><span class="mm"><input id="cPerfCut" type="number" min="0.2" step="0.1" value="1">mm</span></div>
+        <div class="row"><label for="cPerfGap">Fold perforation: uncut gap</label><span class="mm"><input id="cPerfGap" type="number" min="0.2" step="0.1" value="1">mm</span></div>
         </div>
       </div>
       <div class="row" id="rowCOffX"><label for="cOffX">Back side shift X</label><span class="mm"><input id="cOffX" type="number" step="0.1" value="0">mm</span></div>
