@@ -100,7 +100,9 @@ export function pltValues(text) { // current force / speed / up-speed in the hea
 // Skycut PLT in the same shape SignCut writes it: 40 units/mm, origin at the centre of the bottom-right
 // registration mark, X running up the sheet (feed), Y running left.
 // frame: centre lines of the registration marks in sheet mm { top, bottom, left, right }.
-// opts: { force (g), overcut (mm), bladeOffset (mm), pltForce (write VS/US/FS), cutSpeed, upSpeed (cm/s) }.
+// opts: { force (g), overcut (mm), bladeOffset (mm), pltForce (write VS/US/FS), cutSpeed, upSpeed (cm/s),
+//         markless: no registration marks: a plain 'IN' header, no start-arrow cut, the origin is wherever the
+//         knife is set (frame.bottom/right: the start point in sheet mm; top/left unused) }.
 // sheetLoops: closed outlines in sheet mm; openLines, ...laterLines: groups of open lines cut first, in order
 // (a group with .ordered = true keeps its exact order and direction).
 export function writePlt(frame, opts, sheetLoops, openLines = [], ...laterLines) {
@@ -116,7 +118,8 @@ export function writePlt(frame, opts, sheetLoops, openLines = [], ...laterLines)
     if (pts.length > 2) loops.push(pts);
   }
   // nearest-neighbour order, each outline started at its vertex closest to the knife
-  const out = [`IN FSIZE${FX},${FY} CMD:32,0,0,400,400;CMD:18,1;CMD:103,0;CMD:35,1,1,0;TB26,${FX},${FY} CMD:35,1;`];
+  const markless = !!opts.markless;
+  const out = [markless ? 'IN' : `IN FSIZE${FX},${FY} CMD:32,0,0,400,400;CMD:18,1;CMD:103,0;CMD:35,1,1,0;TB26,${FX},${FY} CMD:35,1;`];
   // blade offset: the tip trails the holder axis, so the axis path is shifted ahead and swivels around corners
   const po = opts;
   if (po.pltForce) {
@@ -124,17 +127,18 @@ export function writePlt(frame, opts, sheetLoops, openLines = [], ...laterLines)
     // SignCut puts these right after the header: VS cutting speed, US up-speed (cm/s), FS force (g)
     out.push(`VS${ci(po.cutSpeed, 1, 13)}`, `US${ci(po.upSpeed, 1, 13)}`, `FS${ci(force, 1, 160)}`);
   }
-  let bdir = [1, 0];
+  let bdir = [1, 0], maxX = 0;
   const emit = (tip, dup) => {
     const c = dragKnife(tip, bo, bdir);
     bdir = c.dir;
     const q = c.pts.map(p => [Math.round(p[0]), Math.round(p[1])]);
+    for (const p of q) maxX = Math.max(maxX, p[0]);
     out.push(`U${q[0][0]},${q[0][1]}`);
     if (dup) out.push(`D${q[0][0]},${q[0][1]}`);
     for (let i = 1; i < q.length; i++) if (q[i][0] !== q[i - 1][0] || q[i][1] !== q[i - 1][1]) out.push(`D${q[i][0]},${q[i][1]}`);
   };
-  emit([[-19, 647], [80, 747], [-19, 847]], false);
-  let cx = -19, cy = 847;
+  let cx = 0, cy = 0;
+  if (!markless) { emit([[-19, 647], [80, 747], [-19, 847]], false); cx = -19; cy = 847; }
   // open lines first (fold perforations, then grid lines group by group), nearest-neighbour inside a group
   for (const group of [openLines, ...laterLines]) {
   const lines = group.map(l => l.map(([x, y]) => [Math.round((bottom - y) * 40), Math.round((right - x) * 40)]));
@@ -168,6 +172,7 @@ export function writePlt(frame, opts, sheetLoops, openLines = [], ...laterLines)
     emit(tip, true);
     cx = r[0][0]; cy = r[0][1];
   }
-  out.push(`U${FX},0`, '@;@;');
+  // marks: park at the top mark; markless: feed out past the end of the job, like the vinyl cut
+  out.push(markless ? `U${maxX + 400},0` : `U${FX},0`, '@;@;');
   return out.join(' ');
 }

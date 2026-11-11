@@ -35,6 +35,21 @@ describe('writePlt', () => {
   });
 });
 
+describe('writePlt without registration marks', () => {
+  it('writes a plain header, no start-arrow cut, the origin at the start point', () => {
+    const sq = [[100, 100], [150, 100], [150, 130], [100, 130]];
+    const t = writePlt(FRAME, { ...OPTS, markless: true }, [sq]);
+    expect(t.startsWith('IN VS13 US10 FS60 U')).toBe(true);
+    expect(t).not.toMatch(/FSIZE|TB26|CMD:/);
+    const m = moves(t);
+    // same coordinates as with marks (same frame), minus the start-arrow cut
+    const withMarks = moves(writePlt(FRAME, OPTS, [sq])).slice(3, -1);
+    expect(m.slice(0, -1)).toEqual(withMarks);
+    // feeds out 10 mm past the highest point
+    expect(m.at(-1)).toEqual({ pen: 'U', x: Math.max(...withMarks.map(q => q.x)) + 400, y: 0 });
+  });
+});
+
 describe('dragKnife', () => {
   it('leaves the path alone with no blade offset (apart from micro-moves)', () => {
     const tip = [[0, 0], [100, 0], [100, 1], [100, 100]];

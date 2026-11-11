@@ -77,6 +77,12 @@
           <div class="row"><label for="winBoth">Name on both halves (tent card, upside down on the back)</label><input id="winBoth" type="checkbox" checked></div>
           <p class="hint">Turn on the fold below for a standing card: with a horizontal fold the name sits in the middle of the lower half (and upside down in the upper half); with a vertical fold on the right half.</p>
         </div>
+        <div class="row"><label for="cAlign">Line up the cut by</label><select id="cAlign"><option value="marks">Registration marks (sensor)</option><option value="dot">Start dot, no sensor (like vinyl)</option></select></div>
+        <div id="dotRows" hidden>
+          <p class="hint">The print gets a small cross-hair dot at the bottom right instead of the registration marks. Put the sheet in the plotter, move the knife tip exactly onto the centre of the dot and set the origin there, then send the PLT. The plotter doesn’t read any marks, so its sensor can’t skew the lines.</p>
+          <div class="row"><label for="cShiftX">Cut shift X (+ moves the cuts right)</label><span class="mm"><input id="cShiftX" type="number" step="0.1" value="0">mm</span></div>
+          <div class="row"><label for="cShiftY">Cut shift Y (+ moves the cuts down)</label><span class="mm"><input id="cShiftY" type="number" step="0.1" value="0">mm</span></div>
+        </div>
         <div class="row"><label for="winCopies">Copies of each</label><span class="mm"><input id="winCopies" type="number" min="1" step="1" value="1">pcs</span></div>
         <div class="row"><label for="winSheet">Preview</label><select id="winSheet"><option value="0">Sheet 1</option></select></div>
       </div>
