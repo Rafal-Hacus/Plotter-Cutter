@@ -1,0 +1,60 @@
+name: CI
+
+# Manual for now: Actions > CI > Run workflow. (Was: on every push and pull request.)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# a newer push to the same branch cancels the older run
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      # the browser's system packages come from apt mirrors, which sometimes hang: cap it and retry once
+      - name: Install the test browser
+        timeout-minutes: 8
+        run: timeout 180 npx playwright install --with-deps chromium || { echo "retrying"; sleep 5; timeout 240 npx playwright install --with-deps chromium; }
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AUTH_PASSWORD: ci password 123
+      HOST_PORT: 8080
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the stack the way Portainer does (compose.yaml), built from this commit
+        run: docker compose -f compose.yaml -f compose.build.yaml up -d --build --wait
+      - name: Smoke test
+        run: |
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/api/presets)" = 401
+          curl -s -c jar -o /dev/null -d "username=admin&password=$AUTH_PASSWORD" localhost:8080/login
+          test "$(curl -s -b jar -o /dev/null -w '%{http_code}' localhost:8080/)" = 200
+          curl -fs -b jar -H 'Content-Type: application/json' -d '{"name":"CI","mode":"cards","settings":{"cBleed":"2"}}' localhost:8080/api/presets
+          docker compose -f compose.yaml -f compose.build.yaml up -d --force-recreate --wait
+          curl -fs -b jar localhost:8080/api/presets | grep -q '"name":"CI"'
+      - if: always()
+        run: docker compose -f compose.yaml -f compose.build.yaml logs
