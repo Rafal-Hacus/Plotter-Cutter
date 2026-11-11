@@ -10,6 +10,11 @@ export default [
     rules: { 'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }], 'no-empty': ['error', { allowEmptyCatch: true }] }
   },
   {
+    files: ['server/**/*.js'],
+    languageOptions: { ecmaVersion: 2024, sourceType: 'module', globals: globals.node },
+    rules: { 'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }] }
+  },
+  {
     files: ['tests/**/*.js', '*.config.js'],
     languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: { ...globals.node, ...globals.browser } }
   }

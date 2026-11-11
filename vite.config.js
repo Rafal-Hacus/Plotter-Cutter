@@ -38,9 +38,13 @@ function csp() {
   };
 }
 
+// npm run dev with the server running too (npm start): PC_SERVER=http://localhost:8080 npm run dev
+const backend = process.env.PC_SERVER;
+
 export default defineConfig({
   base: './',
+  server: backend ? { proxy: Object.fromEntries(['/api', '/login', '/logout'].map(p => [p, { target: backend, changeOrigin: false }])) } : {},
   build: { target: 'es2022', sourcemap: true, chunkSizeWarningLimit: 2500 },
   plugins: [pdfjsAssets(), csp()],
-  test: { include: ['tests/unit/**/*.test.js'] }
+  test: { include: ['tests/unit/**/*.test.js', 'tests/server/**/*.test.js'] }
 });

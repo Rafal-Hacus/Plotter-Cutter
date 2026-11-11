@@ -29,3 +29,21 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t plotter-cutter:ci .
+      - name: Smoke test the container
+        run: |
+          docker run -d --name pc -p 8080:8080 -e AUTH_PASSWORD='ci password 123' --read-only --tmpfs /tmp --cap-drop ALL plotter-cutter:ci
+          for i in $(seq 1 30); do curl -fs localhost:8080/healthz && break; sleep 1; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/api/presets)" = 401
+          curl -s -c jar -o /dev/null -d 'username=admin&password=ci password 123' localhost:8080/login
+          test "$(curl -s -b jar -o /dev/null -w '%{http_code}' localhost:8080/)" = 200
+          curl -fs -b jar -H 'Content-Type: application/json' -d '{"name":"CI","mode":"cards","settings":{"cBleed":"2"}}' localhost:8080/api/presets
+          docker restart pc && sleep 3
+          curl -fs -b jar localhost:8080/api/presets | grep -q '"name":"CI"'
+          docker logs pc

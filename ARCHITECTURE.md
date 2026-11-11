@@ -16,7 +16,16 @@ src/core/             pure code, no app state, unit tested
   zip.js              zip writer and reader
   image.js            embedded dpi, EXIF orientation, round-sticker detection
   util.js             small helpers
+src/presets.js        the Saved settings panel (talks to the server's /api)
+server/               Node server, no runtime dependencies
+  index.js            routes, security headers, login/logout, saved-settings API, config from the environment
+  auth.js             scrypt passwords, signed session cookies, login lockout
+  store.js            saved settings in /data/presets.json (atomic writes, validation)
+  static.js           serves dist/
+  hash-password.js    makes AUTH_PASSWORD_HASH
+Dockerfile            build stage (npm ci + vite build), runtime stage (node + server + dist, non-root)
 tests/unit            Vitest, one file per core module
+tests/server          Vitest against the running server
 tests/e2e             Playwright against the production build, plus golden files
 vite.config.js        build, pdf.js data files, Content-Security-Policy for production
 ```

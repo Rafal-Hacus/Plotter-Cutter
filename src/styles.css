@@ -129,3 +129,14 @@ body[data-mode="vinyl"] .ksel,body[data-mode="pen"] .ksel,body[data-mode="pen"] 
   input[type=text]{width:140px}
 }
 @media (prefers-reduced-motion:no-preference){button{transition:filter .12s,background-color .12s}button:hover:not(:disabled){filter:brightness(.96)}}
+/* saved settings */
+.titlebar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.userbox{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);padding-top:4px;white-space:nowrap}
+section.presets{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));background:linear-gradient(var(--accent-soft),var(--card) 70%)}
+.presetpick{display:flex;align-items:center;gap:8px;margin:4px 0 8px}
+.presetpick select{flex:1;max-width:none;min-height:38px;font-weight:600}
+.dirty{font-size:12px;font-weight:650;color:var(--warn);border:1px solid currentColor;border-radius:999px;padding:1px 8px}
+.presetname{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 8px}
+.presetname input{flex:1;min-width:0;width:auto}
+#presetMsg:empty{display:none}
+#presetMsg.warn{color:var(--danger)}

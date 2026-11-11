@@ -10,6 +10,7 @@ import { sanitize } from './core/sanitize.js';
 import { XLINK, ser, MM_PER, num, esc, parseLen, parseSvg, readViewBox, aiId, pathEl, SLOT_RE, dataUri, loadImg, windowSvg, sizedSvg, splitRoot, prefixDoc, flattenPath, expandUses, decodeLayer, elementPolys, toHex, pathLen } from './core/svg.js';
 import { tick, asciiOnly } from './core/util.js';
 import { ensureLibs, pdfSource } from './lib/pdf.js';
+import { initPresets } from './presets.js';
 import { makeZip, readZipPlts } from './core/zip.js';
 
 function sheetSizeMm() {
@@ -59,12 +60,14 @@ function readOpts() {
     quality: v('quality').value, dpi: n('dpi', 300, 1)
   };
 }
+// every option field as { id: value } (checkboxes as booleans, the rest as the field's text)
+function optionValues() {
+  const o = {};
+  for (const id of OPT_IDS) { const e = document.getElementById(id); o[id] = e.type === 'checkbox' ? e.checked : e.value; }
+  return o;
+}
 function saveOpts() {
-  try {
-    const o = {};
-    for (const id of OPT_IDS) { const e = document.getElementById(id); o[id] = e.type === 'checkbox' ? e.checked : e.value; }
-    localStorage.setItem('stickerSheet.opts.v2', JSON.stringify(o));
-  } catch (e) { /* storage unavailable */ }
+  try { localStorage.setItem('stickerSheet.opts.v2', JSON.stringify(optionValues())); } catch (e) { /* storage unavailable */ }
 }
 function loadOpts() {
   try {
@@ -2863,13 +2866,36 @@ document.getElementById('exDuplex').addEventListener('click', async () => {
   catch (e) { setCardMsg(`Couldn’t build the PDF: ${e.message || e}`, true); }
 });
 
+// show or hide the rows that depend on other fields' values
+function syncOptionRows() {
+  syncPerf();
+  document.getElementById('rowDxCustom').hidden = document.getElementById('dxSize').value !== 'custom';
+  document.getElementById('rowGPageCustom').hidden = document.getElementById('gPage').value !== 'custom';
+  document.getElementById('rowGGCustom').hidden = document.getElementById('ggFormat').value !== 'custom';
+  document.getElementById('rowGGGap').hidden = document.getElementById('ggAuto').checked;
+  syncImgRows();
+}
+// Saved settings: the mode plus every option field.
+function snapshotSettings() { return { mode: appMode, settings: optionValues() }; }
+function applySettings({ mode, settings }) {
+  for (const id of OPT_IDS) {
+    if (!Object.hasOwn(settings, id)) continue;
+    const e = document.getElementById(id);
+    if (e.type === 'checkbox') e.checked = !!settings[id]; else e.value = String(settings[id]);
+  }
+  syncOptionRows();
+  if (!template || template.generated) applySheetSize(); // a template you loaded yourself stays
+  else if (template.unitless) setTemplate(template.text, template.name, false);
+  saveOpts();
+  if (cards.imgSrc) rebuildCardImages();
+  if (sp.text) analyseSvgPlt();
+  setAppMode(mode);
+}
+
 loadOpts();
-syncPerf();
-document.getElementById('rowDxCustom').hidden = document.getElementById('dxSize').value !== 'custom';
-document.getElementById('rowGPageCustom').hidden = document.getElementById('gPage').value !== 'custom';
-document.getElementById('rowGGCustom').hidden = document.getElementById('ggFormat').value !== 'custom';
-document.getElementById('rowGGGap').hidden = document.getElementById('ggAuto').checked;
+syncOptionRows();
 applySheetSize();
 ui.list.innerHTML = '<li class="empty">No stickers yet.</li>';
 renderPreview();
 run();
+initPresets({ snapshot: snapshotSettings, apply: applySettings });

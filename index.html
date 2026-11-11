@@ -3,14 +3,33 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="referrer" content="no-referrer">
+<meta name="referrer" content="same-origin">
 <title>Sticker sheet builder</title>
 </head>
 <body>
 <div class="app">
   <aside>
-    <header><h1>Sticker sheet builder</h1>
-    <p class="lede">Add SVGs, set their height, and get a nested sheet with kiss and die cut lines around every sticker.</p></header>
+    <header>
+      <div class="titlebar"><h1>Sticker sheet builder</h1>
+        <div class="userbox" id="userBox" hidden><span id="userName"></span><button type="button" class="link" id="signOut">Sign out</button></div></div>
+      <p class="lede">Add SVGs, set their height, and get a nested sheet with kiss and die cut lines around every sticker.</p>
+    </header>
+    <section class="presets" id="secPresets" aria-labelledby="h-presets" hidden>
+      <h2 id="h-presets">Saved settings</h2>
+      <div class="presetpick"><select id="presetSel" aria-label="Saved settings"><option value="">Choose saved settings…</option></select><span class="dirty" id="presetDirty" hidden>changed</span></div>
+      <div class="actions">
+        <button type="button" id="presetSave">Save as new…</button>
+        <button type="button" id="presetUpdate" disabled>Update</button>
+        <button type="button" id="presetDefault" disabled>Make default</button>
+        <button type="button" id="presetDelete" disabled>Delete</button>
+      </div>
+      <div class="presetname" id="presetNameRow" hidden>
+        <input type="text" id="presetName" maxlength="80" placeholder="Name, e.g. Morgana 85 × 55 cards" aria-label="Name for the saved settings" autocomplete="off">
+        <button type="button" class="primary" id="presetNameOk">Save</button><button type="button" id="presetNameCancel">Cancel</button>
+      </div>
+      <p class="hint" id="presetMsg" role="status"></p>
+      <p class="hint">Saves the mode and every setting (cut lines, sheet, layout, cards, PLT…) on the server. Picking one applies it; the default loads when the app opens.</p>
+    </section>
     <nav class="modes" aria-label="Mode"><div class="mgroup" role="group" aria-label="Print &amp; cut"><span class="mlabel">Print &amp; cut</span><div class="mbtns"><button type="button" data-mode="stickers" aria-pressed="true">Stickers</button><button type="button" data-mode="cards" aria-pressed="false">Business cards</button><button type="button" data-mode="vouchers" aria-pressed="false">Vouchers</button><button type="button" data-mode="winietka" aria-pressed="false">Winietki</button></div></div><div class="mgroup" role="group" aria-label="Print for the guillotine"><span class="mlabel">Print for the guillotine</span><div class="mbtns"><button type="button" data-mode="guillotine" aria-pressed="false">Guillotine</button><button type="button" data-mode="deck" aria-pressed="false">Card deck</button><button type="button" data-mode="gang" aria-pressed="false">Print sheets</button><button type="button" data-mode="morgana" aria-pressed="false">Morgana CardXtra</button><button type="button" data-mode="duplex" aria-pressed="false">Duplex test</button></div></div><div class="mgroup" role="group" aria-label="Cut or draw only"><span class="mlabel">Cut or draw only</span><div class="mbtns"><button type="button" data-mode="vinyl" aria-pressed="false">Vinyl</button><button type="button" data-mode="pen" aria-pressed="false">Pen</button><button type="button" data-mode="squares" aria-pressed="false">Squares</button><button type="button" data-mode="svgplt" aria-pressed="false">SVG to PLT</button></div></div></nav>
 
     <section aria-labelledby="h-stickers" id="secStickers">

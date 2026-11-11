@@ -1,0 +1,31 @@
+services:
+  plotter-cutter:
+    build: .
+    image: plotter-cutter:latest
+    container_name: plotter-cutter
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      AUTH_USERNAME: ${AUTH_USERNAME:-admin}
+      # Either the password itself (from .env), or better a hash made with:
+      #   docker compose run --rm -it plotter-cutter node server/hash-password.js
+      AUTH_PASSWORD: ${AUTH_PASSWORD:-}
+      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
+      # Set to "true" when the app is reached over HTTPS (behind a reverse proxy).
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # Set to "true" only behind a reverse proxy that sets X-Forwarded-For (for the login lockout).
+      TRUST_PROXY: ${TRUST_PROXY:-false}
+      SESSION_DAYS: ${SESSION_DAYS:-30}
+    volumes:
+      - plotter-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  plotter-data:
