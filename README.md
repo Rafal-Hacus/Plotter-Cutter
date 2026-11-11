@@ -147,7 +147,7 @@ purpose, look at the difference first, then refresh them:
 UPDATE_GOLDEN=1 npm run test:e2e -- golden
 ```
 
-CI (GitHub Actions) runs all checks on every push and pull request, and starts the stack from `compose.yaml` (built from that commit) and smoke-tests it. A second workflow publishes the image to GitHub's container registry.
+CI (GitHub Actions, started by hand for now: Actions → CI → Run workflow) runs all checks and starts the stack from `compose.yaml` (built from that commit) and smoke-tests it. A second workflow publishes the image to GitHub's container registry.
 
 ## Notes on the cut paths
 

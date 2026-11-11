@@ -1,8 +1,8 @@
 name: CI
 
+# Manual for now: Actions > CI > Run workflow. (Was: on every push and pull request.)
 on:
-  push:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
