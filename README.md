@@ -84,7 +84,7 @@ Open http://localhost:8080 (or the computer's address on your network) and sign 
 | `SESSION_SECRET` | generated into `/data` | key for signing sessions |
 | `AUTH_DISABLED` | `false` | local development only: no login at all |
 
-## Perforated die cut (business cards)
+## Perforated die cut (business cards, winietki)
 
 **Perforated die cut (no cutting mat)** under Business cards cuts every cut line in pieces with small uncut
 bridges (default: 6 mm cuts, 0.8 mm bridges). The sheet stays in one piece while it feeds through the plotter
@@ -92,6 +92,21 @@ without a mat; afterwards the cards pop out by hand. Bridges sit only on straigh
 rounded) is cut through, so the cards come out with clean corners; the small waste pieces between cards keep a
 bridge too, so nothing falls into the plotter. Works with straight lines across the sheet and with a rectangle
 (or rounded rectangle) around each card. Set the die cut force to go all the way through the card.
+
+## Winietki from a list of names
+
+In **Winietki**, set **Cards from** to **A list of names** and type or paste the names, one per line. Each name
+becomes a card of the size you set (flat, before folding).
+
+- **Background graphic** (image or PDF, shared by all cards): it fills each card plus **2 mm bleed** on every side.
+  Without a background the cards are plain white with no bleed.
+- **Font**: Montserrat, Playfair Display or Great Vibes (all with Polish letters), or load your own TTF/OTF.
+  Long names are set smaller so they fit.
+- **Fold**: turn on the dashed fold line for a standing card. With a horizontal fold the name sits in the middle
+  of the lower half, and upside down in the upper half when **Name on both halves** is on, so it reads from both
+  sides. The fold perforation has its own cut and gap settings, separate from the perforated die cut.
+- Cut like business cards: straight lines or a (rounded) rectangle per card, optionally as a **perforated die cut**.
+- The names stay as real text in the print PDF.
 
 ## Saved settings
 

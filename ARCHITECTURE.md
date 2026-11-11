@@ -18,6 +18,7 @@ src/core/             pure code, no app state, unit tested
   image.js            embedded dpi, EXIF orientation, round-sticker detection
   util.js             small helpers
 src/presets.js        the Saved settings panel (talks to the server's /api)
+src/lib/namecards.js  winietki from a list of names: one PDF page per name (fonts embedded with fontkit)
 server/               Node server, no runtime dependencies
   index.js            routes, security headers, first-run setup, login/logout, saved-settings API, config
   setup.html, login.html

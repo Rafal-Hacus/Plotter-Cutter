@@ -140,3 +140,6 @@ section.presets{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));ba
 .presetname input{flex:1;min-width:0;width:auto}
 #presetMsg:empty{display:none}
 #presetMsg.warn{color:var(--danger)}
+/* winietki from names */
+.blocklabel{display:block;font-size:14px;margin:8px 0 4px}
+textarea{width:100%;font:inherit;font-size:14px;color:var(--ink);background:var(--field);border:1px solid var(--field-line);border-radius:7px;padding:7px 9px;resize:vertical;min-height:120px}
