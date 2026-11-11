@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="310mm" height="440mm" viewBox="0 0 310 440">
+  <g id="Die_cut">
+    <path d="M293.999,430.5 L293.999,10" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M204,10 L204,430.5" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M200,430.5 L200,10" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M110,10 L110,430.5" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M106,430.5 L106,10" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M16.001,10 L16.001,430.5" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M10,407.248 L300,407.248" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M300,357.249 L10,357.249" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M10,353.249 L300,353.249" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M300,303.249 L10,303.249" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M10,299.249 L300,299.249" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M300,249.25 L10,249.25" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M10,245.25 L300,245.25" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M300,195.25 L10,195.25" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M10,191.25 L300,191.25" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M300,141.251 L10,141.251" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M10,137.251 L300,137.251" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M300,87.251 L10,87.251" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M10,83.251 L300,83.251" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+    <path d="M300,33.252 L10,33.252" style="fill:none;stroke:#231f20;stroke-width:0.1px;"/>
+  </g>
+  <g id="scpro2_x5F_printonly">
+    <polyline class="st0" points="288.32 435.00 285.83 432.50 283.31 435.00"/>
+  </g>
+  <g id="scpro2_x5F_regmarks">
+    <rect class="st1" x="5.00" y="5.50" width="1.00" height="10.00"/>
+    <rect class="st1" x="5.50" y="5.00" width="10.00" height="1.00"/>
+    <rect class="st1" x="304.00" y="5.50" width="1.00" height="10.00"/>
+    <rect class="st1" x="294.50" y="5.00" width="10.00" height="1.00"/>
+    <rect class="st1" x="5.00" y="424.50" width="1.00" height="10.00"/>
+    <rect class="st1" x="5.50" y="434.00" width="10.00" height="1.00"/>
+    <rect class="st1" x="304.00" y="424.50" width="1.00" height="10.00"/>
+    <rect class="st1" x="294.50" y="434.00" width="10.00" height="1.00"/>
+  </g>
+</svg>
