@@ -109,6 +109,12 @@ becomes a card of the size you set (flat, before folding).
   sides. The fold perforation has its own cut and gap settings, separate from the perforated die cut.
 - Cut like business cards: straight lines or a (rounded) rectangle per card, optionally as a **perforated die cut**.
 - The names stay as real text in the print PDF.
+- **Line up the cut by → Start dot, no sensor (like vinyl)**: the print gets a cross-hair dot at the bottom right
+  instead of registration marks, and the PLT has no mark reading. Put the sheet in, move the knife tip onto the
+  centre of the dot, set the origin there and send the PLT (the file name ends in `-nosensor`). Because the dot is
+  printed with the cards, printer margins don't matter. If every sheet is off by the same amount, correct it with
+  **Cut shift X / Y**. Use this when the sensor skews the lines: the PLT lines themselves are checked to be exactly
+  straight (every piece of a line on the same coordinate) by the tests.
 
 ## Saved settings
 

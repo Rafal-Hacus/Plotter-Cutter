@@ -52,3 +52,56 @@ test('switching back to PDF files clears the generated cards', async ({ page }) 
   await expect(page.locator('#count')).toHaveText(/No cards/);
   noProblems(problems);
 });
+
+// Every cut in the PLT is a straight, axis-parallel line, and all pieces of one line share one coordinate.
+// The swivel the blade-offset compensation adds at the start of a cut (within 2 blade offsets of the start) is
+// left out: it is meant to curve.
+function checkStraight(plt, bladeOffsetMm) {
+  const R = bladeOffsetMm * 40, lines = new Set();
+  for (const s of pltStrokes(plt)) {
+    const [a, b] = s.slice(-2), axis = a[0] === b[0] ? 0 : a[1] === b[1] ? 1 : -1;
+    expect(axis, `stroke ending ${a} -> ${b} is not axis-parallel`).not.toBe(-1);
+    for (const q of s) {
+      if (Math.hypot(q[0] - s[0][0], q[1] - s[0][1]) <= 2 * R + 3) continue;
+      expect(q[axis], `point ${q} off the line ${axis ? 'Y' : 'X'}=${b[axis]}`).toBe(b[axis]);
+    }
+    lines.add(`${axis}:${b[axis]}`);
+  }
+  return lines.size;
+}
+
+test('winietki without the sensor: start dot instead of marks, plain PLT, and every cut line dead straight', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'winietka');
+  await setField(page, 'winSrc', 'names');
+  await page.fill('#winNames', 'Anna Kowalska\nJan Nowak\nZofia Wiśniewska\nŁukasz Ćwikła\nOla\nPiotr');
+  await setField(page, 'cFoldOn', true); await setField(page, 'cFoldDir', 'h');
+  await waitCards(page, 6);
+  const plts = {};
+  for (const align of ['marks', 'dot']) for (const perf of [false, true]) {
+    await setField(page, 'cAlign', align); await setField(page, 'cPerfDie', perf);
+    await page.waitForTimeout(700);
+    await enabled(page, 'exCardPlt');
+    const files = unzip(await download(page, 'exCardPlt')), name = Object.keys(files)[0];
+    expect(name.includes('nosensor')).toBe(align === 'dot');
+    plts[`${align}${perf ? '-perf' : ''}`] = files[name].toString();
+  }
+  // with marks: the SignCut header and the start-arrow cut; with the dot: a plain header, nothing else
+  expect(plts.marks).toMatch(/^IN FSIZE\d+,\d+ .*TB26/);
+  expect(plts.dot).toMatch(/^IN VS\d+ US\d+ FS\d+ U/);
+  expect(plts.dot).not.toMatch(/FSIZE|TB26|CMD:/);
+  for (const [k, t] of Object.entries(plts)) {
+    const body = k.startsWith('marks') ? t.replace(/ U-?\d+,-?\d+[^U]*/, ' ') : t; // without the start-arrow V cut
+    expect(checkStraight(body, 0.35), k).toBe(16); // 4 vertical + 8 horizontal card edges + 4 fold lines
+  }
+  // same cut positions both ways: the start dot sits where the bottom-right mark's centre was
+  const ends = t => pltStrokes(t).map(s => s.at(-1).join(',')).sort().join(' ');
+  expect(ends(plts.dot)).toBe(ends(plts.marks.replace(/ U-?\d+,-?\d+[^U]*/, ' ')));
+  // the cut shift moves the whole cut: +1 mm X = 40 units less in plotter Y (Y runs left)
+  await setField(page, 'cShiftX', 1);
+  await page.waitForTimeout(500);
+  const shifted = Object.values(unzip(await download(page, 'exCardPlt')))[0].toString();
+  const first = t => pltStrokes(t)[0].at(-1);
+  expect(first(shifted)[1]).toBe(first(plts['dot-perf'])[1] - 40);
+  noProblems(problems);
+});
