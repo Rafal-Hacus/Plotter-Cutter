@@ -164,11 +164,13 @@ body[data-mode="vinyl"] .ksel,body[data-mode="pen"] .ksel,body[data-mode="pen"] 
         <label class="btn primary">Load card PDF or images<input id="cardFile" type="file" accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif,.png,.jpg,.jpeg,.webp,.gif,.bmp,.avif" multiple></label>
       </div>
       <div id="imgCardRows" hidden>
-        <p class="hint">Images: the first one is the front, the second (optional) the back. Each becomes a card page of the size below plus the bleed.</p>
-        <div class="row"><label for="icW">Card size (trim)</label><span class="mm"><input id="icW" type="number" min="10" step="0.5" value="90" aria-label="Card width">×<input id="icH" type="number" min="10" step="0.5" value="50" aria-label="Card height">mm</span></div>
-        <div class="row"><label for="icFit">Image scaling</label><select id="icFit"><option value="stretch">Stretch to card + bleed</option><option value="actual">100% (actual size, centred)</option></select></div>
+        <p class="hint">Images: the first one is the front, the second (optional) the back. Any bleed in the image is found from its size: whatever reaches past the card size is bleed, also when it’s only on the top and bottom.</p>
+        <div class="row" id="rowIcSize"><label for="icW">Card size (trim)</label><span class="mm"><input id="icW" type="number" min="10" step="0.5" value="90" aria-label="Card width">×<input id="icH" type="number" min="10" step="0.5" value="50" aria-label="Card height">mm</span></div>
+        <div class="row"><label for="icFit">Image scaling</label><select id="icFit"><option value="actual">100% (actual size, centred)</option><option value="fill">Fit to the card, keep proportions</option><option value="stretch">Stretch to card + bleed</option></select></div>
         <div class="row" id="rowIcDpi"><label for="icDpi">Image resolution at 100%</label><span class="mm"><input id="icDpi" type="number" min="30" max="2400" step="1" value="300">dpi</span></div>
+        <div class="row" id="rowIcExtend"><label for="icExtend">Fill missing bleed by extending the image edges</label><input id="icExtend" type="checkbox" checked></div>
         <p class="hint" id="icInfo"></p>
+        <div class="actions"><button type="button" id="icSwap" hidden>Swap front and back</button></div>
       </div>
       <p class="hint" id="cardInfo">One PDF: page 1 is the front, page 2 the back, both with bleed (e.g. 94 × 54 mm for a 90 × 50 card). Or one or two images (PNG, JPG, WebP…). You can also drop them on the sheet.</p>
       <div id="winRows" hidden>
@@ -403,8 +405,8 @@ body[data-mode="vinyl"] .ksel,body[data-mode="pen"] .ksel,body[data-mode="pen"] 
     <div class="bar">
       <span class="count" id="count" aria-live="polite">Empty sheet</span>
       <span class="legend">
-        <span><i id="lgKiss"></i>Kiss cut</span>
-        <span><i id="lgDie" class="dash"></i>Die cut (easy-peel)</span>
+        <span id="lgKissW"><i id="lgKiss" style="border-color:#E0262B"></i><span id="lgKissT">Kiss cut</span></span>
+        <span id="lgDieW"><i id="lgDie" class="dash" style="border-color:#E0262B"></i>Die cut (easy-peel)</span>
         <label><input type="checkbox" id="showArt" checked>Show artwork</label>
         <label id="backToggle" hidden><input type="checkbox" id="showBack">Back side</label>
         <span class="zoom" aria-label="Zoom"><button type="button" id="zOut" aria-label="Zoom out">−</button><span id="zLbl">100%</span><button type="button" id="zIn" aria-label="Zoom in">+</button><button type="button" id="zFit">Fit</button></span>
@@ -941,12 +943,14 @@ function prefixDoc(root, cp) {
 
 /* ---------- state ---------- */
 const $ = s => document.querySelector(s);
+// every preview shows where the knife or guillotine will cut in the same red (exports keep the colours set under Cut lines)
+const CUT_RED = '#E0262B';
 const ui = {
   files: $('#files'), list: $('#list'), stage: $('#stage'), count: $('#count'), msg: $('#msg'),
   dropNote: $('#dropNote'), sheetInfo: $('#sheetInfo'), dpiRow: $('#dpiRow'), tplFile: $('#tplFile'), tplReset: $('#tplReset'),
   exAll: $('#exAll'), exPrint: $('#exPrint'), exCut: $('#exCut'), exPlt: $('#exPlt'), showArt: $('#showArt'), lgKiss: $('#lgKiss'), lgDie: $('#lgDie')
 };
-const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icW', 'icH', 'icFit', 'icDpi', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
+const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
 const designs = [];
 let template = null, layout = null, gen = 0, nextId = 1, sheetCache = null, timer = null;
 
@@ -1393,7 +1397,6 @@ function renderPreview() {
   previewFrame = null;
   if (isPrintMode()) { renderCardPreview(); return; }
   const t = template, o = readOpts(), showArt = ui.showArt.checked;
-  ui.lgKiss.style.borderColor = o.kissColor; ui.lgDie.style.borderColor = o.dieColor;
   const p = [];
   p.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${t.vb.x} ${t.vb.y} ${t.vb.w} ${t.vb.h}" role="img" aria-label="Sticker sheet preview">`);
   p.push(`<rect x="${t.vb.x}" y="${t.vb.y}" width="${t.vb.w}" height="${t.vb.h}" fill="#fff"/>`);
@@ -1422,8 +1425,8 @@ function renderPreview() {
         if (o.borderFill && !r.cutMode) p.push(`<path d="${r.kissD}" fill="${o.borderColor}"/>`);
         p.push(`<use href="#pv${it.d.id}"/>`);
       }
-      p.push(`<path d="${r.dieD}" fill="none" stroke="${o.dieColor}" stroke-width="1.2" stroke-dasharray="1.6 0.9" vector-effect="non-scaling-stroke"/>`);
-      p.push(`<path d="${r.kissD}" fill="none" stroke="${o.kissColor}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
+      p.push(`<path d="${r.dieD}" fill="none" stroke="${CUT_RED}" stroke-width="1.2" stroke-dasharray="1.6 0.9" vector-effect="non-scaling-stroke"/>`);
+      p.push(`<path d="${r.kissD}" fill="none" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
       p.push('</g>');
     }
   }
@@ -1464,11 +1467,11 @@ function renderStatsCore(busyText) {
 }
 function thumbSvg(d) {
   const o = readOpts();
-  if (isMarkless() && d.vres) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${num(d.vres.boxW)} ${num(d.vres.boxH)}"><path d="${d.vres.pathD}" fill="rgba(35,31,32,.15)" fill-rule="evenodd" stroke="${o.kissColor}" stroke-width="1" vector-effect="non-scaling-stroke"/></svg>`;
+  if (isMarkless() && d.vres) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${num(d.vres.boxW)} ${num(d.vres.boxH)}"><path d="${d.vres.pathD}" fill="rgba(35,31,32,.15)" fill-rule="evenodd" stroke="${CUT_RED}" stroke-width="1" vector-effect="non-scaling-stroke"/></svg>`;
   if (!d.res) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${d.vb.x} ${d.vb.y} ${d.vb.w} ${d.vb.h}"><image href="${d.url}" x="${d.vb.x}" y="${d.vb.y}" width="${d.vb.w}" height="${d.vb.h}" preserveAspectRatio="none"/></svg>`;
   const r = d.res;
   const im = `<image href="${r.cutMode ? d.urlNoCut : d.url}" x="${num(r.offX)}" y="${num(r.offY)}" width="${num(r.artW)}" height="${num(r.artH)}" preserveAspectRatio="none"/>`;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${num(r.boxW)} ${num(r.boxH)}">${r.cutMode ? `<clipPath id="tc${d.id}"><path d="${r.clipD}"/></clipPath><g clip-path="url(#tc${d.id})">${im}</g>` : im}<path d="${r.dieD}" fill="none" stroke="${o.dieColor}" stroke-width="1" stroke-dasharray="2 1.2" vector-effect="non-scaling-stroke"/><path d="${r.kissD}" fill="none" stroke="${o.kissColor}" stroke-width="1" vector-effect="non-scaling-stroke"/></svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${num(r.boxW)} ${num(r.boxH)}">${r.cutMode ? `<clipPath id="tc${d.id}"><path d="${r.clipD}"/></clipPath><g clip-path="url(#tc${d.id})">${im}</g>` : im}<path d="${r.dieD}" fill="none" stroke="${CUT_RED}" stroke-width="1" stroke-dasharray="2 1.2" vector-effect="non-scaling-stroke"/><path d="${r.kissD}" fill="none" stroke="${CUT_RED}" stroke-width="1" vector-effect="non-scaling-stroke"/></svg>`;
 }
 function updateRow(d) {
   if (!d.ui) return;
@@ -2118,7 +2121,7 @@ function backMarks(L, o) {
 }
 const KIND = {
   cards: { title: 'Business cards', one: 'card', many: 'cards', file: 'business-cards', hint: 'One PDF: page 1 is the front, page 2 the back, both with bleed (e.g. 94 × 54 mm for a 90 × 50 card). Or one or two images (PNG, JPG, WebP…): front, then back. You can also drop them on the sheet.' },
-  morgana: { title: 'Morgana CardXtra', one: 'card', many: 'cards', file: 'morgana', hint: 'One PDF of a 90 × 55, 90 × 50 or 85 × 55 card (set the cut size) with bleed: page 1 the front, page 2 the back. Imposed 20-up on SRA3 (450 × 320) on the CardXtra template slots, each card in the bottom-left corner of its slot, with the black reading mark on both sides. You can also drop it on the sheet.' },
+  morgana: { title: 'Morgana CardXtra', one: 'card', many: 'cards', file: 'morgana', hint: 'One PDF of a 90 × 55, 90 × 50 or 85 × 55 card (set the cut size) with bleed: page 1 the front, page 2 the back. Or one or two images (front, back): they are cut at the CardXtra size, at 100 % from their dpi. Imposed 20-up on SRA3 (450 × 320) on the CardXtra template slots, each card in the bottom-left corner of its slot, with the black reading mark on both sides. You can also drop it on the sheet.' },
   winietka: { title: 'Winietki', one: 'card', many: 'cards', file: 'winietki', hint: 'Add one or more PDFs, every page one winietka (all the same size, with bleed). Single-sided, printed on the sheet with registration marks and cut with straight lines like business cards; every sheet uses the same PLT. You can also drop the PDFs on the sheet.' },
   deck: { title: 'Card deck', one: 'card', many: 'cards', file: 'deck', hint: 'One multi-page PDF with bleed: pages 1 and 2 are the front and back of card 1, pages 3 and 4 card 2, and so on. Set how many complete sets you need; you get double-sided sheets (310 × 440 or the size chosen under Sheet) with crop marks. You can also drop it on the sheet.' },
   guillotine: { title: 'Guillotine', one: 'copy', many: 'copies', file: 'guillotine', hint: 'One PDF with bleed: page 1 the front, page 2 the back (optional). Copies are laid out on the chosen sheet (310 × 440 by default) with crop marks for the guillotine. A multi-page PDF of different one-sided cards: set PDF pages to “every page a separate card”. You can also drop it on the sheet.' },
@@ -2170,7 +2173,7 @@ async function readCardImage(f) {
   try { bmp = await createImageBitmap(new Blob([bytes], { type: f.type || 'image/png' })); }
   catch (e) { throw new Error(`${f.name} isn’t an image the browser can read.`); }
   const png = bytes[0] === 0x89 && bytes[1] === 0x50, jpg = bytes[0] === 0xFF && bytes[1] === 0xD8;
-  const img = { name: f.name, w: bmp.width, h: bmp.height, dpi: imageDpi(bytes), bytes: null, kind: null };
+  const img = { name: f.name, w: bmp.width, h: bmp.height, dpi: imageDpi(bytes), bytes: null, kind: null, blob: new Blob([bytes], { type: f.type || 'image/png' }) };
   if (png) { img.bytes = bytes; img.kind = 'png'; }
   else if (jpg && jpegOrientation(bytes) === 1) { img.bytes = bytes; img.kind = 'jpg'; }
   else { // other formats, or a rotated JPEG: re-encode upright as lossless PNG
@@ -2182,29 +2185,79 @@ async function readCardImage(f) {
   bmp.close && bmp.close();
   return img;
 }
-// One PDF page per image: trim W × H plus bleed on every side, TrimBox set so the bleed is read back exactly.
+// The trim size of an image card: the CardXtra cut size in Morgana mode (the machine is fixed to it), else the fields.
+// Orientation follows the image.
+function imageTrim(im) {
+  const v = id => parseFloat(document.getElementById(id).value);
+  let W, H;
+  if (appMode === 'morgana') { const m = /^(\d+)x(\d+)$/.exec(document.getElementById('mSize').value) || [0, 90, 55]; W = +m[1]; H = +m[2]; }
+  else { W = Math.max(10, v('icW') || 90); H = Math.max(10, v('icH') || 50); }
+  const land = im.w >= im.h;
+  return land === (W >= H) ? [W, H] : [H, W];
+}
+// One PDF page per image. Page = trim + the same bleed B on all sides (what the imposition expects), TrimBox set
+// so the bleed is read back exactly. In 100% and fit mode the image keeps its size/proportions, centred on the
+// trim; bleed it brings along is used per side (e.g. only top and bottom), and sides without bleed are either
+// filled by repeating the edge pixels or left white.
 async function imagesToCardPdf(src) {
   await ensureLibs();
   const { PDFDocument } = window.PDFLib, v = id => parseFloat(document.getElementById(id).value);
-  const W = Math.max(10, v('icW') || 90), H = Math.max(10, v('icH') || 50), b = Math.max(0, v('cBleed') || 0);
   const fit = document.getElementById('icFit').value, dpiSet = Math.min(2400, Math.max(30, v('icDpi') || 300));
+  const extend = document.getElementById('icExtend').checked, setB = Math.max(0, v('cBleed') || 0);
+  const r1 = x => num(Math.round(x * 10) / 10), r2 = x => num(Math.round(x * 100) / 100), TOL = 0.15;
+  // placed image size (mm) per image
+  const plan = src.imgs.map(im => {
+    const [W, H] = imageTrim(im);
+    let iw, ih, dpi = null;
+    if (fit === 'stretch') { iw = W + 2 * setB; ih = H + 2 * setB; }
+    else if (fit === 'fill') { const k = Math.max(W / im.w, H / im.h); iw = im.w * k; ih = im.h * k; }
+    else { dpi = im.dpi || dpiSet; iw = im.w / dpi * 25.4; ih = im.h / dpi * 25.4; }
+    return { im, W, H, iw, ih, dpi, bx: (iw - W) / 2, by: (ih - H) / 2 };
+  });
+  // one bleed for every page (front and back must match): the most any image brings, at most 6 mm
+  const B = fit === 'stretch' ? setB : Math.min(6, Math.max(0, ...plan.map(p => Math.max(p.bx, p.by))));
   const pdf = await PDFDocument.create(), notes = [];
-  const pw = (W + 2 * b) * PT, ph = (H + 2 * b) * PT;
-  for (const im of src.imgs) {
-    const page = pdf.addPage([pw, ph]);
-    page.setTrimBox(b * PT, b * PT, W * PT, H * PT);
-    const emb = im.kind === 'png' ? await pdf.embedPng(im.bytes) : await pdf.embedJpg(im.bytes);
-    if (fit === 'stretch') page.drawImage(emb, { x: 0, y: 0, width: pw, height: ph });
-    else {
-      const dpi = im.dpi || dpiSet, iw = im.w / dpi * 25.4, ih = im.h / dpi * 25.4;
-      page.drawImage(emb, { x: (pw - iw * PT) / 2, y: (ph - ih * PT) / 2, width: iw * PT, height: ih * PT });
-      const r = v => num(Math.round(v * 10) / 10);
-      notes.push(`${im.name}: ${r(iw)} × ${r(ih)} mm at ${num(Math.round(dpi))} dpi${im.dpi ? ' (from the file)' : ''}${iw < W + 2 * b - 0.05 || ih < H + 2 * b - 0.05 ? ', smaller than card + bleed: white shows around it' : iw > W + 2 * b + 0.05 || ih > H + 2 * b + 0.05 ? ', larger than card + bleed: the edges are cropped' : ''}.`);
+  const [W0, H0] = [plan[0].W, plan[0].H];
+  for (const p of plan) {
+    const { im, W, H, iw, ih } = p, pw = W + 2 * B, ph = H + 2 * B;
+    const page = pdf.addPage([pw * PT, ph * PT]);
+    page.setTrimBox(B * PT, B * PT, W * PT, H * PT);
+    const gapX = (pw - iw) / 2, gapY = (ph - ih) / 2; // > 0: the image doesn't reach the page edge there
+    let emb, x = gapX, y = gapY, w = iw, h = ih;
+    if (fit !== 'stretch' && extend && (gapX > 0.01 || gapY > 0.01)) {
+      // repeat the outermost pixels into the missing bleed (only ever lands outside the trim if the image covers it)
+      const bmp = await createImageBitmap(im.blob), ppm = im.w / iw;
+      const cw = Math.max(1, Math.round(pw * ppm)), ch = Math.max(1, Math.round(ph * ppm));
+      const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+      const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+      const ox = gapX * ppm, oy = gapY * ppm, ex = ox + im.w, ey = oy + im.h;
+      g.drawImage(bmp, ox, oy, im.w, im.h);
+      if (ox > 0) { g.drawImage(bmp, 0, 0, 1, im.h, 0, oy, ox, im.h); g.drawImage(bmp, im.w - 1, 0, 1, im.h, ex, oy, cw - ex, im.h); }
+      if (oy > 0) { g.drawImage(bmp, 0, 0, im.w, 1, ox, 0, im.w, oy); g.drawImage(bmp, 0, im.h - 1, im.w, 1, ox, ey, im.w, ch - ey); }
+      if (ox > 0 && oy > 0) for (const [sx, sy, dx, dy, dw, dh] of [[0, 0, 0, 0, ox, oy], [im.w - 1, 0, ex, 0, cw - ex, oy], [0, im.h - 1, 0, ey, ox, ch - ey], [im.w - 1, im.h - 1, ex, ey, cw - ex, ch - ey]]) g.drawImage(bmp, sx, sy, 1, 1, dx, dy, dw, dh);
+      bmp.close && bmp.close();
+      const bytes = new Uint8Array(await (await new Promise(r => cv.toBlob(r, 'image/png'))).arrayBuffer());
+      cv.width = cv.height = 1;
+      emb = await pdf.embedPng(bytes); x = 0; y = 0; w = pw; h = ph; // the canvas is exactly the page
+    } else emb = im.kind === 'png' ? await pdf.embedPng(im.bytes) : await pdf.embedJpg(im.bytes);
+    // PDF y runs up: an image placed y mm from the top sits at ph - y - h from the bottom
+    page.drawImage(emb, { x: x * PT, y: (ph - y - h) * PT, width: w * PT, height: h * PT });
+    if (fit === 'stretch') {
+      const ar = im.w / im.h, cr = pw / ph;
+      if (Math.abs(ar / cr - 1) > 0.02) notes.push(`${im.name} is stretched ${num(Math.round(Math.abs(ar / cr - 1) * 100))} % out of proportion.`);
+      continue;
     }
+    const side = b => b < -TOL ? `short by ${r2(-b)} mm per side` : b <= TOL ? 'none' : `${r2(b)} mm`;
+    let t = `${im.name}: ${r1(iw)} × ${r1(ih)} mm${p.dpi ? ` at ${num(Math.round(p.dpi))} dpi${im.dpi ? ' (from the file)' : ''}` : ''}, cut ${num(W)} × ${num(H)} mm. Bleed top and bottom: ${side(p.by)}, left and right: ${side(p.bx)}`;
+    if (p.bx > TOL && p.by <= TOL || p.by > TOL && p.bx <= TOL || (p.bx <= TOL && p.by <= TOL)) t += extend && B > TOL && p.bx >= -TOL && p.by >= -TOL ? ' (missing bleed filled by repeating the edge pixels)' : '';
+    t += '.';
+    if (p.bx < -TOL || p.by < -TOL) t += ' The image is smaller than the card: check the card size and the dpi, otherwise a white edge ends up inside the card.';
+    if (p.dpi && (p.bx > 6 || p.by > 6)) t += ' Much bigger than the card: check the card size and the dpi.';
+    notes.push(t);
+    if (Math.abs(W - W0) > 0.01 || Math.abs(H - H0) > 0.01) notes.push('The images have different orientations; the back should match the front.');
   }
-  if (fit === 'stretch') for (const im of src.imgs) { const ar = im.w / im.h, cr = (W + 2 * b) / (H + 2 * b); if (Math.abs(ar / cr - 1) > 0.02) notes.push(`${im.name} is stretched ${num(Math.round(Math.abs(ar / cr - 1) * 100))} % out of proportion.`); }
-  document.getElementById('icInfo').textContent = notes.join(' ');
-  return await pdf.save();
+  document.getElementById('icInfo').textContent = (src.imgs.length > 1 ? `Front: ${src.imgs[0].name}, back: ${src.imgs[1].name}. ` : '') + notes.join(' ');
+  return { bytes: await pdf.save(), bleed: B };
 }
 let icTimer = null;
 function rebuildCardImages() {
@@ -2212,18 +2265,27 @@ function rebuildCardImages() {
   icTimer = setTimeout(async () => {
     const src = cards.imgSrc;
     if (!src) return;
-    try { await loadCardPdf(await imagesToCardPdf(src), src.name, true); }
+    try { const r = await imagesToCardPdf(src); await loadCardPdf(r.bytes, src.name, r.bleed); }
     catch (e) { setCardMsg(`Couldn’t use the image: ${e.message || e}`, true); }
   }, 250);
 }
 function syncImgRows() {
   const on = !!(isPrintMode() && appMode !== 'winietka' && cards.imgSrc);
   document.getElementById('imgCardRows').hidden = !on;
-  document.getElementById('rowIcDpi').hidden = document.getElementById('icFit').value !== 'actual';
+  const fit = document.getElementById('icFit').value;
+  document.getElementById('rowIcDpi').hidden = fit !== 'actual';
+  document.getElementById('rowIcExtend').hidden = fit === 'stretch';
+  document.getElementById('rowIcSize').hidden = appMode === 'morgana';
+  document.getElementById('icSwap').hidden = !on || cards.imgSrc.imgs.length !== 2;
+  // with 100% / fit the bleed comes from the image itself; the field only drives the stretch mode
+  document.getElementById('cBleed').closest('.row').hidden = on && fit !== 'stretch';
 }
 for (const id of ['icW', 'icH', 'icDpi']) document.getElementById(id).addEventListener('input', rebuildCardImages);
 document.getElementById('icFit').addEventListener('change', () => { syncImgRows(); rebuildCardImages(); });
-document.getElementById('cBleed').addEventListener('input', () => { if (cards.imgSrc) rebuildCardImages(); });
+document.getElementById('icExtend').addEventListener('change', rebuildCardImages);
+document.getElementById('icSwap').addEventListener('click', () => { const s = cards.imgSrc; if (s && s.imgs.length > 1) { s.imgs.reverse(); rebuildCardImages(); } });
+document.getElementById('mSize').addEventListener('change', () => { if (appMode === 'morgana' && cards.imgSrc) rebuildCardImages(); });
+document.getElementById('cBleed').addEventListener('input', () => { if (cards.imgSrc && document.getElementById('icFit').value === 'stretch') rebuildCardImages(); });
 async function loadCardFile(input) {
   const list = Array.from(input && input.length != null ? input : input ? [input] : []);
   const pdfF = list.find(isPdfFile), imgs = list.filter(isImageFile);
@@ -2234,17 +2296,19 @@ async function loadCardFile(input) {
       cards.imgSrc = { imgs: [], name: imgs[0].name.replace(/\.[^.]+$/, '') };
       for (const f of imgs.slice(0, max)) cards.imgSrc.imgs.push(await readCardImage(f));
       syncImgRows();
-      await loadCardPdf(await imagesToCardPdf(cards.imgSrc), cards.imgSrc.name, true);
+      const r = await imagesToCardPdf(cards.imgSrc); await loadCardPdf(r.bytes, cards.imgSrc.name, r.bleed);
     } catch (e) { cards.imgSrc = null; syncImgRows(); setCardMsg(`Couldn’t use the image: ${e.message || e}`, true); }
     return;
   }
   if (!pdfF) { setCardMsg('Load a PDF or an image file.', true); return; }
   cards.imgSrc = null; syncImgRows();
   setCardMsg('Reading the PDF…');
-  try { await loadCardPdf(new Uint8Array(await pdfF.arrayBuffer()), pdfF.name, false); }
+  try { await loadCardPdf(new Uint8Array(await pdfF.arrayBuffer()), pdfF.name, null); }
   catch (e) { setCardMsg(`Couldn’t read the PDF: ${e.message || e}`, true); }
 }
-async function loadCardPdf(bytes, fileName, fromImages) {
+// imgBleed: the bleed of a page built from images (exact, also when it is 0); null for a loaded PDF
+async function loadCardPdf(bytes, fileName, imgBleed) {
+  const fromImages = imgBleed != null;
   {
     await ensureLibs();
     const pdf = await window.pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
@@ -2252,7 +2316,8 @@ async function loadCardPdf(bytes, fileName, fromImages) {
     const p0 = lib.getPage(0), mb = p0.getMediaBox(), tb = p0.getTrimBox();
     cards.pageW = mb.width / PT; cards.pageH = mb.height / PT; cards.mbx = mb.x; cards.mby = mb.y;
     cards.bleed = null;
-    if (tb.width < mb.width - 0.5 && tb.height < mb.height - 0.5) {
+    if (fromImages) { cards.bleed = Math.round(imgBleed * 1000) / 1000; document.getElementById('cBleed').value = cards.bleed; }
+    else if (tb.width < mb.width - 0.5 && tb.height < mb.height - 0.5) {
       cards.bleed = Math.round((mb.width - tb.width) / 2 / PT * 100) / 100;
       document.getElementById('cBleed').value = cards.bleed;
     }
@@ -2424,7 +2489,6 @@ function cardSheetLoops() {
 function renderCardPreview() {
   const t = template, o = readOpts(), L = cards.layout, back = document.getElementById('showBack').checked && cards.pages > 1 && !(deckLike() && deckPer() === 1);
   const deck = deckLike(), win = appMode === 'winietka', guil = appMode === 'guillotine' || deck, morg = appMode === 'morgana';
-  ui.lgKiss.style.borderColor = o.kissColor; ui.lgDie.style.borderColor = o.dieColor;
   const p = [];
   if (guil || morg) {
     const pg = pageDims();
@@ -2464,15 +2528,15 @@ function renderCardPreview() {
       const Mc = back ? mul(sheetMirror(o), it.T) : it.T;
       if (guil || morg) {
         const tr = back ? (it.btrim || backRect(it.trim, { ...o, cOffX: 0, cOffY: 0 })) : it.trim;
-        p.push(`<rect x="${num(tr[0])}" y="${num(tr[1])}" width="${num(tr[2])}" height="${num(tr[3])}" fill="none" stroke="#9fb0a9" stroke-width="0.8" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/>`);
+        p.push(`<rect x="${num(tr[0])}" y="${num(tr[1])}" width="${num(tr[2])}" height="${num(tr[3])}" fill="none" stroke="${CUT_RED}" stroke-width="1.1" vector-effect="non-scaling-stroke"/>`);
       } else {
-        if (!gridCut(o)) p.push(`<path d="${trimD}" transform="matrix(${Mc.map(num).join(',')})" fill="none" stroke="${o.dieColor}" stroke-width="1.2" vector-effect="non-scaling-stroke"${back ? ' stroke-dasharray="5 3"' : ''}/>`);
-        if (foldD) p.push(`<path d="${foldD}" transform="matrix(${Mc.map(num).join(',')})" fill="none" stroke="${o.dieColor}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
+        if (!gridCut(o)) p.push(`<path d="${trimD}" transform="matrix(${Mc.map(num).join(',')})" fill="none" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"${back ? ' stroke-dasharray="5 3"' : ''}/>`);
+        if (foldD) p.push(`<path d="${foldD}" transform="matrix(${Mc.map(num).join(',')})" fill="none" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
       }
     });
     if (gridCut(o)) {
       const gl = cardGridLines(), Ms = back ? sheetMirror(o) : [1, 0, 0, 1, 0, 0];
-      p.push(`<path d="${[...gl.v, ...gl.h].map(l => `M${num(l[0][0])} ${num(l[0][1])}L${num(l[1][0])} ${num(l[1][1])}`).join('')}" transform="matrix(${Ms.map(num).join(',')})" fill="none" stroke="${o.dieColor}" stroke-width="1.2" vector-effect="non-scaling-stroke"${back ? ' stroke-dasharray="5 3"' : ''}/>`);
+      p.push(`<path d="${[...gl.v, ...gl.h].map(l => `M${num(l[0][0])} ${num(l[0][1])}L${num(l[1][0])} ${num(l[1][1])}`).join('')}" transform="matrix(${Ms.map(num).join(',')})" fill="none" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"${back ? ' stroke-dasharray="5 3"' : ''}/>`);
     }
     if (guil && (!back || o.gMarksBack)) p.push(`<path d="${(back ? backMarks(L, o) : cropMarks(L, o)).map(m => `M${num(m[0])} ${num(m[1])}L${num(m[2])} ${num(m[3])}`).join('')}" stroke="#000" stroke-width="1" vector-effect="non-scaling-stroke"/>`);
   }
@@ -2834,6 +2898,9 @@ function setAppMode(m) {
   document.getElementById('vinylExports').hidden = m !== 'vinyl' && m !== 'pen';
   document.getElementById('backToggle').hidden = !(pm || m === 'duplex') || m === 'winietka';
   if (pm) syncGRows();
+  document.getElementById('lgKissT').textContent = m === 'stickers' ? 'Kiss cut' : m === 'pen' ? 'Pen line' : m === 'guillotine' || m === 'deck' || m === 'gang' ? 'Guillotine cut' : m === 'morgana' ? 'CardXtra cut' : 'Cut line';
+  document.getElementById('lgDieW').hidden = m !== 'stickers';
+  document.getElementById('lgKissW').hidden = m === 'duplex';
   view = null;
   ui.dropNote.textContent = m === 'winietka' ? 'Drop the winietki PDFs here (one card per page).' : m === 'svgplt' ? 'Drop the print-and-cut SVG here.' : m === 'gang' ? 'Drop photos and PDFs here.' : m === 'deck' ? 'Drop the multi-page card PDF here (front, back, front, back…).' : m === 'guillotine' || m === 'morgana' ? 'Drop the PDF here (page 1 front, page 2 back).' : pm ? `Drop the ${KIND[m].one} PDF here (page 1 ${m === 'vouchers' ? 'outside' : 'front'}, page 2 ${m === 'vouchers' ? 'inside' : 'back'}).` : m === 'vinyl' ? 'Drop SVG files with the shapes to cut.' : m === 'pen' ? 'Drop SVG files with the lines to draw.' : 'Drop SVG files (or PDFs for round stickers) here to start filling the sheet.';
   designs.forEach(updateRow);
@@ -3240,12 +3307,12 @@ function renderVinylPreview() {
     let top = Lm;
     for (const it of L.items) {
       const M = placeMatrix(it);
-      p.push(`<path d="${it.d.res.pathD}" transform="matrix(${M.map(num).join(',')})" fill="${ui.showArt.checked ? 'rgba(35,31,32,.12)' : 'none'}" fill-rule="evenodd" stroke="${o.kissColor}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
+      p.push(`<path d="${it.d.res.pathD}" transform="matrix(${M.map(num).join(',')})" fill="${ui.showArt.checked ? 'rgba(35,31,32,.12)' : 'none'}" fill-rule="evenodd" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
       top = Math.min(top, it.Y * CELL);
     }
     if (o.vWeed === 'all') {
       const wb = vinylPaths().pop();
-      p.push(`<polygon points="${wb.pts.map(q => num(q[0]) + ' ' + num(q[1])).join(' ')}" fill="none" stroke="${o.kissColor}" stroke-width="1.2" stroke-dasharray="6 3" vector-effect="non-scaling-stroke"/>`);
+      p.push(`<polygon points="${wb.pts.map(q => num(q[0]) + ' ' + num(q[1])).join(' ')}" fill="none" stroke="${CUT_RED}" stroke-width="1.2" stroke-dasharray="6 3" vector-effect="non-scaling-stroke"/>`);
     }
     if (L.items.length) p.push(`<line x1="0" x2="${num(W)}" y1="${num(top)}" y2="${num(top)}" stroke="#c2410c" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/>`);
   }
@@ -3571,7 +3638,7 @@ function renderGangPreview() {
     const seq = gangSlots(), base = gang.view * L.n;
     L.items.forEach((slot, i) => {
       const it = seq[base + i], [cx, cy, cw2, ch2] = slot.clip;
-      p.push(`<rect x="${num(slot.trim[0])}" y="${num(slot.trim[1])}" width="${num(slot.trim[2])}" height="${num(slot.trim[3])}" fill="none" stroke="#9fb0a9" stroke-width="0.8" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/>`);
+      p.push(`<rect x="${num(slot.trim[0])}" y="${num(slot.trim[1])}" width="${num(slot.trim[2])}" height="${num(slot.trim[3])}" fill="none" stroke="${CUT_RED}" stroke-width="1.1" vector-effect="non-scaling-stroke"/>`);
       if (!it || !ui.showArt.checked) return;
       const pl = gangPlace(it, slot.clip, fill);
       // image drawn in its own (rotated) frame
@@ -3773,7 +3840,7 @@ function renderSquaresPreview() {
   const p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${previewFrame.x} ${previewFrame.y} ${previewFrame.w} ${previewFrame.h}" role="img" aria-label="Squares cutting layout"><rect x="0" y="0" width="${num(L.W)}" height="${num(L.H)}" fill="#fff"/>`];
   if (L.n) {
     for (let r = 0; r < L.rows; r++) for (let c = 0; c < L.cols; c++) p.push(`<rect x="${num(L.sx + c * (L.pw + L.g))}" y="${num(L.sy + r * (L.ph + L.g))}" width="${num(L.pw)}" height="${num(L.ph)}" fill="#e7f2ed"/>`);
-    p.push(`<path d="${squaresLines().map(l => `M${num(l[0][0])} ${num(l[0][1])}L${num(l[1][0])} ${num(l[1][1])}`).join('')}" stroke="${o.dieColor}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
+    p.push(`<path d="${squaresLines().map(l => `M${num(l[0][0])} ${num(l[0][1])}L${num(l[1][0])} ${num(l[1][1])}`).join('')}" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
   }
   p.push(`<g transform="translate(${num(L.W)} ${num(L.H)})"><circle r="2.5" fill="#c2410c"/><path d="M-8 -6 L-8 -22 M-11 -18 L-8 -22 L-5 -18" fill="none" stroke="#c2410c" stroke-width="1.5" vector-effect="non-scaling-stroke"/></g></svg>`);
   ui.stage.innerHTML = p.join('');

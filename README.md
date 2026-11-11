@@ -17,3 +17,13 @@ jsDelivr with pinned versions and Subresource Integrity, and a Content-Security-
   twice.
 - Each PLT starts with a short V cut along the printed start arrow (outside the marks) that sets the blade's
   direction.
+
+## Cards from images
+
+Business cards, vouchers, guillotine, card deck and Morgana CardXtra accept PNG/JPG/WebP images as well as PDFs
+(first image = front, second = back). Scaling: 100 % (size from the image's dpi), fit to the card keeping
+proportions, or stretch. With 100 % and fit, whatever reaches past the card size is used as bleed per side, so a file
+with bleed only on the top and bottom works; sides without bleed can be filled by repeating the edge pixels. In
+Morgana mode the cut size always comes from the CardXtra setting; the Morgana template itself is unchanged.
+
+All previews show cut positions in red (kiss solid, die dashed); exported files keep the colours set under Cut lines.
