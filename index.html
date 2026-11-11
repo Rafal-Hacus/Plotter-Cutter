@@ -87,9 +87,11 @@
       <div id="perfDie" hidden>
         <div class="row"><label for="cPerfDie">Perforated die cut (no cutting mat)</label><input id="cPerfDie" type="checkbox"></div>
         <div id="perfDieRows" hidden>
-          <div class="row"><label for="cTieCut">Cut between bridges</label><span class="mm"><input id="cTieCut" type="number" min="0.5" step="0.5" value="6">mm</span></div>
+          <div class="row"><label for="cTiePlace">Bridges</label><select id="cTiePlace"><option value="edges">Along the edges (corners cut through)</option><option value="corners">Near the corners (edges cut through)</option></select></div>
+          <div class="row" id="rowTieInset" hidden><label for="cTieInset">Bridge distance from the corner</label><span class="mm"><input id="cTieInset" type="number" min="0" step="0.5" value="2">mm</span></div>
+          <div class="row" id="rowTieCut"><label for="cTieCut">Cut between bridges</label><span class="mm"><input id="cTieCut" type="number" min="0.5" step="0.5" value="6">mm</span></div>
           <div class="row"><label for="cTie">Uncut bridge</label><span class="mm"><input id="cTie" type="number" min="0.1" step="0.1" value="0.8">mm</span></div>
-          <p class="hint">The cut lines are cut in pieces with small uncut bridges, so the sheet stays in one piece while it feeds through the plotter without a mat. Afterwards the cards pop out by hand. Corners are always cut through, and bridges sit only on straight edges. Use a die cut force that goes all the way through the card.</p>
+          <p class="hint">The cut lines are cut in pieces with small uncut bridges, so the sheet stays in one piece while it feeds through the plotter without a mat. Afterwards the cards pop out by hand. Bridges sit only on straight edges: either spread along them (the corners are cut through), or one next to each corner (the edges are cut through, the card hangs on its corners). Use a die cut force that goes all the way through the card.</p>
         </div>
       </div>
       <div class="row" id="rowMSize" hidden><label for="mSize">CardXtra cut size</label><select id="mSize"><option value="90x55">90 × 55 mm</option><option value="90x50">90 × 50 mm</option><option value="85x55">85 × 55 mm</option></select></div>

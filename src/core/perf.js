@@ -1,17 +1,20 @@
 // Perforated (tabbed) cutting: a cut line becomes cuts with small uncut bridges, so cut-out parts stay attached
 // to the sheet while it feeds through the plotter without a cutting mat, and pop out by hand afterwards.
 //
-// Bridges are only placed on straight runs of the line; corners and curves are always cut through, so the
-// parts come out with clean corners. Each straight run starts and ends with a cut, and its bridges are spread
-// evenly with cuts of about `cut` mm between bridges of `tie` mm. A run of at least 3 bridge widths + 1 mm
-// always gets one bridge, so small waste pieces don't fall out either.
+// Bridges are only placed on straight runs of the line; corners and curves are always cut through. Two placements:
+//   'edges'   (default) bridges spread evenly along each straight run, cuts of about `cut` mm between bridges of
+//             `tie` mm; each run starts and ends with a cut, so the corners come out clean.
+//   'corners' each straight run is cut all the way along except one bridge `inset` mm in from each of its ends,
+//             i.e. next to the corners; long clean edges, small nubs near the corners.
+// In both, a run of at least 3 bridge widths + 1 mm always keeps a bridge, so small waste pieces don't fall out.
 
 const TURN = Math.sin(0.5 * Math.PI / 180); // vertices turning less than 0.5° continue a straight run
 
 // pts: [[x, y], ...] in mm; closed: the line returns to its start; splitAtVertices: every vertex ends a run
-// (for straight lines through crossings, so bridges stay off the crossings).
+// (for straight lines through crossings, so bridges stay off the crossings); place: 'edges' | 'corners';
+// inset: for 'corners', the distance from the end of the run (the corner) to the bridge, mm.
 // Returns [{ pts, closed }]: open dashes, or the untouched line when it gets no bridge at all.
-export function perforate(pts, closed, cut, tie, splitAtVertices = false) {
+export function perforate(pts, closed, cut, tie, splitAtVertices = false, { place = 'edges', inset = 2 } = {}) {
   const P = [];
   for (const p of pts) { const l = P[P.length - 1]; if (!l || Math.hypot(p[0] - l[0], p[1] - l[1]) > 1e-9) P.push(p); }
   if (closed && P.length > 2 && Math.hypot(P[0][0] - P[P.length - 1][0], P[0][1] - P[P.length - 1][1]) <= 1e-9) P.pop();
@@ -44,6 +47,12 @@ export function perforate(pts, closed, cut, tie, splitAtVertices = false) {
   const bridges = [];
   for (const [a, b] of runs) {
     const L = b - a;
+    if (place === 'corners') {
+      const d = Math.max(0, inset);
+      if (L >= 2 * (d + tie) + 1) bridges.push([a + d, a + d + tie], [b - d - tie, b - d]); // one near each corner
+      else if (L >= 3 * tie + 1) bridges.push([a + (L - tie) / 2, a + (L + tie) / 2]); // too short for two: one in the middle
+      continue;
+    }
     let n = Math.round((L + tie) / (cut + tie));
     if (L >= 3 * tie + 1) n = Math.max(n, 2);
     if (n < 2) continue;

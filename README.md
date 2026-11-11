@@ -90,7 +90,9 @@ Open http://localhost:8080 (or the computer's address on your network) and sign 
 bridges (default: 6 mm cuts, 0.8 mm bridges). The sheet stays in one piece while it feeds through the plotter
 without a mat; afterwards the cards pop out by hand. Bridges sit only on straight edges and every corner (square or
 rounded) is cut through, so the cards come out with clean corners; the small waste pieces between cards keep a
-bridge too, so nothing falls into the plotter. Works with straight lines across the sheet and with a rectangle
+bridge too, so nothing falls into the plotter. **Bridges** chooses where they go: **along the edges** (spread evenly, corners cut through) or **near the
+corners** (one bridge a set distance from each corner, default 2 mm, and the edges cut all the way through).
+Works with straight lines across the sheet and with a rectangle
 (or rounded rectangle) around each card. Set the die cut force to go all the way through the card.
 
 ## Winietki from a list of names

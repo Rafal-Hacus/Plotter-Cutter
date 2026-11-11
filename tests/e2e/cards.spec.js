@@ -87,3 +87,27 @@ test('business cards: perforated die cut leaves bridges, keeps corners cut, and 
   await expect(page.locator('#perfDie')).toBeHidden();
   noProblems(problems);
 });
+
+test('perforated die cut with the bridges near the corners: edges cut through, two bridges per card edge', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'cards');
+  await page.setInputFiles('#cardFile', [front, back]);
+  await expect(page.locator('#count')).toHaveText(/\d+ cards on the sheet/);
+  await setField(page, 'cPerfDie', true);
+  await setField(page, 'cTie', 0.8);
+  await setField(page, 'cTiePlace', 'corners');
+  await setField(page, 'cTieInset', 2);
+  await expect(page.locator('#rowTieInset')).toBeVisible();
+  await expect(page.locator('#rowTieCut')).toBeHidden();
+  await expect(page.locator('#msg')).toContainText('2 mm from the corners');
+  const { cutLayers } = await import('./helpers.js');
+  const lines = Object.values(cutLayers((await download(page, 'exCardCut')).toString()))[0];
+  const len = l => Math.hypot(l.at(-1)[0] - l[0][0], l.at(-1)[1] - l[0][1]);
+  // card edges are 90 and 50 mm: cut between the two bridges = edge - 2 x (2 + 0.8)
+  expect(lines.some(l => Math.abs(len(l) - (90 - 5.6)) < 0.02)).toBe(true);
+  expect(lines.some(l => Math.abs(len(l) - (50 - 5.6)) < 0.02)).toBe(true);
+  // through each card corner the cut runs on: 2 mm along the card edge, then into the 4 mm gap between cards up
+  // to the bridge in its middle ((4 - 0.8) / 2 = 1.6 mm): 3.6 mm pieces, so the corners themselves are cut
+  expect(lines.filter(l => Math.abs(len(l) - 3.6) < 0.02).length).toBeGreaterThan(20);
+  noProblems(problems);
+});
