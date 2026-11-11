@@ -10,8 +10,9 @@ services:
       - "${HOST_PORT:-8080}:8080"
     environment:
       AUTH_USERNAME: ${AUTH_USERNAME:-admin}
-      # Set one of these two. The hash is safer; make it in the running container's console with:
-      #   node server/hash-password.js
+      # Optional. Without them the first visit shows a setup page where you create the login, using the
+      # setup code from the container log. With them, they win. To keep only a hash, make one in the
+      # running container's console with: node server/hash-password.js
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
       # "true" when reached over HTTPS through a reverse proxy

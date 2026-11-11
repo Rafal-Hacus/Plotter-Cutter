@@ -14,14 +14,16 @@ ARM boards like a Raspberry Pi or many NAS boxes) on every push to the default b
 1. **Stacks → Add stack**, name it e.g. `plotter-cutter`.
 2. **Web editor**: paste the contents of [`compose.yaml`](compose.yaml).
    (Or **Repository**: this repo's URL, compose path `compose.yaml`.)
-3. **Environment variables**: add at least `AUTH_PASSWORD` (8+ characters, avoid the `$` sign), and optionally
-   `AUTH_USERNAME` and `HOST_PORT`. **Load variables from .env file** works with [`.env.example`](.env.example).
-4. **Deploy the stack**, then open `http://<server>:8080` (or your `HOST_PORT`) and sign in.
+3. **Deploy the stack**. No variables are needed (optional: `HOST_PORT` if 8080 is taken).
+4. Open `http://<server>:8080`. The first visit shows **Set up the login**: enter the setup code from the
+   container log (**Containers → …plotter-cutter… → Logs**), then choose a user name and password. The login is
+   stored (hashed) in the data volume.
 
-To keep only a hash of the password instead of the password itself: open the running container in Portainer
-(**Containers → plotter-cutter → Console → Connect**, `/bin/sh`), run `node server/hash-password.js`, type the
-password, and put the printed `scrypt:…` line into the stack's `AUTH_PASSWORD_HASH` variable; remove `AUTH_PASSWORD`
-and click **Update the stack**.
+Instead of the setup page you can fix the login in the stack's **Environment variables**: `AUTH_USERNAME` and
+`AUTH_PASSWORD` (8+ characters, avoid the `$` sign) or `AUTH_PASSWORD_HASH`; these always win. To make a hash, open
+the running container (**Console → Connect**, `/bin/sh`) and run `node server/hash-password.js`.
+Forgot the password? Set `AUTH_PASSWORD` in the stack, or in the container console run `rm /data/auth.json` and
+restart the container to get the setup page (with a new code in the log) again.
 
 - **Updating**: in the stack, **Update the stack** with **Re-pull image** switched on. Saved settings are in the
   `plotter-data` volume and stay. To update only when you choose, set `IMAGE` to a version tag
@@ -30,7 +32,8 @@ and click **Update the stack**.
   GitHub. Either make the package public (GitHub → your profile → Packages → plotter-cutter → Package settings →
   Change visibility; the image contains no secrets), or add the registry in Portainer: **Registries → Add registry →
   Custom**, URL `ghcr.io`, your GitHub user name and a personal access token with the `read:packages` scope.
-- The stack is for a normal Docker environment in Portainer (not Swarm).
+- The stack is for a normal Docker environment in Portainer (not Swarm). Images exist for amd64 (PCs, servers),
+  arm64 (Raspberry Pi 4/5 with a 64-bit OS, most NAS) and arm/v7 (32-bit Raspberry Pi OS).
 
 ## Running with Docker Compose
 
@@ -38,7 +41,8 @@ and click **Update the stack**.
 cp .env.example .env
 ```
 
-Edit `.env`: set at least `AUTH_PASSWORD` (or `AUTH_PASSWORD_HASH`, see the comments in the file). Then:
+Edit `.env` if you want to fix the login there (otherwise the first visit shows the setup page; the setup code
+is in `docker compose logs`). Then:
 
 ```bash
 docker compose up -d
@@ -69,7 +73,7 @@ Open http://localhost:8080 (or the computer's address on your network) and sign 
 | Variable | Default | |
 | --- | --- | --- |
 | `AUTH_USERNAME` | `admin` | user name for signing in |
-| `AUTH_PASSWORD` / `AUTH_PASSWORD_FILE` / `AUTH_PASSWORD_HASH` | (required) | the password, a file holding it (Docker secrets), or its hash from `node server/hash-password.js` |
+| `AUTH_PASSWORD` / `AUTH_PASSWORD_FILE` / `AUTH_PASSWORD_HASH` | (setup page) | the password, a file holding it (Docker secrets), or its hash from `node server/hash-password.js` |
 | `HOST_PORT` | `8080` | port on the host (compose) |
 | `IMAGE` | `ghcr.io/rafal-hacus/plotter-cutter:latest` | image to run (compose) |
 | `PORT` | `8080` | port inside the container |
@@ -78,6 +82,15 @@ Open http://localhost:8080 (or the computer's address on your network) and sign 
 | `TRUST_PROXY` | `false` | `true` behind a reverse proxy that sets `X-Forwarded-For` |
 | `SESSION_SECRET` | generated into `/data` | key for signing sessions |
 | `AUTH_DISABLED` | `false` | local development only: no login at all |
+
+## Perforated die cut (business cards)
+
+**Perforated die cut (no cutting mat)** under Business cards cuts every cut line in pieces with small uncut
+bridges (default: 6 mm cuts, 0.8 mm bridges). The sheet stays in one piece while it feeds through the plotter
+without a mat; afterwards the cards pop out by hand. Bridges sit only on straight edges and every corner (square or
+rounded) is cut through, so the cards come out with clean corners; the small waste pieces between cards keep a
+bridge too, so nothing falls into the plotter. Works with straight lines across the sheet and with a rectangle
+(or rounded rectangle) around each card. Set the die cut force to go all the way through the card.
 
 ## Saved settings
 

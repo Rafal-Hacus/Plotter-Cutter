@@ -66,6 +66,14 @@
       <div class="row" id="rowCGap"><label for="cGap">Space between cards</label><span class="mm"><input id="cGap" type="number" min="0" step="0.5" value="4">mm</span></div>
       <div class="row" id="rowCutStyle"><label for="cCutStyle">Cut as</label><select id="cCutStyle"><option value="grid">Straight lines across the sheet</option><option value="rect">A rectangle around each card</option></select></div>
       <div class="row" id="rowCRadius"><label for="cRadius">Corner radius</label><span class="mm"><input id="cRadius" type="number" min="0" step="0.5" value="0">mm</span></div>
+      <div id="perfDie" hidden>
+        <div class="row"><label for="cPerfDie">Perforated die cut (no cutting mat)</label><input id="cPerfDie" type="checkbox"></div>
+        <div id="perfDieRows" hidden>
+          <div class="row"><label for="cTieCut">Cut between bridges</label><span class="mm"><input id="cTieCut" type="number" min="0.5" step="0.5" value="6">mm</span></div>
+          <div class="row"><label for="cTie">Uncut bridge</label><span class="mm"><input id="cTie" type="number" min="0.1" step="0.1" value="0.8">mm</span></div>
+          <p class="hint">The cut lines are cut in pieces with small uncut bridges, so the sheet stays in one piece while it feeds through the plotter without a mat. Afterwards the cards pop out by hand. Corners are always cut through, and bridges sit only on straight edges. Use a die cut force that goes all the way through the card.</p>
+        </div>
+      </div>
       <div class="row" id="rowMSize" hidden><label for="mSize">CardXtra cut size</label><select id="mSize"><option value="90x55">90 × 55 mm</option><option value="90x50">90 × 50 mm</option><option value="85x55">85 × 55 mm</option></select></div>
       <div class="row" id="rowCFlip"><label for="cFlip">Duplex flip</label><select id="cFlip"><option value="long">Long edge</option><option value="short">Short edge</option></select></div>
       <div id="foldRows" hidden>

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
-# ---- build the browser app ----
-FROM node:22-alpine AS build
+# ---- build the browser app (once, on the build machine's own platform: the result is the same for every target) ----
+FROM --platform=$BUILDPLATFORM node:22-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund

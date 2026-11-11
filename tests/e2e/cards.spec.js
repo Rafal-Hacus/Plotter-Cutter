@@ -52,3 +52,38 @@ test('business cards from a PDF with a trim box', async ({ page }) => {
   expect(out.getPageCount()).toBe(2);
   noProblems(problems);
 });
+
+test('business cards: perforated die cut leaves bridges, keeps corners cut, and changes nothing when off', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'cards');
+  await page.setInputFiles('#cardFile', [front, back]);
+  await expect(page.locator('#count')).toHaveText(/\d+ cards on the sheet/);
+  const plain = await download(page, 'exCardPlt');
+  await expect(page.locator('#perfDie')).toBeVisible();
+  await setField(page, 'cPerfDie', true);
+  await setField(page, 'cTieCut', 6);
+  await setField(page, 'cTie', 0.8);
+  await expect(page.locator('#msg')).toContainText('Perforated die cut');
+  const { cutLayers, unzip, pltStrokes } = await import('./helpers.js');
+  // cut SVG: every grid line now in pieces, with 0.8 mm gaps between the pieces of one line
+  const L = cutLayers((await download(page, 'exCardCut')).toString());
+  const lines = Object.values(L)[0];
+  expect(lines.length).toBeGreaterThan(100);
+  const xs = new Set(lines.filter(l => l[0][0] === l.at(-1)[0]).map(l => l[0][0]));
+  for (const x of xs) {
+    const pieces = lines.filter(l => l[0][0] === x && l.at(-1)[0] === x).map(l => [Math.min(l[0][1], l.at(-1)[1]), Math.max(l[0][1], l.at(-1)[1])]).sort((a, b) => a[0] - b[0]);
+    for (let i = 1; i < pieces.length; i++) expect(pieces[i][0] - pieces[i - 1][1]).toBeCloseTo(0.8, 2);
+  }
+  // the PLT has more, shorter cuts than without perforation
+  const perf = unzip(await download(page, 'exCardPlt')), base = unzip(plain);
+  const name = Object.keys(perf)[0];
+  expect(pltStrokes(perf[name].toString()).length).toBeGreaterThan(pltStrokes(base[name].toString()).length * 5);
+  // rounded corners: one perforated outline per card
+  await setField(page, 'cCutStyle', 'rect'); await setField(page, 'cRadius', 3);
+  await expect(page.locator('#msg')).toContainText('Perforated die cut');
+  expect(Object.values(cutLayers((await download(page, 'exCardCut')).toString()))[0].length).toBeGreaterThan(21 * 20);
+  // only in business cards for now
+  await mode(page, 'vouchers');
+  await expect(page.locator('#perfDie')).toBeHidden();
+  noProblems(problems);
+});

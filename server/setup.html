@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Set up · Sticker sheet builder</title>
+<style>
+:root{--bg:#E8ECE9;--card:#fff;--ink:#16201B;--muted:#56645E;--line:#D9DFDB;--field-line:#B9C3BE;--accent:#0D6B53;--accent-ink:#fff;--danger:#A8261B;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0D1210;--card:#18201D;--ink:#E4EBE7;--muted:#9AAAA3;--line:#25302C;--field-line:#3A4944;--accent:#5ACBA8;--accent-ink:#06140F;--danger:#FF8A7E;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+main{width:100%;max-width:400px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px}
+h1{font-size:22px;margin:0 0 4px}
+p{margin:0 0 14px;color:var(--muted);font-size:14px}
+code{font-size:13px}
+label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px}
+input{width:100%;font:inherit;color:inherit;background:transparent;border:1px solid var(--field-line);border-radius:8px;padding:9px 10px}
+#c{letter-spacing:.15em;text-transform:uppercase;font-family:ui-monospace,Menlo,Consolas,monospace}
+input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{margin-top:18px;width:100%;font:inherit;font-weight:600;border:0;border-radius:8px;padding:10px;background:var(--accent);color:var(--accent-ink);cursor:pointer}
+.err{color:var(--danger);font-size:14px;margin:12px 0 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>Set up the login</h1>
+  <p>First start: choose the user name and password for this app. The setup code is printed in the container log
+    (Portainer: <b>Containers → plotter-cutter → Logs</b>, or <code>docker compose logs</code>).</p>
+  <form method="post" action="setup">
+    <label for="c">Setup code</label>
+    <input id="c" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" required autofocus>
+    <label for="u">User name</label>
+    <input id="u" name="username" value="" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label for="p">Password (at least 8 characters)</label>
+    <input id="p" name="password" type="password" autocomplete="new-password" minlength="8" required>
+    <label for="p2">Password again</label>
+    <input id="p2" name="password2" type="password" autocomplete="new-password" minlength="8" required>
+    <!--ERROR-->
+    <button type="submit">Create login</button>
+  </form>
+</main>
+</body>
+</html>

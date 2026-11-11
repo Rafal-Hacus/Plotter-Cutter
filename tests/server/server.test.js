@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp, loadConfig } from '../../server/index.js';
@@ -168,9 +168,60 @@ describe('restarts', () => {
   });
 });
 
+describe('first-run setup (no password in the environment)', () => {
+  it('asks for the code from the log, creates the login, and keeps it across restarts', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'pc-setup-'));
+    const env = { DATA_DIR: d, STATIC_DIR: staticDir, SESSION_SECRET: 'x', AUTH_USERNAME: '', AUTH_PASSWORD: '' };
+    const boot = async () => { const app = await createApp(loadConfig(env)); await new Promise(ok => app.server.listen(0, '127.0.0.1', ok)); return { app, url: `http://127.0.0.1:${app.server.address().port}` }; };
+    const a = await boot();
+    const code = a.app.setupCode();
+    expect(code).toMatch(/^[A-Z0-9]{4}-[A-Z0-9]{4}$/);
+    const go = (path, init) => fetch(a.url + path, { redirect: 'manual', ...init });
+    expect((await go('/')).headers.get('location')).toBe('setup');
+    expect((await go('/login')).headers.get('location')).toBe('setup');
+    expect((await go('/api/presets')).status).toBe(401);
+    expect(await (await go('/setup')).text()).toContain('name="code"');
+    const post = body => go('/setup', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(body) });
+    expect(await (await post({ code: 'AAAA-AAAA', username: 'shop', password: 'long enough 1', password2: 'long enough 1' })).text()).toContain('setup code is wrong');
+    expect(await (await post({ code, username: 'shop', password: 'short', password2: 'short' })).text()).toContain('at least 8');
+    expect(await (await post({ code, username: 'shop', password: 'long enough 1', password2: 'other one 22' })).text()).toContain('different');
+    expect(await (await post({ code, username: '"><b>', password: 'long enough 1', password2: 'long enough 1' })).text()).toContain('value="&quot;&gt;&lt;b&gt;"');
+    // the code is accepted in lower case and without the dash
+    const ok = await post({ code: code.toLowerCase().replace('-', ''), username: 'shop', password: 'long enough 1', password2: 'long enough 1' });
+    expect(ok.status).toBe(303);
+    const c = ok.headers.get('set-cookie').split(';')[0];
+    expect((await fetch(a.url + '/api/me', { headers: { cookie: c } })).status).toBe(200);
+    expect((await go('/setup')).headers.get('location')).toBe('./'); // setup is closed now
+    expect(statSync(join(d, 'auth.json')).mode & 0o077).toBe(0);
+    expect(existsSync(join(d, 'setup-code'))).toBe(false);
+    a.app.server.close();
+    // after a restart the login is still there and the cookie still works
+    const b = await boot();
+    expect(b.app.setupCode()).toBeNull();
+    expect((await fetch(b.url + '/api/me', { headers: { cookie: c } })).status).toBe(200);
+    const l = await fetch(b.url + '/login', { method: 'POST', redirect: 'manual', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ username: 'shop', password: 'long enough 1' }) });
+    expect(l.headers.get('set-cookie')).toContain('pc_session=');
+    b.app.server.close();
+    // a password in the environment wins over the stored login
+    const e = await createApp(loadConfig({ ...env, AUTH_USERNAME: 'boss', AUTH_PASSWORD: 'env password 1' }));
+    expect(e.login()).toBe('boss');
+    e.server.close();
+  });
+  it('locks out after 5 wrong setup codes', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'pc-setup-'));
+    const app = await createApp(loadConfig({ DATA_DIR: d, STATIC_DIR: staticDir, SESSION_SECRET: 'x' }));
+    await new Promise(ok => app.server.listen(0, '127.0.0.1', ok));
+    const url = `http://127.0.0.1:${app.server.address().port}/setup`;
+    const post = code => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ code, username: 'shop', password: 'long enough 1', password2: 'long enough 1' }) });
+    for (let i = 0; i < 5; i++) await post('ZZZZ-ZZZZ');
+    expect(await (await post(app.setupCode())).text()).toContain('Too many');
+    app.server.close();
+  });
+});
+
 describe('config and crypto', () => {
-  it('needs a password unless auth is explicitly disabled', () => {
-    expect(() => loadConfig({ DATA_DIR: dir })).toThrow(/AUTH_PASSWORD/);
+  it('starts without a password (first-run setup) but refuses bad ones', () => {
+    expect(loadConfig({ DATA_DIR: dir }).passwordHash).toBeNull();
     expect(() => loadConfig({ DATA_DIR: dir, AUTH_PASSWORD: 'short' })).toThrow(/8 characters/);
     expect(() => loadConfig({ DATA_DIR: dir, AUTH_PASSWORD_HASH: 'plain' })).toThrow(/scrypt/);
     expect(loadConfig({ DATA_DIR: dir, AUTH_DISABLED: 'true' }).authDisabled).toBe(true);

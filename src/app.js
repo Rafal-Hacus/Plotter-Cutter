@@ -5,6 +5,7 @@ import { CELL, edt, fillHolesField, fillHolesBin, march, loopArea, rdp, simplify
 import { imageDpi, jpegOrientation, readAsDataUrl, detectCircle, circleSvg } from './core/image.js';
 import { makeMarksTemplate, lemurMarks } from './core/marks.js';
 import { PT, mul, apply, roundRect } from './core/matrix.js';
+import { perforate } from './core/perf.js';
 import { dragKnife, modifyPlt, pltValues, writePlt } from './core/plt.js';
 import { sanitize } from './core/sanitize.js';
 import { XLINK, ser, MM_PER, num, esc, parseLen, parseSvg, readViewBox, aiId, pathEl, SLOT_RE, dataUri, loadImg, windowSvg, sizedSvg, splitRoot, prefixDoc, flattenPath, expandUses, decodeLayer, elementPolys, toHex, pathLen } from './core/svg.js';
@@ -37,7 +38,7 @@ const ui = {
   dropNote: $('#dropNote'), sheetInfo: $('#sheetInfo'), dpiRow: $('#dpiRow'), tplFile: $('#tplFile'), tplReset: $('#tplReset'),
   exAll: $('#exAll'), exPrint: $('#exPrint'), exCut: $('#exCut'), exPlt: $('#exPlt'), showArt: $('#showArt'), lgKiss: $('#lgKiss'), lgDie: $('#lgDie')
 };
-const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
+const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'cPerfDie', 'cTieCut', 'cTie', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
 const designs = [];
 let template = null, layout = null, gen = 0, nextId = 1, sheetCache = null, timer = null;
 
@@ -48,7 +49,7 @@ function readOpts() {
     kiss: n('kiss', 2, 0), die: n('die', 2, 0), gap: n('gap', 2, 0), lineW: n('lineW', 0.1, 0.01), overcut: n('overcut', 0.5, 0), bladeOffset: n('bladeOffset', 0.35, 0),
     pltForce: document.getElementById('pltForce').checked, kissForce: n('kissForce', 60, 1), dieForce: n('dieForce', 60, 1), cutSpeed: n('cutSpeed', 13, 1), upSpeed: n('upSpeed', 13, 1),
     cBleed: n('cBleed', 2, 0), cGap: n('cGap', 4, 0), cCutStyle: v('cCutStyle').value, mSize: v('mSize').value, cRadius: n('cRadius', 0, 0), cFlip: v('cFlip').value,
-    cOffX: parseFloat(v('cOffX').value) || 0, cOffY: parseFloat(v('cOffY').value) || 0,
+    cPerfDie: v('cPerfDie').checked, cTieCut: n('cTieCut', 6, 0.5), cTie: n('cTie', 0.8, 0.1), cOffX: parseFloat(v('cOffX').value) || 0, cOffY: parseFloat(v('cOffY').value) || 0,
     cFold: v('cFoldOn').checked ? 'perf' : 'none', cFoldDir: v('cFoldDir').value, gGap: n('gSpace', 4, 0), gAuto: v('gAutoGap').checked, deckSets: Math.max(1, Math.round(n('deckSets', 10, 1))), deckOrder: v('deckOrder').value, winCopies: Math.max(1, Math.round(n('winCopies', 1, 1))), sheetSize: v('sheetSize').value, sheetW: n('sheetW', 310, 60), sheetH: n('sheetH', 440, 60), sheetFeed: v('sheetFeed').checked, sheetFeedMm: n('sheetFeedMm', 60, 0), gPages: v('gPages').value, gMarksBack: v('gMarksBack').checked, gEachSets: Math.max(1, Math.round(n('gEachSets', 1, 1))), gMarkLen: n('gMarkLen', 5, 1), gMarkOff: n('gMarkOff', 3, 0), gMargin: n('gEdge', 0, 0), gSize: v('gSize').value, gScale: n('gScale', 100, 5), cFoldPos: n('cFoldPos', 0, 0), cPerfCut: n('cPerfCut', 1, 0.2), cPerfGap: n('cPerfGap', 1, 0.2),
     vWidth: n('vWidth', 300, 20), vLength: n('vLength', 1000, 20), vMargin: n('vMargin', 5, 0), vGap: n('vGap', 3, 0),
     vWeed: v('vWeed').value, vWeedMargin: n('vWeedMargin', 3, 0), vMirror: v('vMirror').checked, penForce: n('penForce', 40, 1), penFill: v('penFill').checked, penStyle: v('penStyle').value, penSpacing: n('penSpacing', 0.4, 0.1), penAngle: parseFloat(v('penAngle').value) || 0, batchMix: v('batchMix').checked, ggFormat: v('ggFormat').value, ggW: n('ggW', 100, 5), ggH: n('ggH', 150, 5), ggBleed: n('ggBleed', 2, 0), ggFit: v('ggFit').value, ggAuto: v('ggAuto').checked, ggGap: n('ggGap', 4, 0), ggMarkLen: n('ggMarkLen', 5, 1), ggMarkOff: n('ggMarkOff', 3, 0), ggEdge: n('ggEdge', 0, 0), spDpi: parseFloat(v('spDpi').value) || 72, sqW: n('sqW', 50, 5), sqH: n('sqH', 50, 5), sqSheetW: n('sqSheetW', 320, 20), sqSheetH: n('sqSheetH', 450, 20), sqMargin: n('sqMargin', 10, 0), sqGap: n('sqGap', 0, 0),
@@ -1319,6 +1320,36 @@ function cardSheetLoops() {
   const trim = cardTrim(L, o);
   return L.items.map(it => trim.map(p => apply(it.T, p)));
 }
+// Perforated die cut (business cards): the cut lines become cuts with uncut bridges, so the sheet holds together
+// without a cutting mat. Business cards only for now.
+const perfDie = o => appMode === 'cards' && o.cPerfDie;
+// Every card cut line on the sheet, in sheet mm, the way it is cut:
+// loops (closed outlines), folds (fold perforation), v and h (grid lines, cut in this exact order),
+// dashes (perforated outlines, any order).
+function cardCuts() {
+  const o = readOpts(), L = cards.layout, grid = gridCut(o), folds = cardSheetFolds();
+  const gl = grid ? cardGridLines() : { v: [], h: [] };
+  if (!perfDie(o)) return { loops: cardSheetLoops(), folds, v: gl.v, h: gl.h, dashes: [] };
+  const opens = list => list.flatMap(d => d.closed ? [d.pts.concat([d.pts[0]])] : [d.pts]);
+  if (grid) {
+    // split each grid line at the lines crossing it, so bridges stay off the card corners
+    const through = (ln, cross, k) => {
+      const [a, b] = ln, lo = Math.min(a[k], b[k]), hi = Math.max(a[k], b[k]), up = b[k] > a[k];
+      const mids = cross.filter(c => c > lo + 1e-6 && c < hi - 1e-6).sort((x, y) => up ? x - y : y - x);
+      const pts = [a, ...mids.map(c => k ? [a[0], c] : [c, a[1]]), b];
+      return opens(perforate(pts, false, o.cTieCut, o.cTie, true));
+    };
+    const v = gl.v.flatMap(ln => through(ln, L.cutsY, 1)), h = gl.h.flatMap(ln => through(ln, L.cutsX, 0));
+    return { loops: [], folds, v: Object.assign(v, { ordered: true }), h: Object.assign(h, { ordered: true }), dashes: [] };
+  }
+  return { loops: [], folds, v: [], h: [], dashes: opens(cardSheetLoops().flatMap(l => perforate(l, true, o.cTieCut, o.cTie))) };
+}
+function syncPerfDie() {
+  const on = appMode === 'cards';
+  document.getElementById('perfDie').hidden = !on;
+  document.getElementById('perfDieRows').hidden = !on || !document.getElementById('cPerfDie').checked;
+}
+document.getElementById('cPerfDie').addEventListener('change', syncPerfDie);
 function renderCardPreview() {
   const t = template, o = readOpts(), L = cards.layout, back = document.getElementById('showBack').checked && cards.pages > 1 && !(deckLike() && deckPer() === 1);
   const deck = deckLike(), win = appMode === 'winietka', guil = appMode === 'guillotine' || deck, morg = appMode === 'morgana';
@@ -1363,11 +1394,15 @@ function renderCardPreview() {
         const tr = back ? (it.btrim || backRect(it.trim, { ...o, cOffX: 0, cOffY: 0 })) : it.trim;
         p.push(`<rect x="${num(tr[0])}" y="${num(tr[1])}" width="${num(tr[2])}" height="${num(tr[3])}" fill="none" stroke="${CUT_RED}" stroke-width="1.1" vector-effect="non-scaling-stroke"/>`);
       } else {
-        if (!gridCut(o)) p.push(`<path d="${trimD}" transform="matrix(${Mc.map(num).join(',')})" fill="none" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"${back ? ' stroke-dasharray="5 3"' : ''}/>`);
+        if (!gridCut(o) && !perfDie(o)) p.push(`<path d="${trimD}" transform="matrix(${Mc.map(num).join(',')})" fill="none" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"${back ? ' stroke-dasharray="5 3"' : ''}/>`);
         if (foldD) p.push(`<path d="${foldD}" transform="matrix(${Mc.map(num).join(',')})" fill="none" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
       }
     });
-    if (gridCut(o)) {
+    if (perfDie(o)) {
+      // perforated: the cuts as they will be made, bridges left out
+      const c = cardCuts(), Ms = back ? sheetMirror(o) : [1, 0, 0, 1, 0, 0];
+      p.push(`<path d="${[...c.v, ...c.h, ...c.dashes].map(l => 'M' + l.map(q => num(q[0]) + ' ' + num(q[1])).join('L')).join('')}" transform="matrix(${Ms.map(num).join(',')})" fill="none" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
+    } else if (gridCut(o)) {
       const gl = cardGridLines(), Ms = back ? sheetMirror(o) : [1, 0, 0, 1, 0, 0];
       p.push(`<path d="${[...gl.v, ...gl.h].map(l => `M${num(l[0][0])} ${num(l[0][1])}L${num(l[1][0])} ${num(l[1][1])}`).join('')}" transform="matrix(${Ms.map(num).join(',')})" fill="none" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"${back ? ' stroke-dasharray="5 3"' : ''}/>`);
     }
@@ -1393,6 +1428,10 @@ function renderCardStats(busyText) {
     if (n) notes.push(`${cards.layout.cols} × ${cards.layout.rows}${cards.layout.rot ? ', rotated' : ''}.`);
     else if (!cards.layout.error) notes.push(`The ${K.one} doesn’t fit in the free area.`);
     if (cards.layout.error) notes.push(cards.layout.error);
+    if (n && perfDie(readOpts())) {
+      const c = cardCuts(), oo = readOpts(), cuts = c.v.length + c.h.length + c.dashes.length;
+      notes.push(`Perforated die cut: ${cuts} cuts with ${num(oo.cTie)} mm bridges, so the sheet holds together without a mat.`);
+    }
     { const oo = readOpts(); if (cards.pages > 1 && (oo.cOffX || oo.cOffY)) notes.push(`The back side is shifted by X ${num(oo.cOffX)} mm, Y ${num(oo.cOffY)} mm (Back side shift).`); }
     if (cards.pages < 2 && appMode !== 'winietka') notes.push('The PDF has one page, so the sheet is single-sided.');
     if (n && appMode === 'winietka') {
@@ -1517,9 +1556,9 @@ function buildCardCutSvg() {
   const s = ['<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n', t.open.replace(/\s+xmlns:xlink="[^"]*"/g, '') + '\n', t.inner.replace(SLOT_RE, '') + '\n'];
   s.push(`<g id="${aiId(o.dieLayer)}">\n`);
   const st = `fill:none;stroke:${o.dieColor};stroke-width:${num(o.lineW * u)}`, doc = q => [q[0] * u + t.vb.x, q[1] * u + t.vb.y];
-  for (const loop of cardSheetLoops()) s.push(pathEl(loop.map(doc), true, st) + '\n');
-  const gl = gridCut(o) ? cardGridLines() : { v: [], h: [] };
-  for (const ln of [...cardSheetFolds(), ...gl.v, ...gl.h]) s.push(pathEl(ln.map(doc), false, st) + '\n');
+  const c = cardCuts();
+  for (const loop of c.loops) s.push(pathEl(loop.map(doc), true, st) + '\n');
+  for (const ln of [...c.folds, ...c.v, ...c.h, ...c.dashes]) s.push(pathEl(ln.map(doc), false, st) + '\n');
   s.push('</g>\n</svg>\n');
   return s.join('');
 }
@@ -1731,6 +1770,7 @@ function setAppMode(m) {
   document.getElementById('vinylExports').hidden = m !== 'vinyl' && m !== 'pen';
   document.getElementById('backToggle').hidden = !(pm || m === 'duplex') || m === 'winietka';
   if (pm) syncGRows();
+  syncPerfDie();
   document.getElementById('lgKissT').textContent = m === 'stickers' ? 'Kiss cut' : m === 'pen' ? 'Pen line' : m === 'guillotine' || m === 'deck' || m === 'gang' ? 'Guillotine cut' : m === 'morgana' ? 'CardXtra cut' : 'Cut line';
   document.getElementById('lgDieW').hidden = m !== 'stickers';
   document.getElementById('lgKissW').hidden = m === 'duplex';
@@ -1760,12 +1800,13 @@ document.getElementById('exCardPdf').addEventListener('click', async () => {
   finally { btn.disabled = false; }
 });
 document.getElementById('exCardCut').addEventListener('click', () => {
-  const o = readOpts(), gl = gridCut(o) ? cardGridLines() : { v: [], h: [] };
+  const o = readOpts(), c = cardCuts();
   saveFile(`${cardBase()}-cut.svg`, template.generated ? lemurCutSvg([{ name: o.dieLayer, color: o.dieColor, paths: [
-    ...cardSheetLoops().map(pts => ({ pts, closed: true })), ...[...cardSheetFolds(), ...gl.v, ...gl.h].map(pts => ({ pts, closed: false }))] }]) : buildCardCutSvg());
+    ...c.loops.map(pts => ({ pts, closed: true })), ...[...c.folds, ...c.v, ...c.h, ...c.dashes].map(pts => ({ pts, closed: false }))] }]) : buildCardCutSvg());
 });
 document.getElementById('exCardPlt').addEventListener('click', () => {
-  saveFile(`${cardBase()}-plt.zip`, makeZip([{ name: `${cardBase()}-die.plt`, text: gridCut(readOpts()) ? buildPlt([], readOpts().dieForce, cardSheetFolds(), cardGridLines().v, cardGridLines().h) : buildPlt(cardSheetLoops(), readOpts().dieForce, cardSheetFolds()) }]));
+  const c = cardCuts(), force = readOpts().dieForce;
+  saveFile(`${cardBase()}-plt.zip`, makeZip([{ name: `${cardBase()}-die.plt`, text: gridCut(readOpts()) ? buildPlt([], force, c.folds, c.v, c.h) : buildPlt(c.loops, force, c.folds, c.dashes) }]));
 });
 
 let previewFrame = null;
@@ -2604,8 +2645,8 @@ pdfClick('exCutPdf', () => exportName('cut').replace(/\.svg$/, '.pdf'), () => {
     { name: dieName, color: o.dieColor, paths: closedAll(stickerLoops('dieLoops')) }], true);
 });
 pdfClick('exCardCutPdf', () => `${cardBase()}-cut.pdf`, () => {
-  const o = readOpts(), gl = gridCut(o) ? cardGridLines() : { v: [], h: [] };
-  return buildCutPdf(template.wMm, template.hMm, [{ name: o.dieLayer, color: o.dieColor, paths: [...closedAll(cardSheetLoops()), ...openAll([...cardSheetFolds(), ...gl.v, ...gl.h])] }], true);
+  const o = readOpts(), c = cardCuts();
+  return buildCutPdf(template.wMm, template.hMm, [{ name: o.dieLayer, color: o.dieColor, paths: [...closedAll(c.loops), ...openAll([...c.folds, ...c.v, ...c.h, ...c.dashes])] }], true);
 });
 pdfClick('exSqPdf', () => `squares-${num(squares.L.pw)}x${num(squares.L.ph)}-${squares.L.n}pcs-cut.pdf`, () => {
   const o = readOpts();
@@ -2874,6 +2915,7 @@ function syncOptionRows() {
   document.getElementById('rowGGCustom').hidden = document.getElementById('ggFormat').value !== 'custom';
   document.getElementById('rowGGGap').hidden = document.getElementById('ggAuto').checked;
   syncImgRows();
+  syncPerfDie();
 }
 // Saved settings: the mode plus every option field.
 function snapshotSettings() { return { mode: appMode, settings: optionValues() }; }

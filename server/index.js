@@ -1,7 +1,7 @@
 // HTTP server: the built app behind a login, plus the saved-settings API.
 // No framework and no runtime dependencies: only Node's own modules.
 import { createServer } from 'node:http';
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync, rmSync, renameSync } from 'node:fs';
 import { randomBytes, createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,10 +24,10 @@ export function loadConfig(env = process.env) {
     if (password.length < 8) throw new Error('AUTH_PASSWORD must be at least 8 characters.');
     passwordHash = hashPassword(password);
   }
-  if (!passwordHash && !authDisabled) throw new Error('Set AUTH_PASSWORD, AUTH_PASSWORD_FILE or AUTH_PASSWORD_HASH (or AUTH_DISABLED=true for local development only).');
   return {
     port: +(env.PORT || 8080), host: env.HOST || '0.0.0.0', dataDir,
     staticDir: env.STATIC_DIR || join(HERE, '..', 'dist'),
+    // without a password in the environment the login is created on the first-run setup page (see createApp)
     username: env.AUTH_USERNAME || 'admin', passwordHash, authDisabled,
     // kept only to derive a stable session key (the stored hash gets a new random salt on every start)
     password: password || null,
@@ -49,21 +49,44 @@ const APP_CSP = [
   "img-src 'self' data: blob:", "connect-src 'self' data: blob:", "worker-src 'self' blob:",
   "object-src 'none'", "frame-src 'none'", "frame-ancestors 'none'", "base-uri 'none'", "form-action 'self'"
 ].join('; ');
+// one-time code for the first-run setup page, printed to the container log; 8 characters without look-alikes
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const newSetupCode = () => { const b = randomBytes(8); let c = ''; for (let i = 0; i < 8; i++) c += CODE_ALPHABET[b[i] % CODE_ALPHABET.length]; return `${c.slice(0, 4)}-${c.slice(4)}`; };
+const normCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const USERNAME_RE = /^[\w.@-]{1,40}$/;
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
 const LOGIN_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
 export async function createApp(cfg) {
   const store = await openStore(join(cfg.dataDir, 'presets.json'));
   const secret = sessionSecret(cfg);
+  // The login: from the environment if a password is set there, else from /data/auth.json (made on the setup page).
+  const authFile = join(cfg.dataDir, 'auth.json'), codeFile = join(cfg.dataDir, 'setup-code');
+  const readAuthFile = () => {
+    try { const a = JSON.parse(readFileSync(authFile, 'utf8')); return USERNAME_RE.test(a.username) && isPasswordHash(a.passwordHash) ? a : null; }
+    catch { return null; }
+  };
+  let creds = cfg.passwordHash ? { username: cfg.username, passwordHash: cfg.passwordHash, fromEnv: true } : readAuthFile();
   // Sessions are tied to the password: a new password signs everyone out, a restart doesn't.
-  const pwKey = cfg.password ? hashPassword(cfg.password, createHash('sha256').update(secret).digest().subarray(0, 16)) : cfg.passwordHash || 'no-auth';
-  const signer = sessionSigner(secret, pwKey);
+  const makeSigner = () => sessionSigner(secret, creds && creds.fromEnv && cfg.password
+    ? hashPassword(cfg.password, createHash('sha256').update(secret).digest().subarray(0, 16))
+    : creds ? creds.passwordHash : 'no-auth');
+  let signer = makeSigner();
+  const needsSetup = () => !cfg.authDisabled && !creds;
+  let setupCode = null;
+  if (needsSetup()) {
+    setupCode = existsSync(codeFile) ? readFileSync(codeFile, 'utf8').trim() : null;
+    if (!/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(setupCode || '')) { setupCode = newSetupCode(); writeFileSync(codeFile, setupCode, { mode: 0o600 }); }
+  }
+  const setupPage = readFileSync(join(HERE, 'setup.html'), 'utf8');
   const limiter = loginLimiter();
   const serveStatic = staticHandler(cfg.staticDir);
   const loginPage = readFileSync(join(HERE, 'login.html'), 'utf8');
   const maxAge = cfg.sessionDays * 86400;
 
   const clientIp = req => (cfg.trustProxy && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress || '?';
-  const userOf = req => cfg.authDisabled ? 'local' : (signer.verify(parseCookies(req.headers.cookie)[COOKIE]) || {}).u || null;
+  const userOf = req => cfg.authDisabled ? 'local' : creds ? (signer.verify(parseCookies(req.headers.cookie)[COOKIE]) || {}).u || null : null;
   const cookie = (value, age) => `${COOKIE}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}${cfg.cookieSecure ? '; Secure' : ''}`;
 
   const headers = (res, csp) => {
@@ -119,8 +142,39 @@ export async function createApp(cfg) {
 
   async function handle(req, res) {
     const url = new URL(req.url, 'http://x'), path = url.pathname;
-    headers(res, path === '/login' ? LOGIN_CSP : APP_CSP);
+    headers(res, path === '/login' || path === '/setup' ? LOGIN_CSP : APP_CSP);
     if (path === '/healthz') return send(res, 200, 'ok');
+
+    // first start without a password in the environment: create the login, proven by the code in the log
+    if (needsSetup()) {
+      if (path !== '/setup') {
+        if (path.startsWith('/api/')) return json(res, 401, { error: 'Set up the login first.' });
+        return redirect(res, path === '/' || path === '/login' ? 'setup' : '/setup');
+      }
+      const page = (msg, user = '') => send(res, 200, setupPage.replace('<!--ERROR-->', msg ? `<p class="err" role="alert">${esc(msg)}</p>` : '').replace('value=""', `value="${esc(user)}"`), 'text/html; charset=utf-8');
+      if (req.method === 'GET') return page('');
+      if (req.method !== 'POST') return send(res, 405, 'Method not allowed');
+      if (!sameOrigin(req)) return send(res, 403, 'Cross-site request refused.');
+      const ip = clientIp(req);
+      if (limiter.blocked(ip)) return page('Too many wrong setup codes. Try again in 15 minutes.');
+      const f = new URLSearchParams(await readBody(req, 4096));
+      const username = (f.get('username') || '').trim(), pw = f.get('password') || '';
+      if (!safeEqual(normCode(f.get('code')), normCode(setupCode))) { limiter.fail(ip); return page('That setup code is wrong. It is in the container log.', username); }
+      if (!USERNAME_RE.test(username)) return page('User name: 1 to 40 letters, digits or . _ @ -', username);
+      if (pw.length < 8) return page('The password needs at least 8 characters.', username);
+      if (pw !== f.get('password2')) return page('The two passwords are different.', username);
+      limiter.succeed(ip);
+      creds = { username, passwordHash: hashPassword(pw) };
+      writeFileSync(authFile + '.tmp', JSON.stringify(creds, null, 2), { mode: 0o600 });
+      renameSync(authFile + '.tmp', authFile);
+      rmSync(codeFile, { force: true });
+      setupCode = null;
+      signer = makeSigner();
+      console.log(`Login created for "${username}" (stored in ${authFile}).`);
+      res.setHeader('Set-Cookie', cookie(signer.sign(username, maxAge), maxAge));
+      return redirect(res, './');
+    }
+    if (path === '/setup') return redirect(res, './');
 
     if (path === '/login') {
       if (cfg.authDisabled) return redirect(res, './');
@@ -135,11 +189,11 @@ export async function createApp(cfg) {
         const ip = clientIp(req);
         if (limiter.blocked(ip)) return redirect(res, 'login?e=locked');
         const form = new URLSearchParams(await readBody(req, 4096));
-        const okUser = safeEqual(form.get('username') || '', cfg.username);
-        const okPass = verifyPassword(form.get('password') || '', cfg.passwordHash); // always run, so timing doesn't reveal the user name
+        const okUser = safeEqual(form.get('username') || '', creds.username);
+        const okPass = verifyPassword(form.get('password') || '', creds.passwordHash); // always run, so timing doesn't reveal the user name
         if (!(okUser && okPass)) { limiter.fail(ip); return redirect(res, limiter.blocked(ip) ? 'login?e=locked' : 'login?e=1'); }
         limiter.succeed(ip);
-        res.setHeader('Set-Cookie', cookie(signer.sign(cfg.username, maxAge), maxAge));
+        res.setHeader('Set-Cookie', cookie(signer.sign(creds.username, maxAge), maxAge));
         return redirect(res, './');
       }
       return send(res, 405, 'Method not allowed');
@@ -173,7 +227,7 @@ export async function createApp(cfg) {
   });
   server.requestTimeout = 60_000;
   server.headersTimeout = 20_000;
-  return { server, store };
+  return { server, store, setupCode: () => setupCode, login: () => creds && creds.username };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
@@ -181,8 +235,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try { cfg = loadConfig(); } catch (e) { console.error(e.message); process.exit(1); }
   if (cfg.authDisabled) console.warn('WARNING: AUTH_DISABLED is set: anyone who can reach this server can use it and change saved settings.');
   if (!existsSync(join(cfg.staticDir, 'index.html'))) console.warn(`No built app in ${cfg.staticDir}; run "npm run build" first.`);
-  const { server, store } = await createApp(cfg);
-  server.listen(cfg.port, cfg.host, () => console.log(`Listening on http://${cfg.host}:${cfg.port} (user "${cfg.username}", data in ${cfg.dataDir})`));
+  const { server, store, setupCode, login } = await createApp(cfg);
+  server.listen(cfg.port, cfg.host, () => {
+    console.log(`Listening on http://${cfg.host}:${cfg.port}, data in ${cfg.dataDir}`);
+    if (setupCode()) {
+      console.log('');
+      console.log('  FIRST START: open the app in your browser and create the login.');
+      console.log(`  Setup code: ${setupCode()}`);
+      console.log('');
+    } else if (!cfg.authDisabled) console.log(`Login: "${login()}"${cfg.passwordHash ? ' (from the environment)' : ''}`);
+  });
   const stop = () => { server.close(); store.flush().finally(() => process.exit(0)); setTimeout(() => process.exit(0), 5000).unref(); };
   process.on('SIGTERM', stop); process.on('SIGINT', stop);
 }

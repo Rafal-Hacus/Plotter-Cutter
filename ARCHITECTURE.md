@@ -12,13 +12,15 @@ src/core/             pure code, no app state, unit tested
   svg.js              SVG units, viewBox, ids, path flattening, <use> expansion
   sanitize.js         cleaning of untrusted SVG files
   marks.js            SignCut registration-mark templates
+  perf.js             perforated cut lines (cuts with uncut bridges)
   matrix.js           2D affine matrices, rounded rectangles, PT (points per mm)
   zip.js              zip writer and reader
   image.js            embedded dpi, EXIF orientation, round-sticker detection
   util.js             small helpers
 src/presets.js        the Saved settings panel (talks to the server's /api)
 server/               Node server, no runtime dependencies
-  index.js            routes, security headers, login/logout, saved-settings API, config from the environment
+  index.js            routes, security headers, first-run setup, login/logout, saved-settings API, config
+  setup.html, login.html
   auth.js             scrypt passwords, signed session cookies, login lockout
   store.js            saved settings in /data/presets.json (atomic writes, validation)
   static.js           serves dist/
