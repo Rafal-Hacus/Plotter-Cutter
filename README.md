@@ -12,8 +12,9 @@ The image is published to `ghcr.io/rafal-hacus/plotter-cutter` by GitHub Actions
 ARM boards like a Raspberry Pi or many NAS boxes) on every push to the default branch, so Portainer only pulls it.
 
 1. **Stacks → Add stack**, name it e.g. `plotter-cutter`.
-2. **Web editor**: paste the contents of [`compose.yaml`](compose.yaml).
-   (Or **Repository**: this repo's URL, compose path `compose.yaml`.)
+2. **Repository**: URL `https://github.com/Rafal-Hacus/Plotter-Cutter`, reference `refs/heads/main`, compose path
+   `docker-compose.yml` (Portainer's default). Optionally switch on GitOps updates with **Re-pull image**, so every
+   push to `main` redeploys. (Or **Web editor**: paste the contents of [`docker-compose.yml`](docker-compose.yml).)
 3. **Deploy the stack**. No variables are needed (optional: `HOST_PORT` if 8080 is taken).
 4. Open `http://<server>:8080`. The first visit shows **Set up the login**: enter the setup code from the
    container log (**Containers → …plotter-cutter… → Logs**), then choose a user name and password. The login is
@@ -51,7 +52,7 @@ docker compose up -d
 That pulls the published image. To build it from this checkout instead:
 
 ```bash
-docker compose -f compose.yaml -f compose.build.yaml up -d --build
+docker compose -f docker-compose.yml -f compose.build.yaml up -d --build
 ```
 
 Open http://localhost:8080 (or the computer's address on your network) and sign in.
@@ -147,7 +148,7 @@ purpose, look at the difference first, then refresh them:
 UPDATE_GOLDEN=1 npm run test:e2e -- golden
 ```
 
-CI (GitHub Actions, started by hand for now: Actions → CI → Run workflow) runs all checks and starts the stack from `compose.yaml` (built from that commit) and smoke-tests it. A second workflow publishes the image to GitHub's container registry.
+CI (GitHub Actions, started by hand for now: Actions → CI → Run workflow) runs all checks and starts the stack from `docker-compose.yml` (built from that commit) and smoke-tests it. A second workflow publishes the image to GitHub's container registry.
 
 ## Notes on the cut paths
 
