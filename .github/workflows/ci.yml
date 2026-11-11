@@ -46,15 +46,15 @@ jobs:
       HOST_PORT: 8080
     steps:
       - uses: actions/checkout@v4
-      - name: Start the stack the way Portainer does (compose.yaml), built from this commit
-        run: docker compose -f compose.yaml -f compose.build.yaml up -d --build --wait
+      - name: Start the stack the way Portainer does (docker-compose.yml), built from this commit
+        run: docker compose -f docker-compose.yml -f compose.build.yaml up -d --build --wait
       - name: Smoke test
         run: |
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8080/api/presets)" = 401
           curl -s -c jar -o /dev/null -d "username=admin&password=$AUTH_PASSWORD" localhost:8080/login
           test "$(curl -s -b jar -o /dev/null -w '%{http_code}' localhost:8080/)" = 200
           curl -fs -b jar -H 'Content-Type: application/json' -d '{"name":"CI","mode":"cards","settings":{"cBleed":"2"}}' localhost:8080/api/presets
-          docker compose -f compose.yaml -f compose.build.yaml up -d --force-recreate --wait
+          docker compose -f docker-compose.yml -f compose.build.yaml up -d --force-recreate --wait
           curl -fs -b jar localhost:8080/api/presets | grep -q '"name":"CI"'
       - if: always()
-        run: docker compose -f compose.yaml -f compose.build.yaml logs
+        run: docker compose -f docker-compose.yml -f compose.build.yaml logs

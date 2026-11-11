@@ -1,5 +1,5 @@
 # Build the image from this repository instead of pulling it:
-#   docker compose -f compose.yaml -f compose.build.yaml up -d --build
+#   docker compose -f docker-compose.yml -f compose.build.yaml up -d --build
 services:
   plotter-cutter:
     build: .

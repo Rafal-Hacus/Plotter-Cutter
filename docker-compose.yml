@@ -1,7 +1,7 @@
 # Plotter Cutter: works as is in Portainer (Stacks > Add stack > Web editor), or with: docker compose up -d
 # Set the variables below in Portainer's "Environment variables" section (or in a .env file next to this one).
 # To build the image from this repository instead of pulling it:
-#   docker compose -f compose.yaml -f compose.build.yaml up -d --build
+#   docker compose -f docker-compose.yml -f compose.build.yaml up -d --build
 services:
   plotter-cutter:
     image: ${IMAGE:-ghcr.io/rafal-hacus/plotter-cutter:latest}

@@ -1,6 +1,6 @@
 # Builds the Docker image for PCs (amd64), 64-bit ARM (arm64: Raspberry Pi 4/5, most NAS) and 32-bit ARM
 # (arm/v7: older Raspberry Pi OS) and publishes it to
-# ghcr.io/<owner>/<repo>, which the Portainer stack (compose.yaml) pulls.
+# ghcr.io/<owner>/<repo>, which the Portainer stack (docker-compose.yml) pulls.
 #   push to main (or the default branch) -> :latest and :sha-<commit>
 #   tag v1.2.3                 -> :1.2.3, :1.2 and :latest
 #   Actions > Publish image > Run workflow (any branch) -> :<branch name>
