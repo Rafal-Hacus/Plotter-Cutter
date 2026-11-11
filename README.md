@@ -6,16 +6,48 @@ vinyl and pen cutting, SVG to PLT, and a PLT modifier.
 
 Everything runs in the browser. Nothing is uploaded; the page loads nothing from other sites.
 
-## Running with Docker
+## Running in Portainer
+
+The image is published to `ghcr.io/rafal-hacus/plotter-cutter` by GitHub Actions (for normal PCs/servers and for
+ARM boards like a Raspberry Pi or many NAS boxes) on every push to the default branch, so Portainer only pulls it.
+
+1. **Stacks → Add stack**, name it e.g. `plotter-cutter`.
+2. **Web editor**: paste the contents of [`compose.yaml`](compose.yaml).
+   (Or **Repository**: this repo's URL, compose path `compose.yaml`.)
+3. **Environment variables**: add at least `AUTH_PASSWORD` (8+ characters, avoid the `$` sign), and optionally
+   `AUTH_USERNAME` and `HOST_PORT`. **Load variables from .env file** works with [`.env.example`](.env.example).
+4. **Deploy the stack**, then open `http://<server>:8080` (or your `HOST_PORT`) and sign in.
+
+To keep only a hash of the password instead of the password itself: open the running container in Portainer
+(**Containers → plotter-cutter → Console → Connect**, `/bin/sh`), run `node server/hash-password.js`, type the
+password, and put the printed `scrypt:…` line into the stack's `AUTH_PASSWORD_HASH` variable; remove `AUTH_PASSWORD`
+and click **Update the stack**.
+
+- **Updating**: in the stack, **Update the stack** with **Re-pull image** switched on. Saved settings are in the
+  `plotter-data` volume and stay. To update only when you choose, set `IMAGE` to a version tag
+  (e.g. `ghcr.io/rafal-hacus/plotter-cutter:0.3.0`, published from git tags `v0.3.0`).
+- **If the image can't be pulled** (`denied` or `unauthorized`): images of a private repository are private on
+  GitHub. Either make the package public (GitHub → your profile → Packages → plotter-cutter → Package settings →
+  Change visibility; the image contains no secrets), or add the registry in Portainer: **Registries → Add registry →
+  Custom**, URL `ghcr.io`, your GitHub user name and a personal access token with the `read:packages` scope.
+- The stack is for a normal Docker environment in Portainer (not Swarm).
+
+## Running with Docker Compose
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`: set at least `AUTH_PASSWORD` (or better `AUTH_PASSWORD_HASH`, see the comments in the file). Then:
+Edit `.env`: set at least `AUTH_PASSWORD` (or `AUTH_PASSWORD_HASH`, see the comments in the file). Then:
 
 ```bash
-docker compose up -d --build
+docker compose up -d
+```
+
+That pulls the published image. To build it from this checkout instead:
+
+```bash
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
 ```
 
 Open http://localhost:8080 (or the computer's address on your network) and sign in.
@@ -27,7 +59,6 @@ Open http://localhost:8080 (or the computer's address on your network) and sign 
   docker compose cp plotter-cutter:/data/presets.json ./presets-backup.json
   ```
 
-- To update after pulling new code: `docker compose up -d --build`.
 - Changing the password signs everyone out. Wrong passwords lock an address out for 15 minutes after 5 tries.
 - Over the internet, put it behind a reverse proxy with HTTPS (Caddy, Traefik, nginx) and set
   `COOKIE_SECURE=true` and `TRUST_PROXY=true`.
@@ -38,7 +69,9 @@ Open http://localhost:8080 (or the computer's address on your network) and sign 
 | Variable | Default | |
 | --- | --- | --- |
 | `AUTH_USERNAME` | `admin` | user name for signing in |
-| `AUTH_PASSWORD` / `AUTH_PASSWORD_FILE` / `AUTH_PASSWORD_HASH` | (required) | the password, a file holding it (Docker secrets), or its scrypt hash |
+| `AUTH_PASSWORD` / `AUTH_PASSWORD_FILE` / `AUTH_PASSWORD_HASH` | (required) | the password, a file holding it (Docker secrets), or its hash from `node server/hash-password.js` |
+| `HOST_PORT` | `8080` | port on the host (compose) |
+| `IMAGE` | `ghcr.io/rafal-hacus/plotter-cutter:latest` | image to run (compose) |
 | `PORT` | `8080` | port inside the container |
 | `SESSION_DAYS` | `30` | how long a sign-in lasts |
 | `COOKIE_SECURE` | `false` | `true` behind HTTPS |
@@ -101,7 +134,7 @@ purpose, look at the difference first, then refresh them:
 UPDATE_GOLDEN=1 npm run test:e2e -- golden
 ```
 
-CI (GitHub Actions) runs all checks on every push and pull request, and builds and smoke-tests the Docker image.
+CI (GitHub Actions) runs all checks on every push and pull request, and starts the stack from `compose.yaml` (built from that commit) and smoke-tests it. A second workflow publishes the image to GitHub's container registry.
 
 ## Notes on the cut paths
 

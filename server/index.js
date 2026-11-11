@@ -18,7 +18,7 @@ export function loadConfig(env = process.env) {
   const authDisabled = bool(env.AUTH_DISABLED);
   let password = env.AUTH_PASSWORD;
   if (!password && env.AUTH_PASSWORD_FILE) password = readFileSync(env.AUTH_PASSWORD_FILE, 'utf8').replace(/\r?\n$/, '');
-  let passwordHash = env.AUTH_PASSWORD_HASH || null;
+  let passwordHash = (env.AUTH_PASSWORD_HASH || '').trim() || null;
   if (passwordHash && !isPasswordHash(passwordHash)) throw new Error('AUTH_PASSWORD_HASH is not a scrypt hash; make one with: node server/hash-password.js');
   if (!passwordHash && password) {
     if (password.length < 8) throw new Error('AUTH_PASSWORD must be at least 8 characters.');

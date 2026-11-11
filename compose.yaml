@@ -1,20 +1,22 @@
+# Plotter Cutter: works as is in Portainer (Stacks > Add stack > Web editor), or with: docker compose up -d
+# Set the variables below in Portainer's "Environment variables" section (or in a .env file next to this one).
+# To build the image from this repository instead of pulling it:
+#   docker compose -f compose.yaml -f compose.build.yaml up -d --build
 services:
   plotter-cutter:
-    build: .
-    image: plotter-cutter:latest
-    container_name: plotter-cutter
+    image: ${IMAGE:-ghcr.io/rafal-hacus/plotter-cutter:latest}
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${HOST_PORT:-8080}:8080"
     environment:
       AUTH_USERNAME: ${AUTH_USERNAME:-admin}
-      # Either the password itself (from .env), or better a hash made with:
-      #   docker compose run --rm -it plotter-cutter node server/hash-password.js
+      # Set one of these two. The hash is safer; make it in the running container's console with:
+      #   node server/hash-password.js
       AUTH_PASSWORD: ${AUTH_PASSWORD:-}
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
-      # Set to "true" when the app is reached over HTTPS (behind a reverse proxy).
+      # "true" when reached over HTTPS through a reverse proxy
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      # Set to "true" only behind a reverse proxy that sets X-Forwarded-For (for the login lockout).
+      # "true" only behind a reverse proxy that sets X-Forwarded-For
       TRUST_PROXY: ${TRUST_PROXY:-false}
       SESSION_DAYS: ${SESSION_DAYS:-30}
     volumes:

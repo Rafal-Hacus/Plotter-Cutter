@@ -175,8 +175,12 @@ describe('config and crypto', () => {
     expect(() => loadConfig({ DATA_DIR: dir, AUTH_PASSWORD_HASH: 'plain' })).toThrow(/scrypt/);
     expect(loadConfig({ DATA_DIR: dir, AUTH_DISABLED: 'true' }).authDisabled).toBe(true);
   });
-  it('accepts a pre-made password hash', () => {
+  it('accepts a pre-made password hash, in the new and the old form', () => {
     const h = hashPassword(PASSWORD);
+    expect(h).toMatch(/^scrypt:32768:8:1:[\w-]+:[\w-]+$/);
+    const old = h.replaceAll(':', '$');
+    expect(verifyPassword(PASSWORD, old)).toBe(true);
+    expect(loadConfig({ DATA_DIR: dir, AUTH_PASSWORD_HASH: old }).passwordHash).toBe(old);
     expect(verifyPassword(PASSWORD, h)).toBe(true);
     expect(verifyPassword('other password', h)).toBe(false);
     expect(loadConfig({ DATA_DIR: dir, AUTH_PASSWORD_HASH: h }).passwordHash).toBe(h);

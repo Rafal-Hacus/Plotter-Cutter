@@ -4,13 +4,14 @@ import { scryptSync, randomBytes, timingSafeEqual, createHmac } from 'node:crypt
 const SCRYPT = { N: 1 << 15, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const KEYLEN = 32;
 
-// Stored form: scrypt$N$r$p$salt$hash (salt and hash in base64url)
+// Stored form: scrypt:N:r:p:salt:hash (salt and hash in base64url). No $ signs, so it survives env files and
+// Compose/Portainer variable substitution unquoted. The older scrypt$N$r$p$salt$hash form is still accepted.
 export function hashPassword(password, salt = randomBytes(16)) {
   const h = scryptSync(String(password).normalize('NFKC'), salt, KEYLEN, SCRYPT);
-  return ['scrypt', SCRYPT.N, SCRYPT.r, SCRYPT.p, salt.toString('base64url'), h.toString('base64url')].join('$');
+  return ['scrypt', SCRYPT.N, SCRYPT.r, SCRYPT.p, salt.toString('base64url'), h.toString('base64url')].join(':');
 }
 export function verifyPassword(password, stored) {
-  const parts = String(stored).split('$');
+  const parts = String(stored).trim().split(/[:$]/);
   if (parts.length !== 6 || parts[0] !== 'scrypt') return false;
   const [, N, r, p, salt, hash] = parts;
   const want = Buffer.from(hash, 'base64url');
@@ -19,7 +20,7 @@ export function verifyPassword(password, stored) {
   catch { return false; }
   return got.length === want.length && timingSafeEqual(got, want);
 }
-export const isPasswordHash = s => /^scrypt\$\d+\$\d+\$\d+\$[\w-]+\$[\w-]+$/.test(String(s));
+export const isPasswordHash = s => /^scrypt([:$])\d+\1\d+\1\d+\1[\w-]+\1[\w-]+$/.test(String(s).trim());
 
 // Constant-time string comparison (for user names).
 export function safeEqual(a, b) {

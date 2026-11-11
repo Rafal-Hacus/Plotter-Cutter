@@ -24,6 +24,9 @@ server/               Node server, no runtime dependencies
   static.js           serves dist/
   hash-password.js    makes AUTH_PASSWORD_HASH
 Dockerfile            build stage (npm ci + vite build), runtime stage (node + server + dist, non-root)
+compose.yaml          the stack (pulls the published image; paste into Portainer as is)
+compose.build.yaml    override to build the image from the checkout instead
+.github/workflows     ci.yml (lint, tests, build, browser tests, compose smoke test), publish.yml (image to ghcr.io)
 tests/unit            Vitest, one file per core module
 tests/server          Vitest against the running server
 tests/e2e             Playwright against the production build, plus golden files
