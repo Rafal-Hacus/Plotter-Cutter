@@ -60,3 +60,33 @@ describe('perforate', () => {
     expect(perforate(tri, true, 6, 0.8)).toEqual([{ pts: tri, closed: true }]);
   });
 });
+
+describe('perforate, bridges near the corners', () => {
+  const opts = { place: 'corners', inset: 2 };
+  it('a straight line: cut along its whole length except one bridge 2 mm in from each end', () => {
+    const d = perforate([[0, 0], [90, 0]], false, 6, 0.8, false, opts);
+    expect(d.map(x => [x.pts[0][0], x.pts.at(-1)[0]])).toEqual([[0, 2], [2.8, 87.2], [88, 90]]);
+  });
+  it('a square-cornered card: two bridges per side, next to the corners, corners themselves cut', () => {
+    const rect = [[0, 0], [90, 0], [90, 50], [0, 50]];
+    const d = perforate(rect, true, 6, 0.8, false, opts);
+    expect(d.length).toBe(8); // 8 bridges on a closed outline -> 8 cuts
+    for (const c of rect) expect(d.some(x => x.pts.slice(1, -1).some(p => near(p, c))), `corner ${c}`).toBe(true);
+    const lens = d.map(x => length(x.pts)).sort((a, b) => a - b);
+    expect(lens[0]).toBeCloseTo(4, 9); // around each corner: 2 mm + 2 mm
+    expect(lens.at(-1)).toBeCloseTo(90 - 2 * 2.8, 9); // the long edge between its two bridges
+  });
+  it('rounded corners: the bridges sit where the straight edge meets the curve, 2 mm in', () => {
+    const d = perforate(roundRect(0, 0, 90, 50, 3), true, 6, 0.8, false, opts);
+    expect(d.length).toBe(8);
+    const ends = d.flatMap(x => [x.pts[0], x.pts.at(-1)]);
+    // on the top edge (y = 0) the flat part runs from x = 3 to 87: bridges at 5..5.8 and 84.2..85
+    expect(ends.some(p => near(p, [5, 0]))).toBe(true);
+    expect(ends.some(p => near(p, [85, 0]))).toBe(true);
+  });
+  it('short spans get one bridge in the middle, tiny ones none', () => {
+    const d = perforate([[0, 0], [4, 0]], false, 6, 0.8, false, opts);
+    expect(d.map(x => [x.pts[0][0], x.pts.at(-1)[0]])).toEqual([[0, 1.6], [2.4, 4]]);
+    expect(perforate([[0, 0], [2, 0]], false, 6, 0.8, false, opts)).toHaveLength(1);
+  });
+});
