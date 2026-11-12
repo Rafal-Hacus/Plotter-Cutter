@@ -1,8 +1,9 @@
+// Nesting designs on a cell grid (trying rotations and both packing directions), and the matrix that places a
+// nested design on the sheet.
 import { CELL, runStrategy, transposeGrid, transposeMask } from './core/geometry.js';
 import { num } from './core/svg.js';
 import { tick } from './core/util.js';
 
-/* ---------- nesting ---------- */
 export async function nestAll(list, sheet, o, cancelled) {
   const { Gw, Gh, blocked } = sheet;
   const items = list.map(d => ({ d, masks: d.res.masks, qty: d.qty, area: d.res.masks[0].area }));

@@ -1,20 +1,19 @@
+// Sticker print PDFs: one sheet, or a batch of as many sheets as the copies need with one pair of PLTs per
+// distinct sheet.
 import { PT, apply, mul } from '../../core/matrix.js';
 import { loadImg, sizedSvg } from '../../core/svg.js';
 import { asciiOnly, tick } from '../../core/util.js';
 import { makeZip } from '../../core/zip.js';
-import { setCardMsg } from '../../dom.js';
-import { buildPlt, saveFile } from '../../export/files.js';
-import { cssRgb } from '../../export/pdf-draw.js';
+import { byId, saveFile, setMsg } from '../../dom.js';
+import { buildPlt } from '../../export/files.js';
+import { drawShapes, printPage } from '../../export/pdf-draw.js';
 import { ensureLibs } from '../../lib/pdf.js';
+import { buildExport, exportName, stickerLoops, vecCircle } from './export.js';
 import { nestAll, placeMatrix } from '../../nest.js';
 import { readOpts } from '../../settings.js';
 import { designs, state } from '../../state.js';
-import { templateSheet } from '../../template.js';
-import { printPage } from '../cards/pdf.js';
-import { templateShapes } from '../cards/render.js';
-import { buildExport, exportName, stickerLoops, vecCircle } from './export.js';
+import { templateShapes, templateSheet } from '../../template.js';
 
-/* ---------- sticker batch: several sheets, one print PDF + PLTs per sheet ---------- */
 // Split the stickers over as many sheets as needed. Copies = that many; empty copies = one full sheet of that design.
 async function planBatch(o) {
   const ready = designs.filter(d => d.res && d.qty !== 0);
@@ -78,6 +77,7 @@ async function drawVectorStickers(page, out, L, Hpt, cache) {
     page.pushOperators(...ops);
   }
 }
+// One sheet as a page of `pdf`: the artwork as a picture at `dpi`, round stickers from PDFs and the marks as vectors.
 async function renderSheetPage(pdf, t, marks, dpi, L, cache = new Map()) {
   const Wpt = t.wMm * PT, Hpt = t.hMm * PT, wpx = Math.round(t.wMm / 25.4 * dpi), hpx = Math.round(t.hMm / 25.4 * dpi);
   const img = await loadImg(sizedSvg(buildExport('art', L, true), wpx, hpx));
@@ -88,13 +88,7 @@ async function renderSheetPage(pdf, t, marks, dpi, L, cache = new Map()) {
   const page = printPage(pdf, Wpt, Hpt);
   page.drawImage(await pdf.embedJpg(new Uint8Array(await jpg.arrayBuffer())), { x: 0, y: 0, width: Wpt, height: Hpt });
   await drawVectorStickers(page, pdf, L, Hpt, cache);
-  for (const sh of marks) {
-    const dd = 'M ' + sh.pts.map(q => `${(q[0] * PT).toFixed(3)} ${(q[1] * PT).toFixed(3)}`).join(' L ') + (sh.closed ? ' Z' : '');
-    const opt = { x: 0, y: Hpt };
-    if (sh.fill) opt.color = cssRgb(sh.fill);
-    if (sh.stroke) { opt.borderColor = cssRgb(sh.stroke); opt.borderWidth = sh.sw * PT; }
-    page.drawSvgPath(dd, opt);
-  }
+  drawShapes(page, marks, Hpt);
   return page;
 }
 async function buildSinglePdf() {
@@ -104,15 +98,15 @@ async function buildSinglePdf() {
   pdf.setTitle(`Sticker sheet, ${state.layout.items.length} pcs`);
   return new Blob([await pdf.save()], { type: 'application/pdf' });
 }
-document.getElementById('exPdf').addEventListener('click', async () => {
-  const btn = document.getElementById('exPdf'); btn.disabled = true;
+byId('exPdf').addEventListener('click', async () => {
+  const btn = byId('exPdf'); btn.disabled = true;
   try { await saveFile(exportName('all').replace(/\.svg$/, '-print.pdf'), await buildSinglePdf()); }
-  catch (e) { setCardMsg(`Couldn’t build the PDF: ${e.message || e}`, true); }
+  catch (e) { setMsg(`Couldn’t build the PDF: ${e.message || e}`, true); }
   finally { btn.disabled = false; }
 });
 async function buildBatch() {
   const o = readOpts(), t = state.template;
-  setCardMsg('Planning the sheets…');
+  setMsg('Planning the sheets…');
   await ensureLibs();
   const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
   const sheets = await planBatch(o);
@@ -125,7 +119,7 @@ async function buildBatch() {
   const mk = t.marks, rightMm = mk ? (mk.right - t.vb.x) / t.u : t.wMm - 5.5, bottomMm = mk ? (mk.bottom - t.vb.y) / t.u : t.hMm - 5.5;
   for (let i = 0; i < total; i++) {
     const id = `S${String(i + 1).padStart(2, '0')}`, L = sheets[i];
-    setCardMsg(`Sheet ${i + 1} of ${total}…`);
+    setMsg(`Sheet ${i + 1} of ${total}…`);
     await tick();
     const key = L.items.map(it => `${it.d.id}:${it.rot}:${it.X}:${it.Y}`).sort().join('|');
     if (!pltOf.has(key)) {
@@ -147,13 +141,13 @@ async function buildBatch() {
   files.unshift({ name: 'batch-print.pdf', bytes: await pdf.save() }, { name: 'batch-sheets.txt', text: summary + '\n' });
   return { zip: makeZip(files), total, summary };
 }
-document.getElementById('exBatch').addEventListener('click', async () => {
-  const btn = document.getElementById('exBatch');
+byId('exBatch').addEventListener('click', async () => {
+  const btn = byId('exBatch');
   btn.disabled = true;
   try {
     const r = await buildBatch();
     await saveFile(`sticker-batch-${r.total}sheets.zip`, r.zip);
-    setCardMsg(`${r.total} ${r.total === 1 ? 'sheet' : 'sheets'}: ${r.summary.replace(/\n/g, '; ')}.`);
-  } catch (e) { setCardMsg(`Batch failed: ${e.message || e}`, true); }
+    setMsg(`${r.total} ${r.total === 1 ? 'sheet' : 'sheets'}: ${r.summary.replace(/\n/g, '; ')}.`);
+  } catch (e) { setMsg(`Batch failed: ${e.message || e}`, true); }
   finally { btn.disabled = false; }
 });

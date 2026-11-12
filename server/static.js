@@ -1,6 +1,7 @@
 // Serves the built app from one folder. Only plain files inside that folder; no dotfiles, no directory listings.
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
+import { pipeline } from 'node:stream/promises';
 import { resolve, normalize, sep, extname } from 'node:path';
 
 const TYPES = {
@@ -31,7 +32,9 @@ export function staticHandler(rootDir) {
     // hashed build files never change; everything else is checked every time
     res.setHeader('Cache-Control', /^assets[/\\]/.test(rel) ? 'private, max-age=31536000, immutable' : /^(models|ort)[/\\]/.test(rel) ? 'private, max-age=604800' : 'no-cache');
     if (req.method === 'HEAD') { res.end(); return true; }
-    await new Promise((ok, fail) => createReadStream(file).on('error', fail).on('end', ok).pipe(res));
+    // pipeline closes the file when the browser goes away half-way, which is not an error worth reporting
+    try { await pipeline(createReadStream(file), res); }
+    catch (e) { if (e.code !== 'ERR_STREAM_PREMATURE_CLOSE') throw e; }
     return true;
   };
 }

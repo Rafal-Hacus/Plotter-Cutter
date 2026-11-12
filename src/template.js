@@ -1,8 +1,10 @@
+// The sheet template: an SVG with SignCut registration marks, generated for the chosen sheet size or loaded from
+// a file. Gives the sheet size, where the marks are, and the grid of where things may be placed.
 import { CELL, edt } from './core/geometry.js';
 import { makeMarksTemplate } from './core/marks.js';
 import { sanitize } from './core/sanitize.js';
-import { MM_PER, XLINK, loadImg, num, parseLen, parseSvg, readViewBox, sizedSvg, splitRoot } from './core/svg.js';
-import { ui } from './dom.js';
+import { MM_PER, SHAPES, XLINK, loadImg, mm1, num, parseLen, parseSvg, readViewBox, sizedSvg, splitRoot } from './core/svg.js';
+import { byId, ui } from './dom.js';
 import { readOpts } from './settings.js';
 import { state } from './state.js';
 
@@ -14,13 +16,12 @@ function sheetSizeMm() {
 }
 export function applySheetSize() {
   const [W, H] = sheetSizeMm(), o = readOpts(), T = o.sheetFeed ? Math.max(0, Math.min(o.sheetFeedMm, H - 80)) : 0;
-  document.getElementById('rowSheetCustom').hidden = o.sheetSize !== 'custom';
-  document.getElementById('rowSheetFeed').hidden = !o.sheetFeed;
+  byId('rowSheetCustom').hidden = o.sheetSize !== 'custom';
+  byId('rowSheetFeed').hidden = !o.sheetFeed;
   setTemplate(makeMarksTemplate(W, H, T), T ? `Generated SignCut marks, ${num(T)} mm blank strip at the top` : 'Generated SignCut marks', true);
   state.template.generated = true;
   state.template.feedTop = T;
 }
-/* ---------- template ---------- */
 // Centre lines of the four corner marks, in template user units (needs the live DOM for getBBox).
 function measureMarks(text) {
   let host = null;
@@ -109,5 +110,48 @@ export function setTemplate(text, name, isDefault) {
   state.view = null;
   ui.tplReset.hidden = !!isDefault;
   ui.dpiRow.hidden = !state.template.unitless;
-  ui.sheetInfo.textContent = `${name}${isDefault ? '' : ' template'}: ${num(Math.round(state.template.wMm * 10) / 10)} × ${num(Math.round(state.template.hMm * 10) / 10)} mm.`;
+  ui.sheetInfo.textContent = `${name}${isDefault ? '' : ' template'}: ${mm1(state.template.wMm)} × ${mm1(state.template.hMm)} mm.`;
 }
+// Template drawing as plain shapes in sheet mm (for the PDF): needs the live DOM.
+export function templateShapes() {
+  const t = state.template;
+  let host = null;
+  try {
+    const doc = parseSvg(t.text); sanitize(doc);
+    host = document.createElement('div');
+    host.style.cssText = 'position:absolute;left:-100000px;top:0;width:1000px;height:1000px;visibility:hidden;pointer-events:none';
+    const svg = document.importNode(doc.documentElement, true);
+    svg.setAttribute('width', '1000'); svg.setAttribute('height', '1000');
+    host.appendChild(svg); document.body.appendChild(host);
+    const inv = svg.getScreenCTM().inverse(), out = [];
+    for (const el of svg.querySelectorAll(SHAPES)) {
+      if (el.closest('defs,clipPath,mask,pattern,symbol,marker')) continue;
+      const cs = getComputedStyle(el);
+      if (cs.display === 'none') continue;
+      const m = inv.multiply(el.getScreenCTM());
+      const tp = (x, y) => [((m.a * x + m.c * y + m.e) - t.vb.x) / t.u, ((m.b * x + m.d * y + m.f) - t.vb.y) / t.u];
+      const at = n => parseFloat(el.getAttribute(n)) || 0;
+      let pts = [], closed = true;
+      if (el.localName === 'rect') { const x = at('x'), y = at('y'), w = at('width'), h = at('height'); pts = [tp(x, y), tp(x + w, y), tp(x + w, y + h), tp(x, y + h)]; }
+      else if (el.localName === 'polyline' || el.localName === 'polygon') {
+        const a = (el.getAttribute('points') || '').trim().split(/[\s,]+/).map(Number);
+        for (let i = 0; i + 1 < a.length; i += 2) pts.push(tp(a[i], a[i + 1]));
+        closed = el.localName === 'polygon';
+      } else if (el.localName === 'line') { pts = [tp(at('x1'), at('y1')), tp(at('x2'), at('y2'))]; closed = false; }
+      else {
+        const len = el.getTotalLength(), n = Math.max(8, Math.ceil(len / 0.5));
+        for (let i = 0; i <= n; i++) { const q = el.getPointAtLength(len * i / n); pts.push(tp(q.x, q.y)); }
+        closed = el.localName !== 'path' || /z\s*$/i.test(el.getAttribute('d') || '');
+      }
+      const sc = Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)) / t.u;
+      const fill = cs.fill && cs.fill !== 'none' && parseFloat(cs.fillOpacity || '1') > 0 ? cs.fill : null;
+      const stroke = cs.stroke && cs.stroke !== 'none' && parseFloat(cs.strokeOpacity || '1') > 0 ? cs.stroke : null;
+      if (pts.length > 1 && (fill || stroke)) out.push({ pts, closed, fill, stroke, sw: (parseFloat(cs.strokeWidth) || 1) * sc });
+    }
+    return out;
+  } finally {
+    if (host) host.remove();
+  }
+}
+// Centre lines of a template's registration marks in sheet mm, as writePlt expects them.
+export const markFrame = t => ({ top: (t.marks.top - t.vb.y) / t.u, bottom: (t.marks.bottom - t.vb.y) / t.u, left: (t.marks.left - t.vb.x) / t.u, right: (t.marks.right - t.vb.x) / t.u });

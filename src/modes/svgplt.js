@@ -1,23 +1,24 @@
+// SVG to PLT: a finished print-and-cut SVG (registration marks plus cut lines) turned into Skycut PLTs, one per
+// cut layer or stroke colour.
 import { rdp, simplifyLoop } from '../core/geometry.js';
 import { writePlt } from '../core/plt.js';
 import { sanitize } from '../core/sanitize.js';
-import { MM_PER, SHAPES, dataUri, decodeLayer, elementPolys, esc, expandUses, num, parseLen, parseSvg, pathLen, readViewBox, toHex, windowSvg } from '../core/svg.js';
+import { MM_PER, SHAPES, dataUri, decodeLayer, elementPolys, esc, expandUses, mm1, num, parseLen, parseSvg, pathLen, readViewBox, toHex, windowSvg } from '../core/svg.js';
 import { tick } from '../core/util.js';
 import { makeZip } from '../core/zip.js';
-import { setCardMsg, ui } from '../dom.js';
-import { pltOpts, saveFile } from '../export/files.js';
+import { byId, saveFile, setMsg, ui } from '../dom.js';
+import { pltOpts } from '../export/files.js';
+import { registerMode } from './registry.js';
 import { renderPreview, renderStats } from '../pipeline.js';
 import { readOpts } from '../settings.js';
 import { state } from '../state.js';
+import { markFrame } from '../template.js';
 import { applyView } from '../viewport.js';
-import { registerMode } from './registry.js';
-import { markFrame } from './stickers/export.js';
 
-/* ---------- SVG to PLT: a finished print-and-cut SVG (registration marks + cut lines) to Skycut PLTs ---------- */
 export const sp = { name: null, text: null, groups: [], vb: null, u: 1, marks: null, markSrc: '', unitless: false, err: '' };
 export function analyseSvgPlt() {
-  sp.groups = []; sp.marks = null; sp.err = ''; sp.markSrc = '';
-  if (!sp.text) return;
+  sp.groups = []; sp.marks = null; sp.err = ''; sp.markSrc = ''; sp.vb = null;
+  if (!sp.text) { spRenderGroups(); return; }
   let host = null;
   try {
     const doc = parseSvg(sp.text); sanitize(doc); expandUses(doc);
@@ -91,8 +92,8 @@ export function analyseSvgPlt() {
   spRenderGroups();
 }
 function spRenderGroups() {
-  const box = document.getElementById('spGroups');
-  document.getElementById('rowSpDpi').hidden = !sp.text || !sp.unitless;
+  const box = byId('spGroups');
+  byId('rowSpDpi').hidden = !sp.text || !sp.unitless;
   if (!sp.groups.length) { box.innerHTML = ''; return; }
   box.innerHTML = `<table class="modt"><thead><tr><th></th><th>Cut group</th><th>Lines</th><th>Length</th><th>Force g</th></tr></thead><tbody>${sp.groups.map((g, i) =>
     `<tr><td><input type="checkbox" data-i="${i}" class="spInc" ${g.include ? 'checked' : ''} aria-label="Cut ${esc(g.name)}"></td><td title="${esc(g.name)}"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${g.color};margin-right:5px"></span>${esc(g.name)}</td><td>${g.paths.length}</td><td>${num(Math.round(g.paths.reduce((s, p) => s + pathLen(p), 0) / 100) / 10)} m</td><td><input type="number" min="1" max="160" step="1" data-i="${i}" class="spF" value="${g.force}" aria-label="Force for ${esc(g.name)}"></td></tr>`).join('')}</tbody></table>`;
@@ -103,9 +104,11 @@ async function spLoad(file) {
   if (!file) return;
   renderSvgPltStats('Reading the SVG…');
   await tick();
-  try { sp.text = await file.text(); sp.name = file.name.replace(/\.svg$/i, ''); }
-  catch (e) { sp.err = `Couldn’t read ${file.name}.`; }
+  sp.name = file.name.replace(/\.svg$/i, '');
+  try { sp.text = await file.text(); }
+  catch (e) { sp.text = null; }
   analyseSvgPlt();
+  if (sp.text == null) sp.err = `Couldn’t read ${file.name}.`;
   state.view = null;
   renderPreview(); renderStats();
 }
@@ -132,24 +135,32 @@ function renderSvgPltPreview() {
 function renderSvgPltStats(busyText) {
   const inc = sp.groups.filter(g => g.include), n = inc.reduce((s, g) => s + g.paths.length, 0);
   ui.dropNote.hidden = !!sp.text;
-  document.getElementById('exSpPlt').disabled = !sp.marks || !n || !!busyText;
+  byId('exSpPlt').disabled = !sp.marks || !n || !!busyText;
   if (busyText) { ui.count.textContent = busyText; return; }
-  ui.count.textContent = !sp.text ? 'No SVG loaded' : `${n} cut ${n === 1 ? 'line' : 'lines'} in ${inc.length} ${inc.length === 1 ? 'group' : 'groups'}`;
-  if (!sp.text) { setCardMsg(''); return; }
-  const notes = [`${sp.name}: ${num(Math.round(sp.W * 10) / 10)} × ${num(Math.round(sp.H * 10) / 10)} mm${sp.unitless ? ` (no size in the file, read as ${readOpts().spDpi === 25.4 ? 'mm' : readOpts().spDpi + ' per inch'})` : ''}.`];
+  ui.count.textContent = !sp.vb ? 'No SVG loaded' : `${n} cut ${n === 1 ? 'line' : 'lines'} in ${inc.length} ${inc.length === 1 ? 'group' : 'groups'}`;
+  if (!sp.text && !sp.err) { setMsg(''); return; }
+  const notes = [];
+  if (sp.vb) notes.push(`${sp.name}: ${mm1(sp.W)} × ${mm1(sp.H)} mm${sp.unitless ? ` (no size in the file, read as ${readOpts().spDpi === 25.4 ? 'mm' : readOpts().spDpi + ' per inch'})` : ''}.`);
+  else notes.push(`${sp.name}:`);
   if (sp.marks) {
-    const mk = sp.marks, f = v => num(Math.round(v / sp.u * 10) / 10);
-    notes.push(`Marks from the ${sp.markSrc}: ${f(mk.right - mk.left)} × ${f(mk.bottom - mk.top)} mm between centres, ${num(Math.round(mk.thick * 10) / 10)} mm thick. The knife origin is the bottom-right mark.`);
+    const mk = sp.marks, f = v => mm1(v / sp.u);
+    notes.push(`Marks from the ${sp.markSrc}: ${f(mk.right - mk.left)} × ${f(mk.bottom - mk.top)} mm between centres, ${mm1(mk.thick)} mm thick. The knife origin is the bottom-right mark.`);
     if (Math.abs(mk.thick - 1) > 0.3) notes.push('The marks aren’t 1 mm thick: check the file’s units before cutting.');
   }
   if (sp.err) notes.push(sp.err);
-  setCardMsg(notes.join(' '), !!sp.err);
+  setMsg(notes.join(' '), !!sp.err);
 }
-document.getElementById('spFile').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; spLoad(f); });
-document.getElementById('spDpi').addEventListener('change', () => { analyseSvgPlt(); state.view = null; renderPreview(); renderStats(); });
-document.getElementById('exSpPlt').addEventListener('click', () => {
+byId('spFile').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; spLoad(f); });
+byId('spDpi').addEventListener('change', () => { analyseSvgPlt(); state.view = null; renderPreview(); renderStats(); });
+byId('exSpPlt').addEventListener('click', () => {
   const slug = s => s.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'cut';
-  const files = sp.groups.filter(g => g.include).map(g => ({ name: `${sp.name}-${slug(g.name)}.plt`, text: spPlt(g) }));
+  // groups whose names come out the same get a number, so no file in the zip replaces another
+  const used = new Map();
+  const files = sp.groups.filter(g => g.include).map(g => {
+    const base = slug(g.name), n = (used.get(base) || 0) + 1;
+    used.set(base, n);
+    return { name: `${sp.name}-${base}${n > 1 ? `-${n}` : ''}.plt`, text: spPlt(g) };
+  });
   saveFile(`${sp.name}-plt.zip`, makeZip(files));
 });
 registerMode('svgplt', { renderPreview: renderSvgPltPreview, renderStats: renderSvgPltStats, onDrop: files => spLoad(files[0]) });

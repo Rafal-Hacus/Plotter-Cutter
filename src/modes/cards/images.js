@@ -1,17 +1,16 @@
+// Card jobs made from pictures (PNG, JPG, …): each picture becomes a PDF page of the card size plus bleed, with
+// the missing bleed filled in. Also the rows of the Cards panel that belong to pictures.
 import { imageDpi, jpegOrientation } from '../../core/image.js';
 import { PT } from '../../core/matrix.js';
-import { num } from '../../core/svg.js';
-import { setCardMsg } from '../../dom.js';
+import { mm1, num } from '../../core/svg.js';
+import { byId, setMsg } from '../../dom.js';
 import { ensureLibs } from '../../lib/pdf.js';
-import { saveOpts } from '../../settings.js';
-import { state } from '../../state.js';
 import { isPrintMode } from './job.js';
 import { loadCardPdf } from './load.js';
 import { syncBleedRow } from './winietki.js';
+import { saveOpts } from '../../settings.js';
+import { state } from '../../state.js';
 
-/* ---------- card images: PNG / JPG / … turned into a card PDF with bleed ---------- */
-export const isPdfFile = f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
-export const isImageFile = f => /^image\/(png|jpeg|webp|gif|bmp|avif)$/i.test(f.type) || /\.(png|jpe?g|webp|gif|bmp|avif)$/i.test(f.name);
 export async function readCardImage(f) {
   const bytes = new Uint8Array(await f.arrayBuffer());
   let bmp;
@@ -33,9 +32,9 @@ export async function readCardImage(f) {
 // The trim size of an image card: the CardXtra cut size in Morgana mode (the machine is fixed to it), else the fields.
 // Orientation follows the image (or, once edited, the editor's orientation).
 function imageTrim(im) {
-  const v = id => parseFloat(document.getElementById(id).value);
+  const v = id => parseFloat(byId(id).value);
   let W, H;
-  if (state.mode === 'morgana') { const m = /^(\d+)x(\d+)$/.exec(document.getElementById('mSize').value) || [0, 90, 55]; W = +m[1]; H = +m[2]; }
+  if (state.mode === 'morgana') { const m = /^(\d+)x(\d+)$/.exec(byId('mSize').value) || [0, 90, 55]; W = +m[1]; H = +m[2]; }
   else { W = Math.max(10, v('icW') || 90); H = Math.max(10, v('icH') || 50); }
   const land = im.edit ? !im.edit.state.portrait : im.w >= im.h;
   return land === (W >= H) ? [W, H] : [H, W];
@@ -46,10 +45,10 @@ function imageTrim(im) {
 // filled by repeating the edge pixels or left white.
 export async function imagesToCardPdf(src) {
   await ensureLibs();
-  const { PDFDocument } = window.PDFLib, v = id => parseFloat(document.getElementById(id).value);
-  const fit = document.getElementById('icFit').value, dpiSet = Math.min(2400, Math.max(30, v('icDpi') || 300));
-  const extend = document.getElementById('icExtend').checked, setB = Math.max(0, v('cBleed') || 0), how = document.getElementById('icBleedHow').value;
-  const r1 = x => num(Math.round(x * 10) / 10), r2 = x => num(Math.round(x * 100) / 100), TOL = 0.15;
+  const { PDFDocument } = window.PDFLib, v = id => parseFloat(byId(id).value);
+  const fit = byId('icFit').value, dpiSet = Math.min(2400, Math.max(30, v('icDpi') || 300));
+  const extend = byId('icExtend').checked, setB = Math.max(0, v('cBleed') || 0), how = byId('icBleedHow').value;
+  const r2 = x => num(Math.round(x * 100) / 100), TOL = 0.15;
   // placed image size (mm) per image
   const plan = src.imgs.map(orig => {
     const [W, H] = imageTrim(orig);
@@ -88,23 +87,25 @@ export async function imagesToCardPdf(src) {
       };
       let bytes;
       if (how === 'ai') { // MI-GAN in the browser; cached per picture and placement
-        const key = `${im.name}|${im.w}x${im.h}|${sw}x${sh}|${cw}x${ch}|${ox},${oy}`;
-        if (!aiBleedCache.has(key)) {
+        // kept per picture (its bytes) and placement: another picture with the same name and size must not reuse it
+        if (!aiBleedCache.has(im.bytes)) aiBleedCache.set(im.bytes, new Map());
+        const filled = aiBleedCache.get(im.bytes), key = `${sw}x${sh}|${cw}x${ch}|${ox},${oy}`;
+        if (!filled.has(key)) {
           const ai = await import('../../lib/ai.js');
-          setCardMsg('AI is filling the missing bleed…');
-          const out = ai.toCanvas(await ai.aiExtend(ai.fromCanvas(await placed()), cw, ch, ox, oy, text => setCardMsg(`Missing bleed: ${text}`)));
-          aiBleedCache.set(key, new Uint8Array(await (await new Promise(r => out.toBlob(r, 'image/png'))).arrayBuffer()));
-          setCardMsg('');
+          setMsg('AI is filling the missing bleed…');
+          const out = ai.toCanvas(await ai.aiExtend(ai.fromCanvas(await placed()), cw, ch, ox, oy, text => setMsg(`Missing bleed: ${text}`)));
+          filled.set(key, new Uint8Array(await (await new Promise(r => out.toBlob(r, 'image/png'))).arrayBuffer()));
+          setMsg('');
         }
-        bytes = aiBleedCache.get(key);
+        bytes = filled.get(key);
       } else { // repeat the outermost pixels into the missing bleed
-        const src = await placed(), cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+        const pic = await placed(), cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
         const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
         const ex = ox + sw, ey = oy + sh;
-        g.drawImage(src, ox, oy);
-        if (ox > 0) { g.drawImage(src, 0, 0, 1, sh, 0, oy, ox, sh); g.drawImage(src, sw - 1, 0, 1, sh, ex, oy, cw - ex, sh); }
-        if (oy > 0) { g.drawImage(src, 0, 0, sw, 1, ox, 0, sw, oy); g.drawImage(src, 0, sh - 1, sw, 1, ox, ey, sw, ch - ey); }
-        if (ox > 0 && oy > 0) for (const [sx, sy, dx, dy, dw, dh] of [[0, 0, 0, 0, ox, oy], [sw - 1, 0, ex, 0, cw - ex, oy], [0, sh - 1, 0, ey, ox, ch - ey], [sw - 1, sh - 1, ex, ey, cw - ex, ch - ey]]) g.drawImage(src, sx, sy, 1, 1, dx, dy, dw, dh);
+        g.drawImage(pic, ox, oy);
+        if (ox > 0) { g.drawImage(pic, 0, 0, 1, sh, 0, oy, ox, sh); g.drawImage(pic, sw - 1, 0, 1, sh, ex, oy, cw - ex, sh); }
+        if (oy > 0) { g.drawImage(pic, 0, 0, sw, 1, ox, 0, sw, oy); g.drawImage(pic, 0, sh - 1, sw, 1, ox, ey, sw, ch - ey); }
+        if (ox > 0 && oy > 0) for (const [sx, sy, dx, dy, dw, dh] of [[0, 0, 0, 0, ox, oy], [sw - 1, 0, ex, 0, cw - ex, oy], [0, sh - 1, 0, ey, ox, ch - ey], [sw - 1, sh - 1, ex, ey, cw - ex, ch - ey]]) g.drawImage(pic, sx, sy, 1, 1, dx, dy, dw, dh);
         bytes = new Uint8Array(await (await new Promise(r => cv.toBlob(r, 'image/png'))).arrayBuffer());
         cv.width = cv.height = 1;
       }
@@ -120,23 +121,23 @@ export async function imagesToCardPdf(src) {
     }
     if (fit === 'stretch') {
       const ar = im.w / im.h, cr = iw / ih;
-      notes.push(`${im.name}: stretched to ${r1(iw)} × ${r1(ih)} mm${iw < W - 0.01 ? ` (inside a ${r2((W - iw) / 2)} mm safe margin)` : ''}${Math.abs(ar / cr - 1) > 0.02 ? `, ${num(Math.round(Math.abs(ar / cr - 1) * 100))} % out of proportion` : ''}.${fillNote}`);
+      notes.push(`${im.name}: stretched to ${mm1(iw)} × ${mm1(ih)} mm${iw < W - 0.01 ? ` (inside a ${r2((W - iw) / 2)} mm safe margin)` : ''}${Math.abs(ar / cr - 1) > 0.02 ? `, ${num(Math.round(Math.abs(ar / cr - 1) * 100))} % out of proportion` : ''}.${fillNote}`);
       continue;
     }
     const side = b => b < -TOL ? `short by ${r2(-b)} mm per side` : b <= TOL ? 'none' : `${r2(b)} mm`;
-    let t = `${im.name}: ${r1(iw)} × ${r1(ih)} mm${p.dpi ? ` at ${num(Math.round(p.dpi))} dpi${im.dpi ? ' (from the file)' : ''}` : ''}, cut ${num(W)} × ${num(H)} mm. Bleed top and bottom: ${side(p.by)}, left and right: ${side(p.bx)}`;
-    if (p.bx > TOL && p.by <= TOL || p.by > TOL && p.bx <= TOL || (p.bx <= TOL && p.by <= TOL)) t += extend && B > TOL && p.bx >= -TOL && p.by >= -TOL ? (how === 'ai' ? ' (missing bleed filled by AI)' : ' (missing bleed filled by repeating the edge pixels)') : '';
+    let t = `${im.name}: ${mm1(iw)} × ${mm1(ih)} mm${p.dpi ? ` at ${num(Math.round(p.dpi))} dpi${im.dpi ? ' (from the file)' : ''}` : ''}, cut ${num(W)} × ${num(H)} mm. Bleed top and bottom: ${side(p.by)}, left and right: ${side(p.bx)}`;
+    if (!(p.bx > TOL && p.by > TOL)) t += extend && B > TOL && p.bx >= -TOL && p.by >= -TOL ? (how === 'ai' ? ' (missing bleed filled by AI)' : ' (missing bleed filled by repeating the edge pixels)') : '';
     t += '.';
     if (p.bx < -TOL || p.by < -TOL) t += ' The image is smaller than the card: check the card size and the dpi, otherwise a white edge ends up inside the card.';
     if (p.dpi && (p.bx > 6 || p.by > 6)) t += ' Much bigger than the card: check the card size and the dpi.';
     notes.push(t);
     if (Math.abs(W - W0) > 0.01 || Math.abs(H - H0) > 0.01) notes.push('The images have different orientations; the back should match the front.');
   }
-  document.getElementById('icInfo').textContent = (src.imgs.length > 1 ? `Front: ${src.imgs[0].name}, back: ${src.imgs[1].name}. ` : '') + notes.join(' ');
+  byId('icInfo').textContent = (src.imgs.length > 1 ? `Front: ${src.imgs[0].name}, back: ${src.imgs[1].name}. ` : '') + notes.join(' ');
   return { bytes: await pdf.save(), bleed: B };
 }
 let icTimer = null;
-const aiBleedCache = new Map();
+const aiBleedCache = new WeakMap();
  // AI-filled card pages (PNG), by image and placement
 export function rebuildCardImages() {
   clearTimeout(icTimer);
@@ -144,25 +145,25 @@ export function rebuildCardImages() {
     const src = state.job.imgSrc;
     if (!src) return;
     try { const r = await imagesToCardPdf(src); await loadCardPdf(r.bytes, src.name, r.bleed); }
-    catch (e) { setCardMsg(`Couldn’t use the image: ${e.message || e}`, true); }
+    catch (e) { setMsg(`Couldn’t use the image: ${e.message || e}`, true); }
   }, 250);
 }
 export function syncImgRows() {
   const on = !!(isPrintMode() && state.mode !== 'winietka' && state.job.imgSrc);
-  document.getElementById('imgCardRows').hidden = !on;
-  const fit = document.getElementById('icFit').value;
-  document.getElementById('rowIcDpi').hidden = fit !== 'actual';
-  document.getElementById('rowIcExtend').hidden = false; // the bleed is filled last, also around a stretched picture
-  document.getElementById('rowIcSafe').hidden = fit === 'actual';
-  document.getElementById('rowIcSize').hidden = state.mode === 'morgana';
-  document.getElementById('rowIcPreset').hidden = state.mode === 'morgana';
-  document.getElementById('icSwap').hidden = !on || state.job.imgSrc.imgs.length !== 2;
+  byId('imgCardRows').hidden = !on;
+  const fit = byId('icFit').value;
+  byId('rowIcDpi').hidden = fit !== 'actual';
+  byId('rowIcExtend').hidden = false; // the bleed is filled last, also around a stretched picture
+  byId('rowIcSafe').hidden = fit === 'actual';
+  byId('rowIcSize').hidden = state.mode === 'morgana';
+  byId('rowIcPreset').hidden = state.mode === 'morgana';
+  byId('icSwap').hidden = !on || state.job.imgSrc.imgs.length !== 2;
   icList();
   syncBleedRow();
 }
 // the pictures of an image card job, each with the full editor (fit, rotate, stretch, AI fill and upscale)
 function icList() {
-  const ul = document.getElementById('icList'), src = state.job.imgSrc;
+  const ul = byId('icList'), src = state.job.imgSrc;
   ul.innerHTML = '';
   if (!src || state.mode === 'winietka') return;
   src.imgs.forEach((im, i) => {
@@ -171,7 +172,7 @@ function icList() {
     li.innerHTML = '<span class="icname"></span><button type="button" class="link icedit">Edit picture (fit, rotate, AI)</button><button type="button" class="link icundo" hidden>Undo the edit</button>';
     const label = src.imgs.length === 2 ? (i ? 'Back: ' : 'Front: ') : src.imgs.length > 2 ? `${i + 1}. ` : '';
     li.querySelector('.icname').textContent = `${label}${im.name}${im.edit ? ' (edited)' : ''}`;
-    li.querySelector('.icedit').addEventListener('click', () => icEdit(im).catch(e => setCardMsg(`Couldn’t open the editor: ${e.message || e}`, true)));
+    li.querySelector('.icedit').addEventListener('click', () => icEdit(im).catch(e => setMsg(`Couldn’t open the editor: ${e.message || e}`, true)));
     const undo = li.querySelector('.icundo'); undo.hidden = !im.edit;
     undo.addEventListener('click', () => { im.edit = null; icList(); syncBleedRow(); rebuildCardImages(); });
     ul.appendChild(li);
@@ -179,7 +180,7 @@ function icList() {
 }
 // the editor on the card format: the cut size, the bleed setting, the safe margin; the original is always kept
 async function icEdit(im) {
-  const v = id => parseFloat(document.getElementById(id).value), [W, H] = imageTrim(im), { openEditor } = await import('../../editor.js');
+  const v = id => parseFloat(byId(id).value), [W, H] = imageTrim(im), { openEditor } = await import('../../editor.js');
   const bleed = Math.max(0, v('cBleed') || 0) || 2;
   await openEditor({
     name: im.name, bytes: im.bytes, state: im.edit ? im.edit.state : null, format: { w: W, h: H, bleed },
@@ -191,21 +192,21 @@ async function icEdit(im) {
     }
   });
 }
-for (const id of ['icW', 'icH', 'icDpi', 'icSafe']) document.getElementById(id).addEventListener('input', rebuildCardImages);
+for (const id of ['icW', 'icH', 'icDpi', 'icSafe']) byId(id).addEventListener('input', rebuildCardImages);
 // a size preset fills in the card size (the image's orientation decides which way round); typing a size sets Custom
-document.getElementById('icPreset').addEventListener('change', () => {
-  const m = /^(\d+)x(\d+)$/.exec(document.getElementById('icPreset').value);
+byId('icPreset').addEventListener('change', () => {
+  const m = /^(\d+)x(\d+)$/.exec(byId('icPreset').value);
   if (!m) return;
-  document.getElementById('icW').value = m[1]; document.getElementById('icH').value = m[2];
+  byId('icW').value = m[1]; byId('icH').value = m[2];
   saveOpts(); rebuildCardImages();
 });
-for (const id of ['icW', 'icH']) document.getElementById(id).addEventListener('input', () => {
-  const v = `${document.getElementById('icW').value}x${document.getElementById('icH').value}`, sel = document.getElementById('icPreset');
+for (const id of ['icW', 'icH']) byId(id).addEventListener('input', () => {
+  const v = `${byId('icW').value}x${byId('icH').value}`, sel = byId('icPreset');
   sel.value = [...sel.options].some(o => o.value === v) ? v : 'custom';
 });
-document.getElementById('icFit').addEventListener('change', () => { syncImgRows(); rebuildCardImages(); });
-document.getElementById('icExtend').addEventListener('change', rebuildCardImages);
-document.getElementById('icBleedHow').addEventListener('change', rebuildCardImages);
-document.getElementById('icSwap').addEventListener('click', () => { const s = state.job.imgSrc; if (s && s.imgs.length > 1) { s.imgs.reverse(); rebuildCardImages(); } });
-document.getElementById('mSize').addEventListener('change', () => { if (state.mode === 'morgana' && state.job.imgSrc) rebuildCardImages(); });
-document.getElementById('cBleed').addEventListener('input', () => { if (state.job.imgSrc && document.getElementById('icFit').value === 'stretch') rebuildCardImages(); });
+byId('icFit').addEventListener('change', () => { syncImgRows(); rebuildCardImages(); });
+byId('icExtend').addEventListener('change', rebuildCardImages);
+byId('icBleedHow').addEventListener('change', rebuildCardImages);
+byId('icSwap').addEventListener('click', () => { const s = state.job.imgSrc; if (s && s.imgs.length > 1) { s.imgs.reverse(); rebuildCardImages(); } });
+byId('mSize').addEventListener('change', () => { if (state.mode === 'morgana' && state.job.imgSrc) rebuildCardImages(); });
+byId('cBleed').addEventListener('input', () => { if (state.job.imgSrc && byId('icFit').value === 'stretch') rebuildCardImages(); });

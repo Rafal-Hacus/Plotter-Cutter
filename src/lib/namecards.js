@@ -3,11 +3,11 @@
 import montserrat from '@expo-google-fonts/montserrat/500Medium/Montserrat_500Medium.ttf?url';
 import playfair from '@expo-google-fonts/playfair-display/400Regular/PlayfairDisplay_400Regular.ttf?url';
 import greatVibes from '@expo-google-fonts/great-vibes/400Regular/GreatVibes_400Regular.ttf?url';
+import { PT } from '../core/matrix.js';
 import { ensureLibs } from './pdf.js';
 
 export const FONTS = { sans: montserrat, serif: playfair, script: greatVibes };
 export const BG_BLEED = 2; // mm, used when there is a background graphic
-const PT = 72 / 25.4;
 const fontCache = new Map();
 async function fontBytes(key) {
   if (!fontCache.has(key)) fontCache.set(key, fetch(FONTS[key]).then(r => { if (!r.ok) throw new Error('Could not load the font.'); return r.arrayBuffer(); }));

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { openApp, noProblems, mode, fixture } from './helpers.js';
+import { readFileSync } from 'node:fs';
+import { openApp, noProblems, mode, fixture, setField } from './helpers.js';
 
 const MODES = ['stickers', 'cards', 'vouchers', 'winietka', 'guillotine', 'deck', 'gang', 'morgana', 'duplex', 'vinyl', 'pen', 'squares', 'svgplt'];
 
@@ -39,5 +40,43 @@ test('vinyl and pen modes cut the shapes as drawn', async ({ page }) => {
   await mode(page, 'vinyl');
   await page.setInputFiles('#files', [fixture('star.svg')]);
   await expect(page.locator('#count')).toHaveText(/\d+ copies on the vinyl/);
+  noProblems(problems);
+});
+
+test('a file that can’t be read stays mentioned next to the ones that could', async ({ page }) => {
+  const problems = await openApp(page);
+  await page.setInputFiles('#files', [{ name: 'broken.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg') }, { name: 'star.svg', mimeType: 'image/svg+xml', buffer: readFileSync(fixture('star.svg')) }]);
+  await expect(page.locator('#count')).toHaveText(/\d+ stickers? on the sheet/);
+  // still there after the sheet has been laid out (it used to be wiped a moment after it appeared)
+  await expect(page.locator('#msg')).toContainText('broken.svg');
+  await expect(page.locator('#list li.design')).toHaveCount(1);
+  // only a broken file: the list goes back to its empty state
+  await page.click('#list .remove');
+  await page.setInputFiles('#files', [{ name: 'broken.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg') }]);
+  await expect(page.locator('#list li.empty')).toHaveCount(1);
+  await expect(page.locator('#msg')).toContainText('broken.svg');
+  noProblems(problems);
+});
+
+test('vinyl: a shape too big for the material with a weeding box around everything shows an empty layout, not an error', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'vinyl');
+  await setField(page, 'vWeed', 'all');
+  await page.setInputFiles('#files', [fixture('star.svg')]);
+  await expect(page.locator('#count')).toHaveText(/\d+ copies on the vinyl/);
+  await page.fill('#list .h', '400'); // wider than the 300 mm material
+  await expect(page.locator('#count')).toHaveText('0 copies on the vinyl');
+  await expect(page.locator('#msg')).not.toContainText('undefined');
+  await expect(page.locator('#stage svg')).toHaveCount(1);
+  noProblems(problems);
+});
+
+test('files dropped on a mode that takes none are ignored', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'squares');
+  const data = await page.evaluateHandle(() => { const dt = new DataTransfer(); dt.items.add(new File(['<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>'], 'a.svg', { type: 'image/svg+xml' })); return dt; });
+  await page.dispatchEvent('body', 'drop', { dataTransfer: data });
+  await mode(page, 'stickers');
+  await expect(page.locator('#count')).toHaveText('Empty sheet');
   noProblems(problems);
 });

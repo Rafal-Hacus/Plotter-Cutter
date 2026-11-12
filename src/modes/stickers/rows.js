@@ -1,11 +1,13 @@
+// The list of designs in the side panel: one row per design with its size, copies and status.
+// The vinyl and pen modes use the same list.
 import { detectCircle } from '../../core/image.js';
-import { num } from '../../core/svg.js';
-import { CUT_RED, ui } from '../../dom.js';
+import { mm1, num } from '../../core/svg.js';
+import { CUT_RED, EMPTY_LIST, ui } from '../../dom.js';
+import { rebuildCircle } from './index.js';
+import { isMarkless, vOpts } from '../vinyl.js';
 import { schedule } from '../../pipeline.js';
 import { readOpts } from '../../settings.js';
 import { designs, state } from '../../state.js';
-import { isMarkless, vOpts } from '../vinyl.js';
-import { rebuildCircle } from './index.js';
 
 function thumbSvg(d) {
   if (isMarkless() && d.vres) return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${num(d.vres.boxW)} ${num(d.vres.boxH)}"><path d="${d.vres.pathD}" fill="rgba(35,31,32,.15)" fill-rule="evenodd" stroke="${CUT_RED}" stroke-width="1" vector-effect="non-scaling-stroke"/></svg>`;
@@ -23,14 +25,14 @@ export function updateRow(d) {
     if (d.verr) { st.textContent = d.verr; return; }
     if (d.busy || !d.vres) { st.textContent = 'Reading the shapes…'; return; }
     const r = d.vres, n = state.vinylLayout ? state.vinylLayout.counts.get(d.id) || 0 : 0;
-    st.textContent = `${state.mode === 'pen' ? 'Drawing' : 'Cut'} ${num(Math.round(r.frW * 10) / 10)} × ${num(Math.round(r.frH * 10) / 10)} mm, ${r.nPaths} paths. ${n === 1 ? `1 on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.` : `${n} on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.`}${vOpts().vMirror ? ' Mirrored.' : ''}`;
+    st.textContent = `${state.mode === 'pen' ? 'Drawing' : 'Cut'} ${mm1(r.frW)} × ${mm1(r.frH)} mm, ${r.nPaths} paths. ${n === 1 ? `1 on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.` : `${n} on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.`}${vOpts().vMirror ? ' Mirrored.' : ''}`;
     return;
   }
   st.classList.toggle('err', !!d.error);
   if (d.error) { st.textContent = d.error; return; }
   if (d.busy || !d.res) { st.textContent = 'Tracing outline…'; return; }
   const r = d.res, bits = [];
-  bits.push(`${r.cutMode ? 'Cut line' : 'Art'} ${num(Math.round(r.frW * 10) / 10)} × ${num(Math.round(r.frH * 10) / 10)} mm, die cut ${num(Math.round(r.cutW * 10) / 10)} × ${num(Math.round(r.cutH * 10) / 10)} mm.`);
+  bits.push(`${r.cutMode ? 'Cut line' : 'Art'} ${mm1(r.frW)} × ${mm1(r.frH)} mm, die cut ${mm1(r.cutW)} × ${mm1(r.cutH)} mm.`);
   if (state.layout) { const n = state.layout.counts.get(d.id) || 0; bits.push(n === 1 ? '1 on the sheet.' : `${n} on the sheet.`); }
   if (d.circle) bits.push(d.circle.found ? 'Round sticker: the cut circle was placed on the circle found in the PDF (2 % inside its edge); adjust it below if needed.' : 'Round sticker: no clear circle found in the PDF, so the cut circle is centred at 90 % of the page; adjust it below.');
   else if (r.cutMode) bits.push('Kiss cut follows the line in the file; everything outside the easy-peel margin is cropped off.');
@@ -62,7 +64,7 @@ export function addRow(d) {
   li.querySelector('.dname').textContent = d.name;
   li.querySelector('.dname').title = d.name;
   const hIn = li.querySelector('.h'), qIn = li.querySelector('.q'), rm = li.querySelector('.remove');
-  hIn.value = num(Math.round(d.heightMm * 10) / 10);
+  hIn.value = mm1(d.heightMm);
   rm.setAttribute('aria-label', `Remove ${d.name}`);
   const mIn = li.querySelector('.m');
   mIn.value = d.mode;
@@ -95,7 +97,7 @@ export function addRow(d) {
   rm.addEventListener('click', () => {
     const i = designs.indexOf(d); if (i >= 0) designs.splice(i, 1);
     li.remove();
-    if (!designs.length) ui.list.innerHTML = '<li class="empty">No stickers yet.</li>';
+    if (!designs.length) ui.list.innerHTML = EMPTY_LIST;
     schedule();
   });
   d.ui = { li, thumb: li.querySelector('.thumb'), status: li.querySelector('.status') };

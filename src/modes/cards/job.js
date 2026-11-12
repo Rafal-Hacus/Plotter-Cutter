@@ -1,13 +1,14 @@
+// The PDF jobs of the card modes, the sheets they print on, and the fixed data of each mode.
+import { byId } from '../../dom.js';
 import { state } from '../../state.js';
-import { cropMarks } from './layout.js';
 
-/* ---------- business cards mode ---------- */
-
-const newPrintJob = () => ({ imgSrc: null, name: null, bytes: null, pages: 0, pageW: 0, pageH: 0, mbx: 0, mby: 0, previews: [], layout: null, bleed: null });
-export const kinds = { cards: newPrintJob(), vouchers: newPrintJob(), guillotine: newPrintJob(), morgana: newPrintJob(), gang: newPrintJob(), deck: newPrintJob(), winietka: newPrintJob() };
+// The card modes each keep their own PDF job, so switching between them loses nothing. state.job is the open one's.
+export const PRINT_MODES = ['cards', 'vouchers', 'winietka', 'guillotine', 'deck', 'morgana'];
+// items: the cards of a winietki job (one PDF page each); imgSrc: the pictures a job was made from, if any
+const newPrintJob = () => ({ imgSrc: null, name: null, bytes: null, pages: 0, pageW: 0, pageH: 0, mbx: 0, mby: 0, previews: [], layout: null, bleed: null, items: [] });
+export const kinds = Object.fromEntries([...PRINT_MODES, 'gang'].map(m => [m, newPrintJob()]));
 state.job = kinds.cards;
- // the PDF job of the current mode
-export function isPrintMode() { return state.mode === 'cards' || state.mode === 'vouchers' || state.mode === 'guillotine' || state.mode === 'morgana' || state.mode === 'deck' || state.mode === 'winietka'; }
+export function isPrintMode() { return PRINT_MODES.includes(state.mode); }
 // guillotine sheet (also the card deck): chosen under Sheet; print sheets mode stays on 310 × 440
 function gSheetMm() {
   if (state.mode === 'gang') return [310, 440];
@@ -20,7 +21,7 @@ function gSheetMm() {
   return m ? [+m[1], +m[2]] : [310, 440];
 }
 export const G_PAGE = { get wMm() { return gSheetMm()[0]; }, get hMm() { return gSheetMm()[1]; } };
-document.getElementById('gPage').addEventListener('change', () => { document.getElementById('rowGPageCustom').hidden = document.getElementById('gPage').value !== 'custom'; });
+byId('gPage').addEventListener('change', () => { byId('rowGPageCustom').hidden = byId('gPage').value !== 'custom'; });
 const SIZES = { A3: [297, 420], A4: [210, 297], A5: [148, 210], A6: [105, 148], DL: [99, 210] };
 // guillotine: print the PDF scaled to a standard size (orientation follows the PDF)
 export function pageScale(o) {
@@ -32,7 +33,12 @@ export function pageScale(o) {
   const [a, b] = sw >= sh ? [t[1], t[0]] : t;
   return Math.min(a / sw, b / sh);
 }
-export function pageDims() { return state.mode === 'guillotine' || state.mode === 'gang' || state.mode === 'deck' ? G_PAGE : state.mode === 'morgana' ? M_PAGE : { wMm: state.template.wMm, hMm: state.template.hMm }; }
+// the sheet the open mode prints on
+export function pageDims() {
+  if (state.mode === 'guillotine' || state.mode === 'gang' || state.mode === 'deck') return G_PAGE;
+  if (state.mode === 'morgana') return M_PAGE;
+  return { wMm: state.template.wMm, hMm: state.template.hMm };
+}
 // Morgana CardXtra SRA3 template (calibrated, 20-up): 90 × 50 slot trims and the reading mark, taken 1:1 from the template PDF.
 export const M_PAGE = { wMm: 450, hMm: 320 };
 export const M_TPL = {
@@ -40,15 +46,7 @@ export const M_TPL = {
   backCols: [17.9, 118.5, 219.1, 319.7], backRows: [17.012, 77.012, 137.012, 197.012, 257.012],
   mark: [6.011, 145.034, 7.959, 29.972], w: 90, h: 50
 };
-export const rotPlace = (r, Bx, By, pw, ph) => r === 90 ? [0, 1, -1, 0, Bx + ph, By] : r === 180 ? [-1, 0, 0, -1, Bx + pw, By + ph] : r === 270 ? [0, -1, 1, 0, Bx, By + pw] : [1, 0, 0, 1, Bx, By];
 export const deckPer = () => state.mode === 'deck' ? 2 : 1;
-// the crop marks as they land on the back page (mirrored like the cards, with the back shift)
-export function backMarks(L, o) {
-  const pg = pageDims();
-  return cropMarks(L, o).map(m => o.cFlip === 'short'
-    ? [m[0] + o.cOffX, pg.hMm - m[1] + o.cOffY, m[2] + o.cOffX, pg.hMm - m[3] + o.cOffY]
-    : [pg.wMm - m[0] + o.cOffX, m[1] + o.cOffY, pg.wMm - m[2] + o.cOffX, m[3] + o.cOffY]);
-}
 export const KIND = {
   cards: { title: 'Business cards', one: 'card', many: 'cards', file: 'business-cards', hint: 'One PDF: page 1 is the front, page 2 the back, both with bleed (e.g. 94 × 54 mm for a 90 × 50 card). Or one or two images (PNG, JPG, WebP…): front, then back. You can also drop them on the sheet.' },
   morgana: { title: 'Morgana CardXtra', one: 'card', many: 'cards', file: 'morgana', hint: 'One PDF of a 90 × 55, 90 × 50 or 85 × 55 card (set the cut size) with bleed: page 1 the front, page 2 the back. Or one or two images (front, back): they are cut at the CardXtra size, at 100 % from their dpi. Imposed 20-up on SRA3 (450 × 320) on the CardXtra template slots, each card in the bottom-left corner of its slot, with the black reading mark on both sides. You can also drop it on the sheet.' },
@@ -57,3 +55,6 @@ export const KIND = {
   guillotine: { title: 'Guillotine', one: 'copy', many: 'copies', file: 'guillotine', hint: 'One PDF with bleed: page 1 the front, page 2 the back (optional). Copies are laid out on the chosen sheet (310 × 440 by default) with crop marks for the guillotine. A multi-page PDF of different one-sided cards: set PDF pages to “every page a separate card”. You can also drop it on the sheet.' },
   vouchers: { title: 'Vouchers', one: 'voucher', many: 'vouchers', file: 'vouchers', hint: 'One PDF of the opened-out voucher: page 1 the outside, page 2 the inside, with bleed. The fold is perforated across the long side. You can also drop it on the sheet.' }
 };
+// a multi-page job laid out card by card: the card deck (front + back per card) or the guillotine with
+// "every page a separate card" (one page per card, one-sided)
+export const deckLike = () => state.mode === 'deck' || (state.mode === 'guillotine' && document.getElementById('gPages').value === 'each');

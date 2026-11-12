@@ -1,20 +1,20 @@
-import { readAsDataUrl } from '../core/image.js';
+// Print sheets (gang printing for the guillotine): pictures and PDF pages, each scaled with its proportions kept
+// to cover the chosen format plus bleed (or to fit inside it), imposed on 310 × 440 sheets with crop marks.
+import { jpegOrientation, readAsDataUrl } from '../core/image.js';
 import { PT, mul } from '../core/matrix.js';
-import { num } from '../core/svg.js';
-import { asciiOnly, tick } from '../core/util.js';
-import { CUT_RED, setCardMsg, ui } from '../dom.js';
-import { saveFile } from '../export/files.js';
+import { mm1, num } from '../core/svg.js';
+import { asciiOnly, isImageFile, isPdfFile, tick } from '../core/util.js';
+import { CUT_RED, byId, saveFile, setMsg, ui } from '../dom.js';
+import { drawClipped, drawCropMarks } from '../export/pdf-draw.js';
 import { ensureLibs, pdfSource } from '../lib/pdf.js';
+import { G_PAGE, kinds } from './cards/job.js';
+import { computeCardLayout, cropMarks } from './cards/layout.js';
+import { registerMode } from './registry.js';
 import { renderPreview, schedule } from '../pipeline.js';
 import { readOpts } from '../settings.js';
 import { state } from '../state.js';
 import { applyView } from '../viewport.js';
-import { G_PAGE, kinds } from './cards/job.js';
-import { cropMarks } from './cards/layout.js';
-import { computeCardLayout } from './cards/load.js';
-import { registerMode } from './registry.js';
 
-/* ---------- print sheets (gang printing for the guillotine) ---------- */
 // Images and PDF pages, each scaled with its proportions kept to cover the chosen format plus bleed
 // (or to fit inside it), centred, imposed on 310 × 440 sheets with crop marks.
 const gang = { items: [], layout: null, sheets: 0, view: 0 };
@@ -27,41 +27,57 @@ function gangFormat(o) {
   const f = o.ggFormat === 'custom' ? [o.ggW, o.ggH] : (GFORMATS[o.ggFormat] || [100, 150]);
   return [Math.max(5, f[0]), Math.max(5, f[1])];
 }
-async function gangAddFiles(fileList) {
-  const files = Array.from(fileList);
-  setCardMsg('Reading files…');
-  for (const f of files) {
-    try {
-      if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') {
-        await ensureLibs();
-        const bytes = new Uint8Array(await f.arrayBuffer());
-        const pdf = await window.pdfjsLib.getDocument(pdfSource(bytes.slice())).promise;
-        const lib = await window.PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
-        for (let i = 0; i < pdf.numPages; i++) {
-          const pg = await pdf.getPage(i + 1), mb = lib.getPage(i).getMediaBox();
-          const vp = pg.getViewport({ scale: 4 / PT });
-          const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
-          await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-          gang.items.push({ id: gangNext++, name: pdf.numPages > 1 ? `${f.name} p.${i + 1}` : f.name, kind: 'pdf', bytes, page: i, w: mb.width, h: mb.height, mbx: mb.x, mby: mb.y, preview: cv.toDataURL('image/jpeg', 0.85), copies: 1 });
-        }
-      } else if (/^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(f.name)) {
-        const url = await readAsDataUrl(f);
-        const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('unreadable image')); im.src = url; });
-        let bytes = new Uint8Array(await f.arrayBuffer()), mime = /png/i.test(f.type) || /\.png$/i.test(f.name) ? 'png' : 'jpg';
-        if (!/^image\/(jpeg|png)$/.test(f.type) && !/\.(jpe?g|png)$/i.test(f.name)) { // other formats: re-encode as JPEG
-          const cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
-          const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(img, 0, 0);
-          bytes = new Uint8Array(await (await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.95))).arrayBuffer()); mime = 'jpg';
-        }
-        gang.items.push({ id: gangNext++, name: f.name, kind: 'img', bytes, mime, w: img.naturalWidth, h: img.naturalHeight, preview: url, copies: 1 });
-      }
-    } catch (e) { setCardMsg(`${f.name}: ${e.message || e}`, true); }
+// A picture as the PDF will carry it: PNG and upright JPEG as they are; other formats, and JPEGs the camera
+// marked as turned (EXIF orientation), drawn upright and saved as JPEG. Without that a phone photo would be laid
+// out by its upright size but printed sideways.
+async function readPicture(f) {
+  const url = await readAsDataUrl(f);
+  const img = await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('unreadable image')); im.src = url; });
+  let bytes = new Uint8Array(await f.arrayBuffer());
+  const png = bytes[0] === 0x89 && bytes[1] === 0x50, jpg = bytes[0] === 0xFF && bytes[1] === 0xD8;
+  let mime = png ? 'png' : 'jpg';
+  if (!png && !(jpg && jpegOrientation(bytes) === 1)) {
+    const cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+    const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height); cx.drawImage(img, 0, 0);
+    bytes = new Uint8Array(await (await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.95))).arrayBuffer()); mime = 'jpg';
+    cv.width = cv.height = 1;
   }
+  return { kind: 'img', bytes, mime, w: img.naturalWidth, h: img.naturalHeight, preview: url };
+}
+// every page of a PDF as an item of its own
+async function readPdfPages(f) {
+  await ensureLibs();
+  const bytes = new Uint8Array(await f.arrayBuffer()), pages = [];
+  const pdf = await window.pdfjsLib.getDocument(pdfSource(bytes.slice())).promise;
+  const lib = await window.PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
+  for (let i = 0; i < pdf.numPages; i++) {
+    const pg = await pdf.getPage(i + 1), mb = lib.getPage(i).getMediaBox();
+    const vp = pg.getViewport({ scale: 4 / PT });
+    const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
+    await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+    pages.push({ name: pdf.numPages > 1 ? `${f.name} p.${i + 1}` : f.name, kind: 'pdf', bytes, page: i, w: mb.width, h: mb.height, mbx: mb.x, mby: mb.y, preview: cv.toDataURL('image/jpeg', 0.85) });
+    cv.width = cv.height = 1;
+  }
+  return pages;
+}
+async function gangAddFiles(fileList) {
+  const failed = [];
+  setMsg('Reading files…');
+  for (const f of Array.from(fileList)) {
+    try {
+      let found;
+      if (isPdfFile(f)) found = await readPdfPages(f);
+      else if (isImageFile(f)) found = [{ name: f.name, ...await readPicture(f) }];
+      else throw new Error('not a picture or a PDF');
+      for (const it of found) gang.items.push({ id: gangNext++, copies: 1, ...it });
+    } catch (e) { failed.push(`${f.name}: ${e.message || e}.`); }
+  }
+  state.loadError = failed.join(' ');
   gangList();
   schedule();
 }
 function gangList() {
-  const ul = document.getElementById('gangList');
+  const ul = byId('gangList');
   ul.innerHTML = '';
   if (!gang.items.length) { ul.innerHTML = '<li class="empty">No files yet.</li>'; return; }
   for (const it of gang.items) {
@@ -77,7 +93,7 @@ function gangList() {
     if (it.kind === 'img') {
       const ed = li.querySelector('.ged'); ed.hidden = false;
       if (it.edit) li.querySelector('.gst').textContent = 'Edited for the format (the original is kept: edit again to change it).';
-      ed.addEventListener('click', () => gangEdit(it).catch(e => setCardMsg(`Couldn’t open the editor: ${e.message || e}`, true)));
+      ed.addEventListener('click', () => gangEdit(it).catch(e => setMsg(`Couldn’t open the editor: ${e.message || e}`, true)));
     }
     ul.appendChild(li);
   }
@@ -94,14 +110,14 @@ async function gangEdit(it) {
 }
 function gangCompute(o) {
   const go = gangOpts(o), [fw, fh] = gangFormat(o);
+  // the guillotine's grid, for a "page" of the chosen format plus bleed
   const job = kinds.gang;
   job.pageW = fw + 2 * go.cBleed; job.pageH = fh + 2 * go.cBleed; job.bytes = gang.items.length ? true : null;
-  state.job = job;
-  gang.layout = gang.items.length ? computeCardLayout(null, go) : null;
+  gang.layout = gang.items.length ? computeCardLayout(null, go, job) : null;
   const total = gang.items.reduce((s, it) => s + it.copies, 0), n = gang.layout ? gang.layout.n : 0;
   gang.sheets = n ? Math.ceil(total / n) : 0;
   gang.view = Math.min(gang.view, Math.max(0, gang.sheets - 1));
-  const sel = document.getElementById('gangSheet');
+  const sel = byId('gangSheet');
   sel.innerHTML = Array.from({ length: Math.max(1, gang.sheets) }, (_, i) => `<option value="${i}">Sheet ${i + 1}${gang.sheets ? ` of ${gang.sheets}` : ''}</option>`).join('');
   sel.value = String(gang.view);
 }
@@ -146,8 +162,8 @@ function renderGangPreview() {
 function renderGangStats(busyText) {
   const L = gang.layout, n = L ? L.n : 0, total = gang.items.reduce((s, it) => s + it.copies, 0);
   ui.dropNote.hidden = gang.items.length > 0;
-  document.getElementById('exGang').disabled = !n || !total || !!busyText;
-  document.getElementById('exGangProof').disabled = !n || !total || !!busyText;
+  byId('exGang').disabled = !n || !total || !!busyText;
+  byId('exGangProof').disabled = !n || !total || !!busyText;
   if (busyText) { ui.count.textContent = busyText; return; }
   ui.count.textContent = !gang.items.length ? 'No files yet' : `${total} ${total === 1 ? 'print' : 'prints'} on ${gang.sheets} ${gang.sheets === 1 ? 'sheet' : 'sheets'}`;
   const notes = [];
@@ -155,16 +171,15 @@ function renderGangStats(busyText) {
     const [fw, fh] = gangFormat(readOpts());
     if (!n) notes.push('The format doesn’t fit on the sheet.');
     else {
-      const f = v => num(Math.round(v * 10) / 10);
       notes.push(`${n} per sheet (${L.cols} × ${L.rows}${L.rot ? ', rotated' : ''}), ${num(fw)} × ${num(fh)} mm + ${num(readOpts().ggBleed)} mm bleed.`);
-      notes.push(`Cuts from the left edge: ${L.cutsX.map(f).join(', ')} mm. From the top: ${L.cutsY.map(f).join(', ')} mm.`);
+      notes.push(`Cuts from the left edge: ${L.cutsX.map(mm1).join(', ')} mm. From the top: ${L.cutsY.map(mm1).join(', ')} mm.`);
     }
   }
-  setCardMsg(notes.join(' '), gang.items.length > 0 && !n);
+  setMsg(notes.join(' '), gang.items.length > 0 && !n);
 }
 async function buildGangPdf() {
   await ensureLibs();
-  const { PDFDocument, pushGraphicsState, popGraphicsState, concatTransformationMatrix, rectangle, clip, endPath, drawObject, rgb } = window.PDFLib;
+  const { PDFDocument } = window.PDFLib;
   const o = readOpts(), go = gangOpts(o), L = gang.layout, fill = o.ggFit === 'fill', seq = gangSlots();
   const out = await PDFDocument.create(), Wpt = G_PAGE.wMm * PT, Hpt = G_PAGE.hMm * PT;
   // embed every source once
@@ -178,9 +193,9 @@ async function buildGangPdf() {
       emb.set(it, pgE);
     }
   }
-  const marks = cropMarks(L, go), black = rgb(0, 0, 0);
+  const marks = cropMarks(L, go);
   for (let sh = 0; sh < gang.sheets; sh++) {
-    setCardMsg(`Sheet ${sh + 1} of ${gang.sheets}…`);
+    setMsg(`Sheet ${sh + 1} of ${gang.sheets}…`);
     await tick();
     const page = out.addPage([Wpt, Hpt]), names = new Map();
     L.items.forEach((slot, i) => {
@@ -195,22 +210,21 @@ async function buildGangPdf() {
       const s = pl.s * PT, x0 = pl.x * PT, yTop = Hpt - pl.y * PT, chPt = pl.ch * s;
       const R = pl.rot ? [0, s, -s, 0, x0 + pl.cw * s, yTop - chPt] : [s, 0, 0, s, x0, yTop - chPt];
       const M = mul(R, S0);
-      page.pushOperators(pushGraphicsState(), rectangle(rc[0] * PT, Hpt - (rc[1] + rc[3]) * PT, rc[2] * PT, rc[3] * PT), clip(), endPath(),
-        concatTransformationMatrix(...M), drawObject(names.get(e)), popGraphicsState());
+      drawClipped(page, names.get(e), rc, M, Hpt);
     });
-    for (const m of marks) page.drawLine({ start: { x: m[0] * PT, y: Hpt - m[1] * PT }, end: { x: m[2] * PT, y: Hpt - m[3] * PT }, thickness: 0.25, color: black });
+    drawCropMarks(page, marks, Hpt);
   }
   out.setTitle(`Print sheets, ${seq.length} prints`);
   return new Blob([await out.save()], { type: 'application/pdf' });
 }
-document.getElementById('gangFile').addEventListener('change', e => { const f = e.target.files; const list = Array.from(f); e.target.value = ''; if (list.length) gangAddFiles(list); });
-document.getElementById('gangSheet').addEventListener('change', e => { gang.view = parseInt(e.target.value, 10) || 0; renderPreview(); });
-document.getElementById('ggFormat').addEventListener('change', () => { document.getElementById('rowGGCustom').hidden = document.getElementById('ggFormat').value !== 'custom'; });
-document.getElementById('ggAuto').addEventListener('change', () => { document.getElementById('rowGGGap').hidden = document.getElementById('ggAuto').checked; });
-document.getElementById('exGang').addEventListener('click', async () => {
-  const btn = document.getElementById('exGang'); btn.disabled = true;
+byId('gangFile').addEventListener('change', e => { const files = Array.from(e.target.files); e.target.value = ''; if (files.length) gangAddFiles(files); });
+byId('gangSheet').addEventListener('change', e => { gang.view = parseInt(e.target.value, 10) || 0; renderPreview(); });
+byId('ggFormat').addEventListener('change', () => { byId('rowGGCustom').hidden = byId('ggFormat').value !== 'custom'; });
+byId('ggAuto').addEventListener('change', () => { byId('rowGGGap').hidden = byId('ggAuto').checked; });
+byId('exGang').addEventListener('click', async () => {
+  const btn = byId('exGang'); btn.disabled = true;
   try { const n = gangSlots().length; await saveFile(`print-sheets-${gang.sheets}x-${n}pcs.pdf`, await buildGangPdf()); renderGangStats(); }
-  catch (e) { setCardMsg(`Couldn’t build the PDF: ${e.message || e}`, true); }
+  catch (e) { setMsg(`Couldn’t build the PDF: ${e.message || e}`, true); }
   finally { btn.disabled = false; }
 });
 // Proof: every file whole, one A4 page each, with the cut line and the bleed edge drawn over it
@@ -262,11 +276,11 @@ async function buildGangProof() {
   out.setTitle('Print sheets proof');
   return new Blob([await out.save()], { type: 'application/pdf' });
 }
-document.getElementById('exGangProof').addEventListener('click', async () => {
-  const btn = document.getElementById('exGangProof'); btn.disabled = true;
+byId('exGangProof').addEventListener('click', async () => {
+  const btn = byId('exGangProof'); btn.disabled = true;
   try { await saveFile('print-sheets-proof.pdf', await buildGangProof()); }
-  catch (e) { setCardMsg(`Couldn’t build the proof: ${e.message || e}`, true); }
+  catch (e) { setMsg(`Couldn’t build the proof: ${e.message || e}`, true); }
   finally { btn.disabled = false; }
 });
 gangList();
-registerMode('gang', { compute: gangCompute, renderPreview: renderGangPreview, renderStats: renderGangStats, onDrop: files => gangAddFiles(files) });
+registerMode('gang', { compute: gangCompute, renderPreview: renderGangPreview, renderStats: renderGangStats, onDrop: gangAddFiles });

@@ -1,15 +1,45 @@
+// The stickers mode: adding designs, tracing their outlines and nesting them on the sheet.
 import { circleSvg, detectCircle } from '../../core/image.js';
-import { ui } from '../../dom.js';
+import { isPdfFile, tick } from '../../core/util.js';
+import { EMPTY_LIST, setMsg, ui } from '../../dom.js';
 import { ensureLibs, pdfSource } from '../../lib/pdf.js';
-import { computeStickers, schedule } from '../../pipeline.js';
-import { designs } from '../../state.js';
 import { registerMode } from '../registry.js';
-import { isMarkless } from '../vinyl.js';
-import { prepareDesign } from './design.js';
+import { prepareDesign, processDesign } from './design.js';
 import { renderStickerPreview, renderStickerStats } from './render.js';
 import { addRow, updateRow } from './rows.js';
+import { isMarkless } from '../vinyl.js';
+import { nestAll } from '../../nest.js';
+import { renderStats, schedule } from '../../pipeline.js';
+import { designs, state } from '../../state.js';
+import { templateSheet } from '../../template.js';
 
-registerMode('stickers', { compute: computeStickers, renderPreview: renderStickerPreview, renderStats: renderStickerStats, onDrop: files => addFiles(files) });
+// Trace every sticker that changed, then nest them on the sheet. Returns false when a newer run took over.
+async function computeStickers(o, stale) {
+  const sheet = await templateSheet(o);
+  if (stale()) return false;
+  for (const d of designs) {
+    const key = [d.mode, d.heightMm, o.kiss, o.die, o.gap, o.joinGap, o.quality, o.ignoreWhite].join('|');
+    if (d.key === key) continue;
+    d.busy = true; updateRow(d);
+    renderStats(`Tracing ${d.name}…`);
+    await tick();
+    let res = null, err = null;
+    try { res = await processDesign(d, o); }
+    catch (e) { err = e.message || String(e); }
+    if (stale()) return false;
+    d.res = res; d.error = err; d.key = key; d.busy = false;
+    updateRow(d);
+  }
+  const ready = designs.filter(d => d.res && d.qty !== 0);
+  renderStats('Arranging stickers…');
+  await tick();
+  const lay = ready.length ? await nestAll(ready, sheet, o, stale) : null;
+  if (stale()) return false;
+  state.layout = lay;
+  designs.forEach(updateRow);
+}
+registerMode('stickers', { compute: computeStickers, renderPreview: renderStickerPreview, renderStats: renderStickerStats, onDrop: addFiles });
+
 /* ---------- round stickers from a PDF: the page as artwork, a circle as the kiss cut ---------- */
 async function addPdfCircles(file) {
   await ensureLibs();
@@ -30,28 +60,33 @@ async function addPdfCircles(file) {
     designs.push(d); addRow(d);
   }
 }
+// after the circle of a round sticker was moved or resized: the design is made again around the new circle
 export function rebuildCircle(d) {
-  const nd = prepareDesign(circleSvg(d.circle), d.name), keep = { qty: d.qty, heightMm: d.heightMm, ui: d.ui, circle: d.circle };
-  for (const k of Object.keys(nd)) d[k] = nd[k];
-  Object.assign(d, keep);
-  d.mode = 'cut';
+  const keep = { qty: d.qty, heightMm: d.heightMm, ui: d.ui, circle: d.circle };
+  Object.assign(d, prepareDesign(circleSvg(d.circle), d.name), keep, { mode: 'cut' });
+  // the shapes read for the vinyl and pen modes belong to the old circle
+  d.vgeo = d.vres = d.vkey = null;
   updateRow(d); schedule();
 }
+// SVG files become stickers (or shapes, in the vinyl and pen modes); PDFs become round stickers.
 export async function addFiles(fileList) {
-  const isPdf = f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf';
-  const files = Array.from(fileList).filter(f => /\.svg$/i.test(f.name) || f.type === 'image/svg+xml' || (isPdf(f) && !isMarkless()));
-  if (!files.length) { ui.msg.textContent = isMarkless() ? 'Only SVG files can be added here.' : 'Only SVG and PDF files can be added.'; ui.msg.className = 'msg warn'; return; }
+  const pdfOk = !isMarkless();
+  const files = Array.from(fileList).filter(f => /\.svg$/i.test(f.name) || f.type === 'image/svg+xml' || (pdfOk && isPdfFile(f)));
+  if (!files.length) { setMsg(pdfOk ? 'Only SVG and PDF files can be added.' : 'Only SVG files can be added here.', true); return; }
   if (!designs.length) ui.list.innerHTML = '';
+  const failed = [];
   for (const f of files) {
     try {
-      if (isPdf(f)) { ui.msg.textContent = `Reading ${f.name}…`; ui.msg.className = 'msg'; await addPdfCircles(f); ui.msg.textContent = ''; continue; }
+      if (isPdfFile(f)) { setMsg(`Reading ${f.name}…`); await addPdfCircles(f); setMsg(''); continue; }
       const d = prepareDesign(await f.text(), f.name);
       designs.push(d); addRow(d);
     } catch (e) {
-      ui.msg.textContent = `${f.name}: ${e.message}`; ui.msg.className = 'msg warn';
+      failed.push(`${f.name}: ${e.message}`);
     }
   }
+  if (!designs.length) ui.list.innerHTML = EMPTY_LIST;
+  // shown with the sheet's own notes until the next files are added
+  state.loadError = failed.join(' ');
   schedule();
 }
-/* ---------- wiring ---------- */
 ui.files.addEventListener('change', () => { addFiles(ui.files.files); ui.files.value = ''; });

@@ -15,12 +15,14 @@ export function makeZip(files) {
   let offset = 0;
   for (const f of files) {
     const name = enc.encode(f.name), data = f.bytes || enc.encode(f.text), crc = crc32(data);
+    // names with letters outside ASCII are marked as UTF-8, or they come out garbled when unpacked
+    const flags = name.length === f.name.length ? 0 : 0x0800;
     const lh = new DataView(new ArrayBuffer(30));
-    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(12, 0x21, true);
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, flags, true); lh.setUint16(12, 0x21, true);
     lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true); lh.setUint32(22, data.length, true); lh.setUint16(26, name.length, true);
     parts.push(new Uint8Array(lh.buffer), name, data);
     const ch = new DataView(new ArrayBuffer(46));
-    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(14, 0x21, true);
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, flags, true); ch.setUint16(14, 0x21, true);
     ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true); ch.setUint32(24, data.length, true); ch.setUint16(28, name.length, true); ch.setUint32(42, offset, true);
     central.push(new Uint8Array(ch.buffer), name);
     offset += 30 + name.length + data.length;

@@ -1,14 +1,15 @@
+// The cut lines as files for SignCut: a cut SVG built like the LemurPrints.CutMarks tool writes it, and a plain
+// vector PDF with one layer per cut layer.
 import { lemurMarks } from '../core/marks.js';
 import { PT } from '../core/matrix.js';
 import { aiId, num, pathEl } from '../core/svg.js';
-import { setCardMsg } from '../dom.js';
+import { byId, saveFile, setMsg } from '../dom.js';
+import { cssRgb, svgPathPt } from './pdf-draw.js';
 import { ensureLibs } from '../lib/pdf.js';
-import { templateShapes } from '../modes/cards/render.js';
 import { readOpts } from '../settings.js';
 import { state } from '../state.js';
-import { saveFile } from './files.js';
+import { templateShapes } from '../template.js';
 
-/* ---------- cut SVG for SignCut, built 1:1 like the LemurPrints.CutMarks tool ---------- */
 // layers: [{ name, color, paths: [{ pts (sheet mm), closed }] }]
 export function lemurCutSvg(layers) {
   const W = state.template.wMm, H = state.template.hMm, sw = num(readOpts().lineW);
@@ -21,8 +22,6 @@ export function lemurCutSvg(layers) {
   s.push(lemurMarks(W, H, state.template.feedTop || 0), '</svg>\n');
   return s.join('');
 }
-/* ---------- cut lines as PDF (vector, one PDF layer per cut layer) ---------- */
-const hexRgb = h => { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(h) || [0, '00', '00', '00']; return window.PDFLib.rgb(parseInt(m[1], 16) / 255, parseInt(m[2], 16) / 255, parseInt(m[3], 16) / 255); };
 // layers: [{ name, color, paths: [{ pts (sheet mm), closed }] }]; marks: true to add the registration marks layers
 export async function buildCutPdf(Wmm, Hmm, layers, marks) {
   await ensureLibs();
@@ -38,14 +37,13 @@ export async function buildCutPdf(Wmm, Hmm, layers, marks) {
     draw();
     page.pushOperators(PDFOperator.of(PDFOperatorNames.EndMarkedContent));
   };
-  const d = (pts, closed) => 'M ' + pts.map(q => `${(q[0] * PT).toFixed(3)} ${(q[1] * PT).toFixed(3)}`).join(' L ') + (closed ? ' Z' : '');
   if (marks) {
     const sh = templateShapes(), black = rgb(0, 0, 0);
-    layer('scpro2_regmarks', () => { for (const m of sh.filter(x => x.closed && x.fill)) page.drawSvgPath(d(m.pts, true), { x: 0, y: Hpt, color: black }); });
-    layer('scpro2_printonly', () => { for (const m of sh.filter(x => !(x.closed && x.fill))) page.drawSvgPath(d(m.pts, m.closed), { x: 0, y: Hpt, borderColor: black, borderWidth: Math.max(0.25, m.sw * PT) }); });
+    layer('scpro2_regmarks', () => { for (const m of sh.filter(x => x.closed && x.fill)) page.drawSvgPath(svgPathPt(m.pts, true), { x: 0, y: Hpt, color: black }); });
+    layer('scpro2_printonly', () => { for (const m of sh.filter(x => !(x.closed && x.fill))) page.drawSvgPath(svgPathPt(m.pts, m.closed), { x: 0, y: Hpt, borderColor: black, borderWidth: Math.max(0.25, m.sw * PT) }); });
   }
   const lw = Math.max(0.1, readOpts().lineW * PT);
-  for (const L of layers) layer(L.name, () => { const c = hexRgb(L.color); for (const p of L.paths) page.drawSvgPath(d(p.pts, p.closed), { x: 0, y: Hpt, borderColor: c, borderWidth: lw }); });
+  for (const L of layers) layer(L.name, () => { const c = cssRgb(L.color); for (const p of L.paths) page.drawSvgPath(svgPathPt(p.pts, p.closed), { x: 0, y: Hpt, borderColor: c, borderWidth: lw }); });
   page.node.Resources().set(PDFName.of('Properties'), props);
   pdf.catalog.set(PDFName.of('OCProperties'), ctx.obj({ OCGs: ocgs, D: { Order: ocgs, ON: ocgs } }));
   pdf.setTitle('Cut lines');
@@ -61,11 +59,11 @@ export async function buildCutPdf(Wmm, Hmm, layers, marks) {
 }
 // Wire a button that builds a PDF and saves it: name() gives the file name, make() the PDF.
 export function pdfClick(id, name, make) {
-  const btn = document.getElementById(id);
+  const btn = byId(id);
   btn.addEventListener('click', async () => {
     btn.disabled = true;
     try { await saveFile(name(), await make()); }
-    catch (e) { setCardMsg(`Couldn’t build the PDF: ${e.message || e}`, true); }
+    catch (e) { setMsg(`Couldn’t build the PDF: ${e.message || e}`, true); }
     finally { btn.disabled = false; }
   });
 }

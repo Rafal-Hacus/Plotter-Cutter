@@ -1,9 +1,10 @@
+// A sticker design: reading the SVG (prepareDesign) and tracing its kiss-cut and die-cut outlines at the chosen
+// size (processDesign).
 import { CELL, edt, fillHolesBin, fillHolesField, joinNear, loopArea, makeMask, march, rotBits, simplifyLoop } from '../../core/geometry.js';
 import { sanitize } from '../../core/sanitize.js';
 import { MM_PER, SHAPES, XLINK, dataUri, esc, loadImg, num, parseLen, parseSvg, prefixDoc, readViewBox, ser, sizedSvg, splitRoot, windowSvg } from '../../core/svg.js';
 import { tick } from '../../core/util.js';
 
-/* ---------- designs ---------- */
 // Vector shapes that look like cut lines: stroked, with no visible fill. Indices into the SHAPES list.
 function detectCutShapes(doc) {
   const hasImage = !!doc.querySelector('image');

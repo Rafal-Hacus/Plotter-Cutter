@@ -1,13 +1,13 @@
+// The sticker sheet as files: print and cut SVG, cut PDF, PLTs.
 import { SLOT_RE, aiId, num, pathEl } from '../../core/svg.js';
 import { makeZip } from '../../core/zip.js';
-import { ui } from '../../dom.js';
+import { saveFile, ui } from '../../dom.js';
 import { buildCutPdf, closedAll, lemurCutSvg, pdfClick } from '../../export/cut-files.js';
-import { buildPlt, saveFile } from '../../export/files.js';
+import { buildPlt } from '../../export/files.js';
 import { artTransform, placeMatrix } from '../../nest.js';
 import { readOpts } from '../../settings.js';
 import { state } from '../../state.js';
 
-/* ---------- export ---------- */
 // vec: for the print PDF, round stickers made from a PDF are left out here and drawn from the original PDF instead
 // A rotated PDF page is printed from its rendered image: the vector embed would come out unrotated.
 export const vecCircle = d => !!(d.circle && d.circle.pdf && !d.circle.rot);
@@ -71,8 +71,6 @@ export function stickerLoops(L, key) {
   }
   return res;
 }
-// Centre lines of a template's registration marks in sheet mm, as writePlt expects them.
-export const markFrame = t => ({ top: (t.marks.top - t.vb.y) / t.u, bottom: (t.marks.bottom - t.vb.y) / t.u, left: (t.marks.left - t.vb.x) / t.u, right: (t.marks.right - t.vb.x) / t.u });
 export function exportName(kind) {
   const n = state.layout ? state.layout.items.length : 0;
   const base = `sticker-sheet-${n}pcs`;

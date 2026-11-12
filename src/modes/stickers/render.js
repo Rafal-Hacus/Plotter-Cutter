@@ -1,6 +1,7 @@
+// The sheet preview and the notes of the stickers mode.
 import { CELL } from '../../core/geometry.js';
 import { SLOT_RE, num } from '../../core/svg.js';
-import { CUT_RED, ui } from '../../dom.js';
+import { CUT_RED, byId, ui } from '../../dom.js';
 import { placeMatrix } from '../../nest.js';
 import { readOpts } from '../../settings.js';
 import { designs, state } from '../../state.js';
@@ -51,9 +52,9 @@ export function renderStickerStats(busyText) {
   const ready = designs.filter(d => d.res);
   ui.dropNote.hidden = designs.length > 0;
   for (const b of [ui.exAll, ui.exPrint, ui.exCut]) b.disabled = !total || !!busyText;
-  document.getElementById('exPdf').disabled = !total || !!busyText;
-  document.getElementById('exCutPdf').disabled = !total || !!busyText;
-  document.getElementById('exBatch').disabled = !designs.some(d => d.res) || !!busyText || !(state.template && state.template.marks);
+  byId('exPdf').disabled = !total || !!busyText;
+  byId('exCutPdf').disabled = !total || !!busyText;
+  byId('exBatch').disabled = !designs.some(d => d.res) || !!busyText || !(state.template && state.template.marks);
   ui.exPlt.disabled = !total || !!busyText || !(state.template && state.template.marks);
   if (busyText) { ui.count.textContent = busyText; return; }
   ui.count.textContent = !designs.length ? 'Empty sheet' : total === 1 ? '1 sticker on the sheet' : `${total} stickers on the sheet`;

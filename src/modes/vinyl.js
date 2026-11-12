@@ -1,22 +1,21 @@
+// Vinyl and pen modes: the shapes of the designs cut (or drawn) as they are, nested on a roll without
+// registration marks. The origin is the knife: the bottom right corner of the material.
 import { contourFill, hatchLines } from '../core/fill.js';
 import { CELL, edt, fillHolesBin, makeMask, rdp, rotBits, simplifyLoop } from '../core/geometry.js';
-import { dragKnife } from '../core/plt.js';
+import { closedTip, dragKnife, speedTokens, strokeTokens } from '../core/plt.js';
 import { SHAPES, aiId, flattenPath, num, parseSvg, pathEl } from '../core/svg.js';
 import { tick } from '../core/util.js';
 import { makeZip } from '../core/zip.js';
-import { CUT_RED, setCardMsg, ui } from '../dom.js';
+import { CUT_RED, byId, saveFile, setMsg, ui } from '../dom.js';
 import { buildCutPdf, pdfClick } from '../export/cut-files.js';
-import { saveFile } from '../export/files.js';
+import { registerMode } from './registry.js';
+import { addFiles } from './stickers/index.js';
+import { updateRow } from './stickers/rows.js';
 import { nestAll, placeMatrix } from '../nest.js';
 import { renderStats } from '../pipeline.js';
 import { readOpts } from '../settings.js';
 import { designs, state } from '../state.js';
 import { applyView } from '../viewport.js';
-import { registerMode } from './registry.js';
-import { addFiles } from './stickers/index.js';
-import { updateRow } from './stickers/rows.js';
-
-/* ---------- vinyl (markless) mode ---------- */
 
 let geoGroup = 0;
  // id shared by the subpaths of one element (so holes stay holes when filling)
@@ -172,18 +171,14 @@ function buildVinylPlt() {
     return { pts, closed: p.closed && pts.length > 2 };
   }).filter(p => p.pts.length > 1);
   const out = ['IN'];
-  if (o.pltForce) {
-    const ci = (v, a, b) => Math.min(b, Math.max(a, Math.round(v)));
-    out.push(`VS${ci(o.cutSpeed, 1, 13)}`, `US${ci(o.upSpeed, 1, 13)}`, `FS${ci(o.kissForce, 1, 160)}`);
-  }
+  if (o.pltForce) out.push(...speedTokens(o, o.kissForce));
   let bdir = [1, 0], cx = 0, cy = 0, maxX = 0;
   const emit = tip => {
     const c = dragKnife(tip, bo, bdir);
     bdir = c.dir;
-    const q = c.pts.map(p => [Math.round(p[0]), Math.round(p[1])]);
-    out.push(`U${q[0][0]},${q[0][1]}`, `D${q[0][0]},${q[0][1]}`);
-    for (let i = 1; i < q.length; i++) if (q[i][0] !== q[i - 1][0] || q[i][1] !== q[i - 1][1]) out.push(`D${q[i][0]},${q[i][1]}`);
+    out.push(...strokeTokens(c.pts.map(p => [Math.round(p[0]), Math.round(p[1])])));
   };
+  // nearest first: a closed shape from its vertex closest to the knife, an open line from its nearer end
   const left = polys.slice();
   while (left.length) {
     let bi = 0, bv = 0, bd = Infinity, rev = false;
@@ -197,18 +192,7 @@ function buildVinylPlt() {
       }
     });
     const p = left.splice(bi, 1)[0];
-    let tip;
-    if (p.closed) {
-      const r = p.pts.slice(bv).concat(p.pts.slice(0, bv));
-      tip = r.concat([r[0]]);
-      let rem = oc;
-      for (let i = 1; rem > 0 && i <= r.length; i++) {
-        const a = r[i - 1], b = r[i % r.length], seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
-        if (!seg) continue;
-        if (seg >= rem) { const k = rem / seg; tip.push([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]); rem = 0; }
-        else { tip.push(b); rem -= seg; }
-      }
-    } else tip = rev ? p.pts.slice().reverse() : p.pts;
+    const tip = p.closed ? closedTip(p.pts.slice(bv).concat(p.pts.slice(0, bv)), oc) : rev ? p.pts.slice().reverse() : p.pts;
     emit(tip);
     const e = tip[tip.length - 1]; cx = e[0]; cy = e[1];
     for (const q of p.pts) maxX = Math.max(maxX, q[0]);
@@ -239,7 +223,7 @@ function renderVinylPreview() {
       p.push(`<path d="${it.d.res.pathD}" transform="matrix(${M.map(num).join(',')})" fill="${ui.showArt.checked ? 'rgba(35,31,32,.12)' : 'none'}" fill-rule="evenodd" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
       top = Math.min(top, it.Y * CELL);
     }
-    if (o.vWeed === 'all') {
+    if (o.vWeed === 'all' && L.items.length) {
       const wb = vinylPaths().pop();
       p.push(`<polygon points="${wb.pts.map(q => num(q[0]) + ' ' + num(q[1])).join(' ')}" fill="none" stroke="${CUT_RED}" stroke-width="1.2" stroke-dasharray="6 3" vector-effect="non-scaling-stroke"/>`);
     }
@@ -261,7 +245,7 @@ function vinylUsedLength() {
 function renderVinylStats(busyText) {
   const n = state.vinylLayout ? state.vinylLayout.items.length : 0;
   ui.dropNote.hidden = designs.length > 0;
-  for (const id of ['exVinylSvg', 'exVinylPlt', 'exVinylPdf']) document.getElementById(id).disabled = !n || !!busyText;
+  for (const id of ['exVinylSvg', 'exVinylPlt', 'exVinylPdf']) byId(id).disabled = !n || !!busyText;
   if (busyText) { ui.count.textContent = busyText; return; }
   const where = state.mode === 'pen' ? 'sheet' : 'vinyl', tool = state.mode === 'pen' ? 'pen' : 'knife';
   ui.count.textContent = !designs.length ? `Empty ${where}` : n === 1 ? `1 copy on the ${where}` : `${n} copies on the ${where}`;
@@ -272,7 +256,7 @@ function renderVinylStats(busyText) {
     const got = state.vinylLayout ? state.vinylLayout.counts.get(d.id) || 0 : 0;
     if (d.qty != null && got < d.qty) notes.push(`Only ${got} of ${d.qty} copies of ${d.name} fit.`);
   }
-  setCardMsg(notes.join(' '), false);
+  setMsg(notes.join(' '), false);
 }
 async function computeVinyl(_, stale) {
   const o = vOpts();
@@ -297,8 +281,8 @@ async function computeVinyl(_, stale) {
   designs.forEach(updateRow);
 }
 registerMode(['vinyl', 'pen'], { compute: computeVinyl, renderPreview: renderVinylPreview, renderStats: renderVinylStats, onDrop: files => addFiles(files) });
-document.getElementById('exVinylSvg').addEventListener('click', () => saveFile(`${state.mode === 'pen' ? 'pen' : 'vinyl'}-${state.vinylLayout.items.length}pcs-${state.mode === 'pen' ? 'draw' : 'cut'}.svg`, buildVinylSvg()));
-document.getElementById('exVinylPlt').addEventListener('click', () => {
+byId('exVinylSvg').addEventListener('click', () => saveFile(`${state.mode === 'pen' ? 'pen' : 'vinyl'}-${state.vinylLayout.items.length}pcs-${state.mode === 'pen' ? 'draw' : 'cut'}.svg`, buildVinylSvg()));
+byId('exVinylPlt').addEventListener('click', () => {
   const base = `${state.mode === 'pen' ? 'pen' : 'vinyl'}-${state.vinylLayout.items.length}pcs`;
   saveFile(`${base}-plt.zip`, makeZip([{ name: `${base}.plt`, text: buildVinylPlt() }]));
 });

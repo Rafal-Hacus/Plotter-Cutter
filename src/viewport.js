@@ -1,7 +1,7 @@
+// Zoom and pan on the sheet preview.
 import { $, ui } from './dom.js';
 import { state } from './state.js';
 
-/* ---------- zoom & pan on the sheet preview ---------- */
 // view = visible part of the sheet in template units (same aspect as the sheet); null = whole sheet.
 let pan = null;
 function fullView() { const v = state.previewFrame || state.template.vb; return { x: v.x, y: v.y, w: v.w, h: v.h }; }

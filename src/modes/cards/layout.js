@@ -1,20 +1,23 @@
+// Where the cards go on the sheet and how they are cut: the grid, the back side, crop marks, fold and die
+// perforation, the cut order, and the plans that spread a deck or winietki over several sheets.
+import { CELL } from '../../core/geometry.js';
+import { gridCuts, gridLines } from '../../core/grid.js';
 import { PT, apply, mul, roundRect } from '../../core/matrix.js';
 import { perforate } from '../../core/perf.js';
 import { writePlt } from '../../core/plt.js';
-import { num } from '../../core/svg.js';
-import { tick } from '../../core/util.js';
+import { mm1, num } from '../../core/svg.js';
 import { pltOpts } from '../../export/files.js';
-import { pdfSource } from '../../lib/pdf.js';
+import { G_PAGE, M_PAGE, M_TPL, deckPer, pageDims, pageScale } from './job.js';
 import { readOpts } from '../../settings.js';
 import { state } from '../../state.js';
-import { markFrame } from '../stickers/export.js';
-import { G_PAGE, M_PAGE, M_TPL, deckPer, pageDims, rotPlace } from './job.js';
+import { markFrame } from '../../template.js';
 
-export function morganaLayout(o) {
+const rotPlace = (r, Bx, By, pw, ph) => r === 90 ? [0, 1, -1, 0, Bx + ph, By] : r === 180 ? [-1, 0, 0, -1, Bx + pw, By + ph] : r === 270 ? [0, -1, 1, 0, Bx, By + pw] : [1, 0, 0, 1, Bx, By];
+function morganaLayout(o) {
   const pw = state.job.pageW, ph = state.job.pageH, b = o.cBleed, tw = pw - 2 * b, th = ph - 2 * b;
   const base = { n: 0, items: [], b, tw, th, e: 0, gap: 0, guil: false, morgana: true, pw, ph, sc: 1 };
   const land = tw >= th, [W, H] = { '90x50': [90, 50], '85x55': [85, 55] }[o.mSize] || [90, 55];
-  if (Math.abs(Math.max(tw, th) - W) > 0.6 || Math.abs(Math.min(tw, th) - H) > 0.6) return { ...base, error: `The CardXtra is set to cut ${W} × ${H} mm; this PDF is ${num(Math.round(tw * 10) / 10)} × ${num(Math.round(th * 10) / 10)} mm after the bleed.` };
+  if (Math.abs(Math.max(tw, th) - W) > 0.6 || Math.abs(Math.min(tw, th) - H) > 0.6) return { ...base, error: `The CardXtra is set to cut ${W} × ${H} mm; this PDF is ${mm1(tw)} × ${mm1(th)} mm after the bleed.` };
   // every card sits in the bottom-left corner of its template slot; bleed is limited to half the gap to the next card
   const rot = land ? 0 : 90, e = Math.min(b, (60 - H) / 2, (100.5 - W) / 2), items = [];
   const S = [-1, 0, 0, 1, pw, 0], My = [1, 0, 0, -1, 0, M_PAGE.hMm];
@@ -33,9 +36,6 @@ export function morganaLayout(o) {
 const shiftRect = (rc, o) => [rc[0] + o.cOffX, rc[1] + o.cOffY, rc[2], rc[3]];
 export const backT = (it, o) => it.Tb ? mul([1, 0, 0, 1, o.cOffX, o.cOffY], it.Tb) : backMatrix(it.T, o);
 export const backClip = (it, o) => it.bclip ? shiftRect(it.bclip, o) : backRect(it.clip, o);
-// a multi-page job laid out card by card: the card deck (front + back per card) or the guillotine with
-// "every page a separate card" (one page per card, one-sided)
-export const deckLike = () => state.mode === 'deck' || (state.mode === 'guillotine' && document.getElementById('gPages').value === 'each');
 // Duplex: the back page is the front mirrored across the flip edge, with each card mirrored back
 // around its own vertical axis (so the back reads upright), then shifted by the calibration offset.
 export function sheetMirror(o) { const pg = pageDims(); return o.cFlip === 'short' ? [1, 0, 0, -1, 0, pg.hMm] : [-1, 0, 0, 1, pg.wMm, 0]; }
@@ -85,16 +85,9 @@ function cardSheetFolds() {
 // Grid cutting: straight lines through every card edge, running across the free area (the sheet border
 // stays whole, so it keeps feeding). Only for square corners.
 export const gridCut = o => (state.mode === 'cards' || state.mode === 'vouchers' || state.mode === 'winietka') && o.cCutStyle === 'grid' && !(o.cRadius > 0);
-// Cut order: after the start mark (bottom right), vertical lines from right to left, the first going up,
-// then alternating. Horizontal lines start on the side where the verticals ended (top or bottom),
-// the first going left to right, then alternating.
+// The grid lines in cutting order (see gridLines), marked so writePlt keeps that order and direction.
 export function cardGridLines() {
-  const L = state.job.layout;
-  const xs = L.cutsX.slice().sort((a, b) => b - a);
-  const v = xs.map((x, i) => i % 2 ? [[x, L.fy0], [x, L.fy1]] : [[x, L.fy1], [x, L.fy0]]);
-  const endTop = xs.length % 2 === 1;
-  const ys = L.cutsY.slice().sort((a, b) => endTop ? a - b : b - a);
-  const h = ys.map((y, i) => i % 2 ? [[L.fx1, y], [L.fx0, y]] : [[L.fx0, y], [L.fx1, y]]);
+  const { v, h } = gridLines(state.job.layout);
   return { v: Object.assign(v, { ordered: true }), h: Object.assign(h, { ordered: true }) };
 }
 function cardSheetLoops() {
@@ -172,24 +165,63 @@ export function winItem(s, j) {
   const wp = winPlan(readOpts()), k = s * wp.N + j;
   return wp.N && k < wp.total ? Math.floor(k / wp.copies) : null;
 }
-// Add every page of a PDF as a winietka. labels: names for the pages (else file name + page);
-// bleed: the exact bleed of generated pages (else read from the trim box).
-export async function winIngest(bytes, fileName, { labels = null, bleed = null } = {}) {
-  const pdf = await window.pdfjsLib.getDocument(pdfSource(bytes.slice())).promise;
-  const lib = await window.PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
-  for (let i = 0; i < pdf.numPages; i++) {
-    const lp = lib.getPage(i), mb = lp.getMediaBox(), tb = lp.getTrimBox();
-    if (!state.job.items.length) { // the first card sets the size and the bleed
-      state.job.pageW = mb.width / PT; state.job.pageH = mb.height / PT; state.job.mbx = mb.x; state.job.mby = mb.y; state.job.bleed = null;
-      if (bleed != null) state.job.bleed = bleed;
-      else if (tb.width < mb.width - 0.5 && tb.height < mb.height - 0.5) state.job.bleed = Math.round((mb.width - tb.width) / 2 / PT * 100) / 100;
-      if (state.job.bleed != null) document.getElementById('cBleed').value = state.job.bleed;
+// Grid of cards inside the free area. T maps card-page mm (y down, origin at the bleed corner) to sheet mm.
+// job: the PDF job to lay out (the open mode's, or the one Print sheets builds for its format).
+export function computeCardLayout(sheet, o, job = state.job) {
+  if (!job.bytes) return null;
+  if (state.mode === 'morgana') return morganaLayout(o);
+  const guil = state.mode === 'guillotine' || state.mode === 'gang' || state.mode === 'deck';
+  const sc = pageScale(o), pw = job.pageW * sc, ph = job.pageH * sc;
+  const b = o.cBleed * sc, tw = pw - 2 * b, th = ph - 2 * b;
+  // auto: the gap is the two bleeds (after scaling), so the space between the cuts is fully printed; if a narrower
+  // gap (not under 3 mm, still two cuts) fits more copies, the widest such gap is used and the inner bleed trimmed to half of it
+  let gap = guil ? (o.gAuto ? 2 * b : o.gGap) : o.cGap;
+  let X0, Y0, W, H, e;
+  if (guil) {
+    // trim + bleed must sit inside the printable sheet; crop marks use whatever room is left
+    const ins = o.gMargin + b;
+    X0 = ins; Y0 = ins; W = G_PAGE.wMm - 2 * ins; H = G_PAGE.hMm - 2 * ins; e = 0;
+    if (o.gAuto && tw > 0 && th > 0) {
+      const count = g => Math.max(...[[tw, th], [th, tw]].map(([cw, ch]) => Math.max(0, Math.floor((W + g) / (cw + g))) * Math.max(0, Math.floor((H + g) / (ch + g)))));
+      let bestG = gap, bestN = count(gap);
+      for (let g = gap - 0.5; g >= Math.min(3, gap) - 1e-9; g -= 0.5) { const nn = count(g); if (nn > bestN) { bestN = nn; bestG = g; } }
+      gap = bestG;
     }
-    const pg = await pdf.getPage(i + 1), vp = pg.getViewport({ scale: 6 / PT });
-    const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
-    await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-    state.job.items.push({ name: labels ? labels[i] : pdf.numPages > 1 ? `${fileName} p.${i + 1}` : fileName, bytes, page: i, w: mb.width, h: mb.height, mbx: mb.x, mby: mb.y, preview: cv.toDataURL('image/jpeg', 0.85) });
-    cv.width = cv.height = 1;
-    if (i % 20 === 19) await tick();
+  } else {
+    if (!sheet || !sheet.free) return null;
+    const f = sheet.free;
+    X0 = f.x0 * CELL; Y0 = f.y0 * CELL; W = (f.x1 - f.x0 + 1) * CELL; H = (f.y1 - f.y0 + 1) * CELL; e = Math.min(b, gap / 2);
   }
+  const inner = Math.min(b, gap / 2), outer = guil ? b : inner;
+  const base = { n: 0, items: [], b, tw, th, e, gap, guil, pw, ph, sc };
+  if (tw <= 0 || th <= 0 || W <= 0 || H <= 0) return base;
+  let best = null;
+  for (const rot of [0, 90]) {
+    const cw = rot ? th : tw, ch = rot ? tw : th;
+    const cols = Math.floor((W - 2 * e + gap) / (cw + gap)), rows = Math.floor((H - 2 * e + gap) / (ch + gap));
+    if (cols < 1 || rows < 1) continue;
+    if (!best || cols * rows > best.cols * best.rows) best = { rot, cols, rows, cw, ch };
+  }
+  if (!best) return base;
+  const totW = best.cols * best.cw + (best.cols - 1) * gap, totH = best.rows * best.ch + (best.rows - 1) * gap;
+  const sx = X0 + (W - totW) / 2, sy = Y0 + (H - totH) / 2, items = [];
+  for (let r = 0; r < best.rows; r++) for (let c = 0; c < best.cols; c++) {
+    const tx = sx + c * (best.cw + gap), ty = sy + r * (best.ch + gap);
+    const l = c === 0 ? outer : inner, rr = c === best.cols - 1 ? outer : inner, t = r === 0 ? outer : inner, bt = r === best.rows - 1 ? outer : inner;
+    items.push({
+      T: best.rot ? [0, 1, -1, 0, ph + tx - b, ty - b] : [1, 0, 0, 1, tx - b, ty - b],
+      trim: [tx, ty, best.cw, best.ch],
+      clip: [tx - l, ty - t, best.cw + l + rr, best.ch + t + bt]
+    });
+  }
+  // guillotine: every distinct cut position, measured from the sheet's left and top edges
+  const cutsX = gridCuts(sx, best.cols, best.cw, gap), cutsY = gridCuts(sy, best.rows, best.ch, gap);
+  return { ...best, ...base, n: items.length, items, sx, sy, totW, totH, cutsX, cutsY, fx0: X0, fy0: Y0, fx1: X0 + W, fy1: Y0 + H };
+}
+// the crop marks as they land on the back page (mirrored like the cards, with the back shift)
+export function backMarks(L, o) {
+  const pg = pageDims();
+  return cropMarks(L, o).map(m => o.cFlip === 'short'
+    ? [m[0] + o.cOffX, pg.hMm - m[1] + o.cOffY, m[2] + o.cOffX, pg.hMm - m[3] + o.cOffY]
+    : [pg.wMm - m[0] + o.cOffX, m[1] + o.cOffY, pg.wMm - m[2] + o.cOffX, m[3] + o.cOffY]);
 }

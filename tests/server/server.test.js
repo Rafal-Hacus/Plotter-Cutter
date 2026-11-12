@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, statSync, existsSy
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp, loadConfig } from '../../server/index.js';
-import { hashPassword, verifyPassword, sessionSigner } from '../../server/auth.js';
+import { hashPassword, verifyPassword, sessionSigner, parseCookies } from '../../server/auth.js';
 import { openStore, validatePreset } from '../../server/store.js';
 
 const PASSWORD = 'correct horse battery';
@@ -78,6 +78,11 @@ describe('signing in', () => {
     expect(r.headers.get('cross-origin-opener-policy')).toBe('same-origin');
     expect(r.headers.get('content-security-policy')).toContain("'wasm-unsafe-eval'");
     expect((await authed('/assets/app-123.js')).headers.get('cache-control')).toContain('immutable');
+  });
+  it('a broken cookie from another site on the same host does not break the request', async () => {
+    const r = await fetch(base + '/', { redirect: 'manual', headers: { cookie: `other=%E0%A4%A; ${cookie}` } });
+    expect(r.status).toBe(200);
+    expect((await get('/', { cookie: 'other=%E0%A4%A' })).status).toBe(303);
   });
   it('a tampered cookie is refused', async () => {
     const bad = cookie.replace(/.$/, c => (c === 'A' ? 'B' : 'A'));
@@ -284,6 +289,9 @@ describe('config and crypto', () => {
   it('changing the password signs everyone out', () => {
     const t = sessionSigner('s', hashPassword('first password')).sign('shop', 60);
     expect(sessionSigner('s', hashPassword('second password')).verify(t)).toBeNull();
+  });
+  it('parseCookies keeps the first of each name and skips values that are not valid percent-encoding', () => {
+    expect(parseCookies('a=1; bad=%E0%A4%A; b=x%20y; a=2')).toEqual({ a: '1', b: 'x y' });
   });
   it('expired sessions are refused', () => {
     const s = sessionSigner('s', 'h');
