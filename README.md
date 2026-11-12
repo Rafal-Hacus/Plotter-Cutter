@@ -100,6 +100,11 @@ Works with straight lines across the sheet and with a rectangle
 In **Winietki**, set **Cards from** to **A list of names** and type or paste the names, one per line. Each name
 becomes a card of the size you set (flat, before folding).
 
+- **Background library** (with the server): backgrounds you uploaded once, e.g. birthday or wedding designs, each
+  stored with its card settings (size, font, text size and colour, name position, fold). Click one, paste the
+  names, export. To add one: load the background, set the card up, then **Add current background…**; **Save card
+  settings to it** updates a stored one.
+- **Move the name**: shift the name from the middle of its half (+ right, + down), e.g. to clear a design element.
 - **Background graphic** (image or PDF, shared by all cards): it fills each card plus **2 mm bleed** on every side.
   Without a background the cards are plain white with no bleed.
 - **Font**: Montserrat, Playfair Display or Great Vibes (all with Polish letters), or load your own TTF/OTF.

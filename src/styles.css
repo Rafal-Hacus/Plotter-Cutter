@@ -143,3 +143,11 @@ section.presets{border-color:color-mix(in srgb,var(--accent) 45%,var(--line));ba
 /* winietki from names */
 .blocklabel{display:block;font-size:14px;margin:8px 0 4px}
 textarea{width:100%;font:inherit;font-size:14px;color:var(--ink);background:var(--field);border:1px solid var(--field-line);border-radius:7px;padding:7px 9px;resize:vertical;min-height:120px}
+/* background library */
+.libgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:8px;margin:4px 0 8px}
+.libtile{display:flex;flex-direction:column;align-items:stretch;gap:4px;padding:5px;border-radius:9px;border:2px solid var(--line);background:var(--panel);font-weight:500;font-size:12px;text-align:left}
+.libtile img,.libnone{width:100%;aspect-ratio:1;object-fit:cover;border-radius:5px;background:#fff;display:grid;place-items:center;color:var(--muted)}
+.libname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.libtile[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft)}
+#winLibMsg:empty{display:none}
+#winLibMsg.warn{color:var(--danger)}

@@ -141,6 +141,47 @@ describe('saved settings API', () => {
   });
 });
 
+describe('background library API', () => {
+  const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
+  const JPG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1, 0xff, 0xd9]);
+  const add = (over = {}) => authed('/api/backgrounds', { method: 'POST', body: JSON.stringify({ name: 'Urodziny – balony', data: PNG.toString('base64'), thumb: JPG.toString('base64'), settings: { winW: '100', winOffY: '4', cFoldOn: true }, ...over }) });
+  let id;
+  it('stores a background with its settings and serves the file and the thumbnail', async () => {
+    // sign in again (an earlier test signed out)
+    cookie = (await login('shop', PASSWORD)).headers.get('set-cookie').split(';')[0];
+    const r = await add();
+    expect(r.status).toBe(201);
+    const it = await r.json();
+    id = it.id;
+    expect(it).toMatchObject({ name: 'Urodziny – balony', kind: 'png', size: PNG.length, settings: { winW: '100', cFoldOn: true } });
+    const f = await authed(`/api/backgrounds/${id}/file`);
+    expect(f.headers.get('content-type')).toBe('image/png');
+    expect(Buffer.from(await f.arrayBuffer()).equals(PNG)).toBe(true);
+    expect((await authed(`/api/backgrounds/${id}/thumb`)).headers.get('content-type')).toBe('image/jpeg');
+    expect((await (await authed('/api/backgrounds')).json()).backgrounds.map(b => b.name)).toContain('Urodziny – balony');
+  });
+  it('is only for signed-in users', async () => {
+    expect((await get(`/api/backgrounds/${id}/file`)).status).toBe(401);
+    expect((await get('/api/backgrounds')).status).toBe(401);
+  });
+  it('updates the settings and the name, then deletes the files', async () => {
+    const u = await (await authed(`/api/backgrounds/${id}`, { method: 'PUT', body: JSON.stringify({ name: 'Birthday', settings: { winW: '90' } }) })).json();
+    expect(u).toMatchObject({ name: 'Birthday', settings: { winW: '90' } });
+    expect((await authed(`/api/backgrounds/${id}`, { method: 'DELETE' })).status).toBe(200);
+    expect((await authed(`/api/backgrounds/${id}/file`)).status).toBe(404);
+    expect(existsSync(join(dir, 'backgrounds', `${id}.png`))).toBe(false);
+  });
+  it('accepts only real PNG/JPEG/PDF files and a JPEG thumbnail, whatever they are called', async () => {
+    expect((await add({ data: Buffer.from('<svg onload=x()>').toString('base64') })).status).toBe(400);
+    expect((await add({ thumb: PNG.toString('base64') })).status).toBe(400);
+    expect((await add({ data: 'not base64!' })).status).toBe(400);
+    expect((await add({ name: '' })).status).toBe(400);
+    expect((await add({ settings: { 'a.b': 1 } })).status).toBe(400);
+    const pdf = await add({ data: Buffer.from('%PDF-1.7 test').toString('base64') });
+    expect((await pdf.json()).kind).toBe('pdf');
+  });
+});
+
 describe('lockout', () => {
   it('locks an address out after 5 wrong passwords', async () => {
     const s = await start();

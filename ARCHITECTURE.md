@@ -18,12 +18,14 @@ src/core/             pure code, no app state, unit tested
   image.js            embedded dpi, EXIF orientation, round-sticker detection
   util.js             small helpers
 src/presets.js        the Saved settings panel (talks to the server's /api)
+src/winlib.js         the winietki background library panel
 src/lib/namecards.js  winietki from a list of names: one PDF page per name (fonts embedded with fontkit)
 server/               Node server, no runtime dependencies
   index.js            routes, security headers, first-run setup, login/logout, saved-settings API, config
   setup.html, login.html
   auth.js             scrypt passwords, signed session cookies, login lockout
   store.js            saved settings in /data/presets.json (atomic writes, validation)
+  library.js          background library in /data/backgrounds (+ backgrounds.json), file types sniffed
   static.js           serves dist/
   hash-password.js    makes AUTH_PASSWORD_HASH
 Dockerfile            build stage (npm ci + vite build), runtime stage (node + server + dist, non-root)

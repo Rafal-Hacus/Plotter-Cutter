@@ -13,6 +13,7 @@ import { tick, asciiOnly } from './core/util.js';
 import { ensureLibs, pdfSource } from './lib/pdf.js';
 import { initPresets } from './presets.js';
 import { buildNameCardsPdf, parseNames } from './lib/namecards.js';
+import { initLibrary, LIB_KEYS } from './winlib.js';
 import { makeZip, readZipPlts } from './core/zip.js';
 
 function sheetSizeMm() {
@@ -39,7 +40,7 @@ const ui = {
   dropNote: $('#dropNote'), sheetInfo: $('#sheetInfo'), dpiRow: $('#dpiRow'), tplFile: $('#tplFile'), tplReset: $('#tplReset'),
   exAll: $('#exAll'), exPrint: $('#exPrint'), exCut: $('#exCut'), exPlt: $('#exPlt'), showArt: $('#showArt'), lgKiss: $('#lgKiss'), lgDie: $('#lgDie')
 };
-const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'cPerfDie', 'cTieCut', 'cTie', 'cTiePlace', 'cTieInset', 'cAlign', 'cShiftX', 'cShiftY', 'winSrc', 'winW', 'winH', 'winFont', 'winSize', 'winColor', 'winBoth', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
+const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'cPerfDie', 'cTieCut', 'cTie', 'cTiePlace', 'cTieInset', 'cAlign', 'cShiftX', 'cShiftY', 'winSrc', 'winW', 'winH', 'winFont', 'winSize', 'winColor', 'winBoth', 'winOffX', 'winOffY', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
 const designs = [];
 let template = null, layout = null, gen = 0, nextId = 1, sheetCache = null, timer = null;
 
@@ -50,7 +51,7 @@ function readOpts() {
     kiss: n('kiss', 2, 0), die: n('die', 2, 0), gap: n('gap', 2, 0), lineW: n('lineW', 0.1, 0.01), overcut: n('overcut', 0.5, 0), bladeOffset: n('bladeOffset', 0.35, 0),
     pltForce: document.getElementById('pltForce').checked, kissForce: n('kissForce', 60, 1), dieForce: n('dieForce', 60, 1), cutSpeed: n('cutSpeed', 13, 1), upSpeed: n('upSpeed', 13, 1),
     cBleed: n('cBleed', 2, 0), cGap: n('cGap', 4, 0), cCutStyle: v('cCutStyle').value, mSize: v('mSize').value, cRadius: n('cRadius', 0, 0), cFlip: v('cFlip').value,
-    winSrc: v('winSrc').value, winW: n('winW', 100, 20), winH: n('winH', 100, 20), winFont: v('winFont').value, winSize: Math.min(200, n('winSize', 28, 6)), winColor: v('winColor').value, winBoth: v('winBoth').checked, cAlign: v('cAlign').value === 'dot' ? 'dot' : 'marks', cShiftX: parseFloat(v('cShiftX').value) || 0, cShiftY: parseFloat(v('cShiftY').value) || 0, cPerfDie: v('cPerfDie').checked, cTiePlace: v('cTiePlace').value === 'corners' ? 'corners' : 'edges', cTieInset: n('cTieInset', 2, 0), cTieCut: n('cTieCut', 6, 0.5), cTie: n('cTie', 0.8, 0.1), cOffX: parseFloat(v('cOffX').value) || 0, cOffY: parseFloat(v('cOffY').value) || 0,
+    winSrc: v('winSrc').value, winW: n('winW', 100, 20), winH: n('winH', 100, 20), winFont: v('winFont').value, winSize: Math.min(200, n('winSize', 28, 6)), winColor: v('winColor').value, winBoth: v('winBoth').checked, winOffX: parseFloat(v('winOffX').value) || 0, winOffY: parseFloat(v('winOffY').value) || 0, cAlign: v('cAlign').value === 'dot' ? 'dot' : 'marks', cShiftX: parseFloat(v('cShiftX').value) || 0, cShiftY: parseFloat(v('cShiftY').value) || 0, cPerfDie: v('cPerfDie').checked, cTiePlace: v('cTiePlace').value === 'corners' ? 'corners' : 'edges', cTieInset: n('cTieInset', 2, 0), cTieCut: n('cTieCut', 6, 0.5), cTie: n('cTie', 0.8, 0.1), cOffX: parseFloat(v('cOffX').value) || 0, cOffY: parseFloat(v('cOffY').value) || 0,
     cFold: v('cFoldOn').checked ? 'perf' : 'none', cFoldDir: v('cFoldDir').value, gGap: n('gSpace', 4, 0), gAuto: v('gAutoGap').checked, deckSets: Math.max(1, Math.round(n('deckSets', 10, 1))), deckOrder: v('deckOrder').value, winCopies: Math.max(1, Math.round(n('winCopies', 1, 1))), sheetSize: v('sheetSize').value, sheetW: n('sheetW', 310, 60), sheetH: n('sheetH', 440, 60), sheetFeed: v('sheetFeed').checked, sheetFeedMm: n('sheetFeedMm', 60, 0), gPages: v('gPages').value, gMarksBack: v('gMarksBack').checked, gEachSets: Math.max(1, Math.round(n('gEachSets', 1, 1))), gMarkLen: n('gMarkLen', 5, 1), gMarkOff: n('gMarkOff', 3, 0), gMargin: n('gEdge', 0, 0), gSize: v('gSize').value, gScale: n('gScale', 100, 5), cFoldPos: n('cFoldPos', 0, 0), cPerfCut: n('cPerfCut', 1, 0.2), cPerfGap: n('cPerfGap', 1, 0.2),
     vWidth: n('vWidth', 300, 20), vLength: n('vLength', 1000, 20), vMargin: n('vMargin', 5, 0), vGap: n('vGap', 3, 0),
     vWeed: v('vWeed').value, vWeedMargin: n('vWeedMargin', 3, 0), vMirror: v('vMirror').checked, penForce: n('penForce', 40, 1), penFill: v('penFill').checked, penStyle: v('penStyle').value, penSpacing: n('penSpacing', 0.4, 0.1), penAngle: parseFloat(v('penAngle').value) || 0, batchMix: v('batchMix').checked, ggFormat: v('ggFormat').value, ggW: n('ggW', 100, 5), ggH: n('ggH', 150, 5), ggBleed: n('ggBleed', 2, 0), ggFit: v('ggFit').value, ggAuto: v('ggAuto').checked, ggGap: n('ggGap', 4, 0), ggMarkLen: n('ggMarkLen', 5, 1), ggMarkOff: n('ggMarkOff', 3, 0), ggEdge: n('ggEdge', 0, 0), spDpi: parseFloat(v('spDpi').value) || 72, sqW: n('sqW', 50, 5), sqH: n('sqH', 50, 5), sqSheetW: n('sqSheetW', 320, 20), sqSheetH: n('sqSheetH', 450, 20), sqMargin: n('sqMargin', 10, 0), sqGap: n('sqGap', 0, 0),
@@ -1723,7 +1724,7 @@ async function winBuildNames() {
   setCardMsg('Setting the names…');
   try {
     const W = o.winW, H = o.winH;
-    const r = await buildNameCardsPdf({ names: list, W, H, bg: winNames.bg, font: o.winFont, fontFile: winNames.fontFile, size: o.winSize, color: o.winColor, fold: winFold(o, W, H), both: o.winBoth });
+    const r = await buildNameCardsPdf({ names: list, W, H, bg: winNames.bg, font: o.winFont, fontFile: winNames.fontFile, size: o.winSize, color: o.winColor, fold: winFold(o, W, H), both: o.winBoth, offX: o.winOffX, offY: o.winOffY });
     if (my !== winNames.gen) return;
     const items = [], saved = cards.items;
     cards.items = items;
@@ -1740,9 +1741,12 @@ function winNamesChanged() {
   clearTimeout(winNames.timer);
   winNames.timer = setTimeout(winBuildNames, 350);
 }
-for (const id of ['winNames', 'winW', 'winH', 'winSize', 'winColor', 'winBoth', 'winFont', 'cFoldOn', 'cFoldDir', 'cFoldPos'])
-  document.getElementById(id).addEventListener(id === 'winNames' || id === 'winW' || id === 'winH' || id === 'winSize' || id === 'cFoldPos' ? 'input' : 'change', winNamesChanged);
+for (const id of ['winNames', 'winW', 'winH', 'winSize', 'winColor', 'winBoth', 'winFont', 'winOffX', 'winOffY', 'cFoldOn', 'cFoldDir', 'cFoldPos'])
+  document.getElementById(id).addEventListener(['winNames', 'winW', 'winH', 'winSize', 'winOffX', 'winOffY', 'cFoldPos'].includes(id) ? 'input' : 'change', winNamesChanged);
 document.getElementById('winSrc').addEventListener('change', () => { cards.items = []; winSync(); winNamesChanged(); });
+const BG_NONE = 'No background: plain white cards without bleed. A background fills the card plus 2 mm bleed on every side (proportions kept, centred).';
+const setBgInfo = () => { document.getElementById('winBgInfo').textContent = winNames.bg ? `Background: ${winNames.bgName}. It fills each card plus 2 mm bleed on every side (proportions kept, centred).` : BG_NONE; };
+let winLib = null;
 document.getElementById('winBg').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
@@ -1750,15 +1754,46 @@ document.getElementById('winBg').addEventListener('change', async e => {
     if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') winNames.bg = { kind: 'pdf', bytes: new Uint8Array(await f.arrayBuffer()), page: 0 };
     else { const im = await readCardImage(f); winNames.bg = { kind: im.kind, bytes: im.bytes }; }
     winNames.bgName = f.name;
-    document.getElementById('winBgInfo').textContent = `Background: ${f.name}. It fills each card plus 2 mm bleed on every side (proportions kept, centred).`;
+    setBgInfo();
   } catch (err) { setCardMsg(`Couldn’t use the background: ${err.message || err}`, true); return; }
+  if (winLib) winLib.backgroundChanged(false);
   winNamesChanged();
 });
 document.getElementById('winBgClear').addEventListener('click', () => {
   winNames.bg = null; winNames.bgName = '';
-  document.getElementById('winBgInfo').textContent = 'No background: plain white cards without bleed. A background fills the card plus 2 mm bleed on every side (proportions kept, centred).';
+  setBgInfo();
+  if (winLib) winLib.backgroundChanged(false);
   winNamesChanged();
 });
+// a small JPEG of a background for the library
+async function bgThumb(bg) {
+  let src;
+  if (bg.kind === 'pdf') {
+    await ensureLibs();
+    const pdf = await window.pdfjsLib.getDocument(pdfSource(bg.bytes.slice())).promise, pg = await pdf.getPage(1), vp1 = pg.getViewport({ scale: 1 });
+    const vp = pg.getViewport({ scale: 320 / Math.max(vp1.width, vp1.height) });
+    src = document.createElement('canvas'); src.width = Math.ceil(vp.width); src.height = Math.ceil(vp.height);
+    await pg.render({ canvasContext: src.getContext('2d'), viewport: vp }).promise;
+  } else src = await createImageBitmap(new Blob([bg.bytes]));
+  const k = Math.min(1, 320 / Math.max(src.width, src.height)), cv = document.createElement('canvas');
+  cv.width = Math.max(1, Math.round(src.width * k)); cv.height = Math.max(1, Math.round(src.height * k));
+  const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(src, 0, 0, cv.width, cv.height);
+  return new Uint8Array(await (await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.82))).arrayBuffer());
+}
+initLibrary({
+  getBackground: () => winNames.bg,
+  setBackground: (bg, name) => { winNames.bg = bg; winNames.bgName = name; setBgInfo(); winNamesChanged(); },
+  readSettings: keys => Object.fromEntries(keys.map(k => { const e = document.getElementById(k); return [k, e.type === 'checkbox' ? e.checked : e.value]; })),
+  applySettings: st => {
+    for (const k of LIB_KEYS) {
+      if (!Object.hasOwn(st, k)) continue;
+      const e = document.getElementById(k);
+      if (e.type === 'checkbox') e.checked = !!st[k]; else e.value = String(st[k]);
+    }
+    syncOptionRows(); saveOpts();
+  },
+  makeThumb: bgThumb
+}).then(l => { winLib = l || null; });
 document.getElementById('winFontFile').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;

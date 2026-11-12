@@ -67,6 +67,14 @@
           <textarea id="winNames" rows="8" spellcheck="false" placeholder="Anna Kowalska&#10;Jan Nowak&#10;Zofia Wiśniewska"></textarea>
           <p class="hint" id="winNamesInfo"></p>
           <div class="row"><label for="winW">Card size (flat, before folding)</label><span class="mm"><input id="winW" type="number" min="20" step="1" value="100" aria-label="Card width">×<input id="winH" type="number" min="20" step="1" value="100" aria-label="Card height">mm</span></div>
+          <div id="winLib" hidden>
+            <label class="blocklabel">Background library</label>
+            <div class="libgrid" id="winLibGrid" aria-label="Background library"></div>
+            <div class="actions"><button type="button" id="winLibSave" disabled>Add current background…</button><button type="button" id="winLibUpdate" disabled>Save card settings to it</button><button type="button" id="winLibDelete" disabled>Delete</button></div>
+            <div class="presetname" id="winLibNameRow" hidden><input type="text" id="winLibName" maxlength="80" placeholder="Name, e.g. Urodziny – balony" aria-label="Name for the background" autocomplete="off"><button type="button" class="primary" id="winLibNameOk">Save</button><button type="button" id="winLibNameCancel">Cancel</button></div>
+            <p class="hint" id="winLibMsg"></p>
+            <p class="hint">Click a background and it loads with its card settings (size, font, name position, fold). To add one: load it below, set the card up, then “Add current background”.</p>
+          </div>
           <div class="row"><label>Background graphic</label><span class="mm"><label class="btn">Load image or PDF<input id="winBg" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif,application/pdf,.pdf,.png,.jpg,.jpeg,.webp"></label></span></div>
           <p class="hint" id="winBgInfo">No background: plain white cards without bleed. A background fills the card plus 2 mm bleed on every side (proportions kept, centred).</p>
           <div class="actions"><button type="button" class="link" id="winBgClear" hidden>Remove the background</button></div>
@@ -74,6 +82,7 @@
           <div class="row" id="rowWinFontFile" hidden><label>Font file (TTF or OTF)</label><span class="mm"><label class="btn">Load font<input id="winFontFile" type="file" accept=".ttf,.otf,font/ttf,font/otf"></label></span></div>
           <div class="row"><label for="winSize">Text size (long names get smaller)</label><span class="mm"><input id="winSize" type="number" min="6" max="200" step="1" value="28">pt</span></div>
           <div class="row"><label for="winColor">Text colour</label><input id="winColor" type="color" value="#1f2a24"></div>
+          <div class="row"><label for="winOffX">Move the name (+ right, + down)</label><span class="mm"><input id="winOffX" type="number" step="0.5" value="0" aria-label="Move the name right">×<input id="winOffY" type="number" step="0.5" value="0" aria-label="Move the name down">mm</span></div>
           <div class="row"><label for="winBoth">Name on both halves (tent card, upside down on the back)</label><input id="winBoth" type="checkbox" checked></div>
           <p class="hint">Turn on the fold below for a standing card: with a horizontal fold the name sits in the middle of the lower half (and upside down in the upper half); with a vertical fold on the right half.</p>
         </div>
