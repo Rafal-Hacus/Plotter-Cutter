@@ -115,7 +115,9 @@ with its bleed (red line = cut, shaded edge = bleed):
 - **Make the page** shows the finished page at 300 dpi; **Use it** puts it on the sheet with its crop marks. The
   original and the settings are kept, so **Edit** again starts from them.
 
-Business cards and the other card modes can fill missing bleed with **AI** too (next to **Fill missing bleed**).
+The same editor is in **Business cards, Vouchers, Guillotine, Card deck and Morgana CardXtra** (**Edit picture** next
+to each picture, on the card size plus the bleed setting; **Undo the edit** goes back to the original and the
+scaling settings) and for the **Winietki** background (**Edit the background**, on the winietka plus 2 mm bleed).
 
 ### The AI
 

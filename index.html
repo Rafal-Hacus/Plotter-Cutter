@@ -55,6 +55,7 @@
         <div class="row" id="rowIcDpi"><label for="icDpi">Image resolution at 100%</label><span class="mm"><input id="icDpi" type="number" min="30" max="2400" step="1" value="300">dpi</span></div>
         <div class="row" id="rowIcSafe"><label for="icSafe">Safe margin inside the cut</label><span class="mm"><input id="icSafe" type="number" min="0" step="0.5" value="0">mm</span></div>
         <div class="row" id="rowIcExtend"><label for="icExtend">Fill missing bleed</label><span class="mm"><select id="icBleedHow" aria-label="How to fill the missing bleed"><option value="edge">Repeat the edge pixels</option><option value="ai">AI (continues the picture)</option></select><input id="icExtend" type="checkbox" checked aria-label="Fill missing bleed"></span></div>
+        <ul class="iclist" id="icList" aria-label="Pictures"></ul>
         <p class="hint" id="icInfo"></p>
         <div class="actions"><button type="button" id="icSwap" hidden>Swap front and back</button></div>
       </div>
@@ -80,7 +81,7 @@
           </div>
           <div class="row"><label>Background graphic</label><span class="mm"><label class="btn">Load image or PDF<input id="winBg" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/bmp,image/avif,application/pdf,.pdf,.png,.jpg,.jpeg,.webp"></label></span></div>
           <p class="hint" id="winBgInfo">No background: plain white cards without bleed. A background fills the card plus 2 mm bleed on every side (proportions kept, centred).</p>
-          <div class="actions"><button type="button" class="link" id="winBgClear" hidden>Remove the background</button></div>
+          <div class="actions"><button type="button" class="link" id="winBgEdit" hidden>Edit the background (fit, rotate, AI)</button><button type="button" class="link" id="winBgClear" hidden>Remove the background</button></div>
           <div class="row"><label for="winFont">Font</label><select id="winFont"><option value="sans">Montserrat (sans serif)</option><option value="serif">Playfair Display (serif)</option><option value="script">Great Vibes (script)</option><option value="custom">Your own font file…</option></select></div>
           <div class="row" id="rowWinFontFile" hidden><label>Font file (TTF or OTF)</label><span class="mm"><label class="btn">Load font<input id="winFontFile" type="file" accept=".ttf,.otf,font/ttf,font/otf"></label></span></div>
           <div class="row"><label for="winSize">Text size (long names get smaller)</label><span class="mm"><input id="winSize" type="number" min="6" max="200" step="1" value="28">pt</span></div>

@@ -1033,13 +1033,13 @@ async function readCardImage(f) {
   return img;
 }
 // The trim size of an image card: the CardXtra cut size in Morgana mode (the machine is fixed to it), else the fields.
-// Orientation follows the image.
+// Orientation follows the image (or, once edited, the editor's orientation).
 function imageTrim(im) {
   const v = id => parseFloat(document.getElementById(id).value);
   let W, H;
   if (appMode === 'morgana') { const m = /^(\d+)x(\d+)$/.exec(document.getElementById('mSize').value) || [0, 90, 55]; W = +m[1]; H = +m[2]; }
   else { W = Math.max(10, v('icW') || 90); H = Math.max(10, v('icH') || 50); }
-  const land = im.w >= im.h;
+  const land = im.edit ? !im.edit.state.portrait : im.w >= im.h;
   return land === (W >= H) ? [W, H] : [H, W];
 }
 // One PDF page per image. Page = trim + the same bleed B on all sides (what the imposition expects), TrimBox set
@@ -1053,8 +1053,13 @@ async function imagesToCardPdf(src) {
   const extend = document.getElementById('icExtend').checked, setB = Math.max(0, v('cBleed') || 0), how = document.getElementById('icBleedHow').value;
   const r1 = x => num(Math.round(x * 10) / 10), r2 = x => num(Math.round(x * 100) / 100), TOL = 0.15;
   // placed image size (mm) per image
-  const plan = src.imgs.map(im => {
-    const [W, H] = imageTrim(im);
+  const plan = src.imgs.map(orig => {
+    const [W, H] = imageTrim(orig);
+    if (orig.edit) { // finished in the editor: the page it made is the card plus its own bleed, used as it is
+      const e = orig.edit, eb = e.bleed, im = { ...e.img, name: orig.name };
+      return { im, W, H, iw: W + 2 * eb, ih: H + 2 * eb, dpi: null, bx: eb, by: eb, edited: true, stale: Math.abs(e.W - W) > 0.01 || Math.abs(e.H - H) > 0.01 };
+    }
+    const im = orig;
     let iw, ih, dpi = null;
     // the area the picture goes in: the cut, less the safe margin (the bleed and the margin are filled last)
     const S = Math.max(0, Math.min(v('icSafe') || 0, W / 2 - 1, H / 2 - 1)), cw = W - 2 * S, ch = H - 2 * S;
@@ -1107,9 +1112,14 @@ async function imagesToCardPdf(src) {
       }
       emb = await pdf.embedPng(bytes); x = 0; y = 0; w = pw; h = ph; // the canvas is exactly the page
     } else emb = im.kind === 'png' ? await pdf.embedPng(im.bytes) : await pdf.embedJpg(im.bytes);
+    const fillNote = !extend ? ' White around it.' : how === 'ai' ? ' Bleed filled by AI.' : ' Bleed filled by repeating the edge pixels.';
     // PDF y runs up: an image placed y mm from the top sits at ph - y - h from the bottom
     page.drawImage(emb, { x: x * PT, y: (ph - y - h) * PT, width: w * PT, height: h * PT });
-    const fillNote = !extend ? ' White around it.' : how === 'ai' ? ' Bleed filled by AI.' : ' Bleed filled by repeating the edge pixels.';
+    if (p.edited) {
+      const eb = (iw - W) / 2;
+      notes.push(`${im.name}: edited in the editor (${num(W)} × ${num(H)} mm + ${r2(eb)} mm bleed).${p.stale ? ' The card size changed since: edit it again.' : ''}${eb < B - 0.01 ? (extend ? ` The extra bleed is filled${how === 'ai' ? ' by AI' : ' by repeating the edge pixels'}.` : ' White in the extra bleed.') : ''}`);
+      continue;
+    }
     if (fit === 'stretch') {
       const ar = im.w / im.h, cr = iw / ih;
       notes.push(`${im.name}: stretched to ${r1(iw)} × ${r1(ih)} mm${iw < W - 0.01 ? ` (inside a ${r2((W - iw) / 2)} mm safe margin)` : ''}${Math.abs(ar / cr - 1) > 0.02 ? `, ${num(Math.round(Math.abs(ar / cr - 1) * 100))} % out of proportion` : ''}.${fillNote}`);
@@ -1148,7 +1158,39 @@ function syncImgRows() {
   document.getElementById('rowIcSize').hidden = appMode === 'morgana';
   document.getElementById('rowIcPreset').hidden = appMode === 'morgana';
   document.getElementById('icSwap').hidden = !on || cards.imgSrc.imgs.length !== 2;
+  icList();
   syncBleedRow();
+}
+// the pictures of an image card job, each with the full editor (fit, rotate, stretch, AI fill and upscale)
+function icList() {
+  const ul = document.getElementById('icList'), src = cards.imgSrc;
+  ul.innerHTML = '';
+  if (!src || appMode === 'winietka') return;
+  src.imgs.forEach((im, i) => {
+    const li = document.createElement('li');
+    li.className = 'icitem';
+    li.innerHTML = '<span class="icname"></span><button type="button" class="link icedit">Edit picture (fit, rotate, AI)</button><button type="button" class="link icundo" hidden>Undo the edit</button>';
+    const label = src.imgs.length === 2 ? (i ? 'Back: ' : 'Front: ') : src.imgs.length > 2 ? `${i + 1}. ` : '';
+    li.querySelector('.icname').textContent = `${label}${im.name}${im.edit ? ' (edited)' : ''}`;
+    li.querySelector('.icedit').addEventListener('click', () => icEdit(im).catch(e => setCardMsg(`Couldn’t open the editor: ${e.message || e}`, true)));
+    const undo = li.querySelector('.icundo'); undo.hidden = !im.edit;
+    undo.addEventListener('click', () => { im.edit = null; icList(); syncBleedRow(); rebuildCardImages(); });
+    ul.appendChild(li);
+  });
+}
+// the editor on the card format: the cut size, the bleed setting, the safe margin; the original is always kept
+async function icEdit(im) {
+  const v = id => parseFloat(document.getElementById(id).value), [W, H] = imageTrim(im), { openEditor } = await import('./editor.js');
+  const bleed = Math.max(0, v('cBleed') || 0) || 2;
+  await openEditor({
+    name: im.name, bytes: im.bytes, state: im.edit ? im.edit.state : null, format: { w: W, h: H, bleed },
+    portrait: H > W, safe: Math.max(0, v('icSafe') || 0),
+    onApply: r => {
+      const [w, h] = r.state.portrait ? [Math.min(W, H), Math.max(W, H)] : [Math.max(W, H), Math.min(W, H)];
+      im.edit = { state: r.state, bleed, W: w, H: h, img: { name: im.name, w: r.w, h: r.h, bytes: r.bytes, kind: 'png', blob: new Blob([r.bytes], { type: 'image/png' }) } };
+      icList(); syncBleedRow(); rebuildCardImages();
+    }
+  });
 }
 for (const id of ['icW', 'icH', 'icDpi', 'icSafe']) document.getElementById(id).addEventListener('input', rebuildCardImages);
 // a size preset fills in the card size (the image's orientation decides which way round); typing a size sets Custom
@@ -1740,7 +1782,7 @@ function winFold(o, W, H) {
 // The "Bleed in the PDF" field is hidden where the bleed is known exactly: card images in 100 % / fit mode
 // (the bleed comes from the image) and winietki from names (2 mm with a background, none without).
 function syncBleedRow() {
-  const img = isPrintMode() && appMode !== 'winietka' && cards.imgSrc && document.getElementById('icFit').value !== 'stretch';
+  const img = isPrintMode() && appMode !== 'winietka' && cards.imgSrc && document.getElementById('icFit').value !== 'stretch' && !cards.imgSrc.imgs.some(im => im.edit);
   document.getElementById('cBleed').closest('.row').hidden = !!img || winNamesOn();
 }
 function syncWinRows() {
@@ -1749,6 +1791,7 @@ function syncWinRows() {
   document.getElementById('winNameRows').hidden = !names;
   document.getElementById('rowWinFontFile').hidden = document.getElementById('winFont').value !== 'custom';
   document.getElementById('winBgClear').hidden = !winNames.bg;
+  document.getElementById('winBgEdit').hidden = !winNames.bg || winNames.bg.kind === 'pdf';
   syncBleedRow();
 }
 async function winBuildNames() {
@@ -1782,7 +1825,7 @@ for (const id of ['winNames', 'winW', 'winH', 'winSize', 'winColor', 'winBoth', 
   document.getElementById(id).addEventListener(['winNames', 'winW', 'winH', 'winSize', 'winOffX', 'winOffY', 'cFoldPos'].includes(id) ? 'input' : 'change', winNamesChanged);
 document.getElementById('winSrc').addEventListener('change', () => { cards.items = []; winSync(); winNamesChanged(); });
 const BG_NONE = 'No background: plain white cards without bleed. A background fills the card plus 2 mm bleed on every side (proportions kept, centred).';
-const setBgInfo = () => { document.getElementById('winBgInfo').textContent = winNames.bg ? `Background: ${winNames.bgName}. It fills each card plus 2 mm bleed on every side (proportions kept, centred).` : BG_NONE; };
+const setBgInfo = () => { document.getElementById('winBgInfo').textContent = winNames.bg ? `Background: ${winNames.bgName}${winNames.bg === winNames.bgEdited ? ' (edited)' : ''}. It fills each card plus 2 mm bleed on every side (proportions kept, centred).` : BG_NONE; };
 let winLib = null;
 document.getElementById('winBg').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = '';
@@ -1795,6 +1838,24 @@ document.getElementById('winBg').addEventListener('change', async e => {
   } catch (err) { setCardMsg(`Couldn’t use the background: ${err.message || err}`, true); return; }
   if (winLib) winLib.backgroundChanged(false);
   winNamesChanged();
+});
+// the background in the full editor, on the winietka plus its 2 mm bleed (the way round the card is); the editor
+// always starts from the original background, with the settings of the last edit
+document.getElementById('winBgEdit').addEventListener('click', async () => {
+  const bg = winNames.bg;
+  if (!bg || bg.kind === 'pdf') return;
+  if (bg !== winNames.bgEdited) { winNames.bgOrig = bg; winNames.bgEdit = null; }
+  const o = readOpts(), { openEditor } = await import('./editor.js');
+  try {
+    await openEditor({
+      name: winNames.bgName || 'Background', bytes: winNames.bgOrig.bytes, state: winNames.bgEdit, format: { w: o.winW, h: o.winH, bleed: 2 }, lockOrientation: true,
+      onApply: r => {
+        winNames.bg = winNames.bgEdited = { kind: 'png', bytes: r.bytes }; winNames.bgEdit = r.state;
+        if (winLib) winLib.backgroundChanged(false);
+        setBgInfo(); winNamesChanged();
+      }
+    });
+  } catch (e) { setCardMsg(`Couldn’t open the editor: ${e.message || e}`, true); }
 });
 document.getElementById('winBgClear').addEventListener('click', () => {
   winNames.bg = null; winNames.bgName = '';

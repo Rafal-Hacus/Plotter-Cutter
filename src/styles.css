@@ -79,6 +79,9 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .sheet-info{margin:4px 0 8px;font-size:13px}
 /* design list */
 ul.designs{list-style:none;margin:8px 0 4px;padding:0;display:grid;gap:8px}
+.iclist{list-style:none;margin:6px 0;padding:0;display:grid;gap:4px;max-height:220px;overflow:auto}
+.icitem{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.icname{flex:1 1 140px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .design{display:grid;grid-template-columns:60px minmax(0,1fr) auto;gap:10px;align-items:start;padding:9px;border:1px solid var(--line);border-radius:9px;background:var(--panel)}
 .thumb{width:60px;height:60px;border-radius:6px;background:#fff;display:grid;place-items:center;overflow:hidden;border:1px solid var(--line)}
 .thumb svg{width:100%;height:100%}
