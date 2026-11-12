@@ -30,7 +30,8 @@ export function textAreas(W, H, fold, both) {
 }
 
 // opts: { names, W, H (trim mm), bg: null | { kind: 'png'|'jpg'|'pdf', bytes, page }, font: 'sans'|'serif'|'script',
-//         fontFile (bytes of your own font, for 'custom'), size (pt, the largest), color '#rrggbb', fold, both }
+//         fontFile (bytes of your own font, for 'custom'), size (pt, the largest), color '#rrggbb', fold, both,
+//         offX, offY: move the name from the middle of its area, mm (+ right / + down; mirrored on the upside-down half) }
 // Returns { bytes, bleed, shrunk: number of names made smaller to fit }.
 export async function buildNameCardsPdf(opts) {
   await ensureLibs();
@@ -66,7 +67,8 @@ export async function buildNameCardsPdf(opts) {
       const size = Math.min(opts.size, room / unit, a.h * PT * 0.6 / (font.heightAtSize(1, { descender: false }) || 1));
       if (size < opts.size - 0.01) small = true;
       const tw = font.widthOfTextAtSize(name, size), capMid = font.heightAtSize(size, { descender: false }) * 0.36;
-      const cx = (b + a.x + a.w / 2) * PT, cy = ph - (b + a.y + a.h / 2) * PT; // centre of the area, PDF y up
+      const k = a.flip ? -1 : 1, dx = (opts.offX || 0) * k, dy = (opts.offY || 0) * k;
+      const cx = (b + a.x + a.w / 2 + dx) * PT, cy = ph - (b + a.y + a.h / 2 + dy) * PT; // centre of the area, PDF y up
       if (a.flip) page.drawText(name, { x: cx + tw / 2, y: cy + capMid, size, font, color, rotate: degrees(180) });
       else page.drawText(name, { x: cx - tw / 2, y: cy - capMid, size, font, color });
     }

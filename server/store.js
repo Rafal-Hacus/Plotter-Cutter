@@ -19,7 +19,11 @@ export function validatePreset(body) {
   if (/[\u0000-\u001f\u007f]/.test(name)) throw new ValidationError('The name contains control characters.');
   const mode = body.mode;
   if (!MODES.includes(mode)) throw new ValidationError('Unknown mode.');
-  const s = body.settings;
+  return { name, mode, settings: validateSettings(body.settings) };
+}
+
+// { fieldId: string | number | boolean } with sane names and sizes
+export function validateSettings(s) {
   if (!s || typeof s !== 'object' || Array.isArray(s)) throw new ValidationError('Settings must be an object.');
   const keys = Object.keys(s);
   if (keys.length > LIMITS.keys) throw new ValidationError('Too many settings.');
@@ -31,7 +35,7 @@ export function validatePreset(body) {
     else if (typeof v === 'string' && v.length <= LIMITS.value) settings[k] = v;
     else throw new ValidationError(`Bad value for ${k}.`);
   }
-  return { name, mode, settings };
+  return settings;
 }
 
 export async function openStore(file) {

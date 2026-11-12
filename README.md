@@ -95,11 +95,43 @@ corners** (one bridge a set distance from each corner, default 2 mm, and the edg
 Works with straight lines across the sheet and with a rectangle
 (or rounded rectangle) around each card. Set the die cut force to go all the way through the card.
 
-## Winietki from a list of names
+## Edit a picture for print (Print sheets)
+
+In **Print sheets**, every picture has **Edit picture (fit, rotate, AI)**. The editor shows the chosen format
+with its bleed (red line = cut, shaded edge = bleed):
+
+- **Fit inside / Fill / Stretch**, rotate by 90°, straighten, resize (slider or scroll), move (drag), and stretch
+  the height separately.
+- **Empty parts of the page**: **AI** continues the picture into the bleed and wherever the picture doesn't reach
+  (e.g. a square ChatGPT image on an A5 flyer), or **white**. The picture itself is never changed.
+- **AI upscale** (×2 or ×4) when the print resolution is low. Scaled back down, the result matches the original,
+  so it only adds sharpness and never changes what's in the picture (text included).
+- **Make the page** shows the finished page at 300 dpi; **Use it** puts it on the sheet with its crop marks. The
+  original and the settings are kept, so **Edit** again starts from them.
+
+Business cards and the other card modes can fill missing bleed with **AI** too (next to **Fill missing bleed**).
+
+### The AI
+
+Everything runs in the browser, on the computer's graphics card (WebGPU) when it has one, else on the processor;
+nothing is uploaded. The models come with the app (about 85 MB, downloaded once, then cached):
+
+- **MI-GAN** (Picsart AI Research, MIT licence) for filling. It works on 512 px tiles at full resolution, growing
+  the picture outwards 48 px at a time with blurred edge colours as context, so it continues backgrounds without
+  copying text or shapes from near the edge.
+- **ESRGAN thick ×2 / ×4** (UpscalerJS, MIT licence) for upscaling, followed by back-projection so the result
+  stays true to the original.
+
+
 
 In **Winietki**, set **Cards from** to **A list of names** and type or paste the names, one per line. Each name
 becomes a card of the size you set (flat, before folding).
 
+- **Background library** (with the server): backgrounds you uploaded once, e.g. birthday or wedding designs, each
+  stored with its card settings (size, font, text size and colour, name position, fold). Click one, paste the
+  names, export. To add one: load the background, set the card up, then **Add current background…**; **Save card
+  settings to it** updates a stored one.
+- **Move the name**: shift the name from the middle of its half (+ right, + down), e.g. to clear a design element.
 - **Background graphic** (image or PDF, shared by all cards): it fills each card plus **2 mm bleed** on every side.
   Without a background the cards are plain white with no bleed.
 - **Font**: Montserrat, Playfair Display or Great Vibes (all with Polish letters), or load your own TTF/OTF.

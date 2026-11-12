@@ -13,17 +13,22 @@ src/core/             pure code, no app state, unit tested
   sanitize.js         cleaning of untrusted SVG files
   marks.js            SignCut registration-mark templates
   perf.js             perforated cut lines (cuts with uncut bridges)
+  aiops.js            tiling, outpainting (grow), blur, back-projection around the AI models
   matrix.js           2D affine matrices, rounded rectangles, PT (points per mm)
   zip.js              zip writer and reader
   image.js            embedded dpi, EXIF orientation, round-sticker detection
   util.js             small helpers
 src/presets.js        the Saved settings panel (talks to the server's /api)
+src/winlib.js         the winietki background library panel
+src/editor.js         the picture editor (fit / rotate / stretch / AI fill / AI upscale), used by Print sheets
+src/lib/ai.js         runs the models in the browser: MI-GAN (onnxruntime-web), ESRGAN (TensorFlow.js)
 src/lib/namecards.js  winietki from a list of names: one PDF page per name (fonts embedded with fontkit)
 server/               Node server, no runtime dependencies
   index.js            routes, security headers, first-run setup, login/logout, saved-settings API, config
   setup.html, login.html
   auth.js             scrypt passwords, signed session cookies, login lockout
   store.js            saved settings in /data/presets.json (atomic writes, validation)
+  library.js          background library in /data/backgrounds (+ backgrounds.json), file types sniffed
   static.js           serves dist/
   hash-password.js    makes AUTH_PASSWORD_HASH
 Dockerfile            build stage (npm ci + vite build), runtime stage (node + server + dist, non-root)
@@ -33,7 +38,7 @@ compose.build.yaml    override to build the image from the checkout instead
 tests/unit            Vitest, one file per core module
 tests/server          Vitest against the running server
 tests/e2e             Playwright against the production build, plus golden files
-vite.config.js        build, pdf.js data files, Content-Security-Policy for production
+vite.config.js        build; serves pdf.js data, the ONNX runtime WebAssembly and the AI models locally; CSP
 ```
 
 Units: sheet coordinates are mm, y down, origin top left of the sheet. PLT coordinates are 1/40 mm with the

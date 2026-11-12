@@ -8,7 +8,7 @@ const TYPES = {
   '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.map': 'application/json', '.svg': 'image/svg+xml',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff',
   '.wasm': 'application/wasm', '.bcmap': 'application/octet-stream', '.pfb': 'application/octet-stream',
-  '.ttf': 'font/ttf', '.icc': 'application/vnd.iccprofile', '.txt': 'text/plain; charset=utf-8'
+  '.ttf': 'font/ttf', '.onnx': 'application/octet-stream', '.bin': 'application/octet-stream', '.icc': 'application/vnd.iccprofile', '.txt': 'text/plain; charset=utf-8'
 };
 
 export function staticHandler(rootDir) {
@@ -29,7 +29,7 @@ export function staticHandler(rootDir) {
     res.setHeader('Content-Type', type);
     res.setHeader('Content-Length', st.size);
     // hashed build files never change; everything else is checked every time
-    res.setHeader('Cache-Control', /^assets[/\\]/.test(rel) ? 'private, max-age=31536000, immutable' : 'no-cache');
+    res.setHeader('Cache-Control', /^assets[/\\]/.test(rel) ? 'private, max-age=31536000, immutable' : /^(models|ort)[/\\]/.test(rel) ? 'private, max-age=604800' : 'no-cache');
     if (req.method === 'HEAD') { res.end(); return true; }
     await new Promise((ok, fail) => createReadStream(file).on('error', fail).on('end', ok).pipe(res));
     return true;

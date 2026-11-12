@@ -111,3 +111,16 @@ test('perforated die cut with the bridges near the corners: edges cut through, t
   expect(lines.filter(l => Math.abs(len(l) - 3.6) < 0.02).length).toBeGreaterThan(20);
   noProblems(problems);
 });
+
+test('card images: AI fills the missing side bleed (real model in the browser)', async ({ page }) => {
+  test.setTimeout(300_000);
+  const problems = await openApp(page);
+  await mode(page, 'cards');
+  // a small card so the model runs quickly without a graphics card: 40 x 25 mm picture, card 40 x 20 mm
+  await page.evaluate(() => { document.getElementById('icW').value = 40; document.getElementById('icH').value = 20; });
+  await setField(page, 'icBleedHow', 'ai');
+  await page.setInputFiles('#cardFile', [{ name: 'small.png', mimeType: 'image/png', buffer: makePng(472, 295, 300, 10) }]);
+  await expect(page.locator('#icInfo')).toContainText('missing bleed filled by AI', { timeout: 240_000 });
+  await expect(page.locator('#count')).toHaveText(/\d+ cards on the sheet/, { timeout: 240_000 });
+  noProblems(problems.filter(p => !/WebGPU|webgpu|GPU adapter|adapters/i.test(p)));
+});

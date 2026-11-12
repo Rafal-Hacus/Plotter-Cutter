@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { hashPassword, verifyPassword, isPasswordHash, safeEqual, sessionSigner, loginLimiter, parseCookies } from './auth.js';
 import { openStore, ValidationError } from './store.js';
 import { staticHandler } from './static.js';
+import { openLibrary } from './library.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const COOKIE = 'pc_session';
@@ -45,7 +46,7 @@ function sessionSecret(cfg) {
 }
 
 const APP_CSP = [
-  "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "font-src 'self'",
+  "default-src 'self'", "script-src 'self' 'wasm-unsafe-eval'", "style-src 'self' 'unsafe-inline'", "font-src 'self'",
   "img-src 'self' data: blob:", "connect-src 'self' data: blob:", "worker-src 'self' blob:",
   "object-src 'none'", "frame-src 'none'", "frame-ancestors 'none'", "base-uri 'none'", "form-action 'self'"
 ].join('; ');
@@ -60,6 +61,7 @@ const LOGIN_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;
 
 export async function createApp(cfg) {
   const store = await openStore(join(cfg.dataDir, 'presets.json'));
+  const library = await openLibrary(cfg.dataDir);
   const secret = sessionSecret(cfg);
   // The login: from the environment if a password is set there, else from /data/auth.json (made on the setup page).
   const authFile = join(cfg.dataDir, 'auth.json'), codeFile = join(cfg.dataDir, 'setup-code');
@@ -122,7 +124,23 @@ export async function createApp(cfg) {
       if (!sameOrigin(req)) return json(res, 403, { error: 'Cross-site request refused.' });
       if ((m === 'POST' || m === 'PUT') && !/^application\/json\b/i.test(req.headers['content-type'] || '')) return json(res, 415, { error: 'Send JSON.' });
     }
-    const body = async () => { const t = await readBody(req, 256 * 1024); try { return JSON.parse(t); } catch { throw new ValidationError('Invalid JSON.'); } };
+    const body = async (limit = 256 * 1024) => { const t = await readBody(req, limit); try { return JSON.parse(t); } catch { throw new ValidationError('Invalid JSON.'); } };
+    // background library (winietki)
+    if (path === '/api/backgrounds' && m === 'GET') return json(res, 200, { backgrounds: library.list() });
+    if (path === '/api/backgrounds' && m === 'POST') return json(res, 201, await library.create(await body(60 * 1024 * 1024), user));
+    const bm = /^\/api\/backgrounds\/([0-9a-f-]{36})(\/file|\/thumb)?$/.exec(path);
+    if (bm) {
+      const [, id, part] = bm;
+      if (part && (m === 'GET' || m === 'HEAD')) {
+        const f = await library.read(id, part === '/thumb');
+        if (!f) return json(res, 404, { error: 'No such background.' });
+        res.statusCode = 200; res.setHeader('Content-Type', f.type); res.setHeader('Content-Length', f.bytes.length);
+        res.setHeader('Cache-Control', 'private, max-age=86400'); res.setHeader('Content-Disposition', 'inline');
+        return res.end(m === 'HEAD' ? undefined : f.bytes);
+      }
+      if (!part && m === 'PUT') { const it = await library.update(id, await body(), user); return it ? json(res, 200, it) : json(res, 404, { error: 'No such background.' }); }
+      if (!part && m === 'DELETE') return (await library.remove(id)) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'No such background.' });
+    }
     if (path === '/api/me' && m === 'GET') return json(res, 200, { user, authDisabled: cfg.authDisabled });
     if (path === '/api/presets' && m === 'GET') return json(res, 200, { presets: store.list(), defaultId: store.defaultId() });
     if (path === '/api/presets' && m === 'POST') return json(res, 201, await store.create(await body(), user));
@@ -227,7 +245,7 @@ export async function createApp(cfg) {
   });
   server.requestTimeout = 60_000;
   server.headersTimeout = 20_000;
-  return { server, store, setupCode: () => setupCode, login: () => creds && creds.username };
+  return { server, store, library, setupCode: () => setupCode, login: () => creds && creds.username };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
@@ -235,7 +253,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try { cfg = loadConfig(); } catch (e) { console.error(e.message); process.exit(1); }
   if (cfg.authDisabled) console.warn('WARNING: AUTH_DISABLED is set: anyone who can reach this server can use it and change saved settings.');
   if (!existsSync(join(cfg.staticDir, 'index.html'))) console.warn(`No built app in ${cfg.staticDir}; run "npm run build" first.`);
-  const { server, store, setupCode, login } = await createApp(cfg);
+  const { server, store, library, setupCode, login } = await createApp(cfg);
   server.listen(cfg.port, cfg.host, () => {
     console.log(`Listening on http://${cfg.host}:${cfg.port}, data in ${cfg.dataDir}`);
     if (setupCode()) {
@@ -245,6 +263,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       console.log('');
     } else if (!cfg.authDisabled) console.log(`Login: "${login()}"${cfg.passwordHash ? ' (from the environment)' : ''}`);
   });
-  const stop = () => { server.close(); store.flush().finally(() => process.exit(0)); setTimeout(() => process.exit(0), 5000).unref(); };
+  const stop = () => { server.close(); Promise.all([store.flush(), library.flush()]).finally(() => process.exit(0)); setTimeout(() => process.exit(0), 5000).unref(); };
   process.on('SIGTERM', stop); process.on('SIGINT', stop);
 }
