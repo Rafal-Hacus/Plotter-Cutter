@@ -41,7 +41,7 @@ const ui = {
   dropNote: $('#dropNote'), sheetInfo: $('#sheetInfo'), dpiRow: $('#dpiRow'), tplFile: $('#tplFile'), tplReset: $('#tplReset'),
   exAll: $('#exAll'), exPrint: $('#exPrint'), exCut: $('#exCut'), exPlt: $('#exPlt'), showArt: $('#showArt'), lgKiss: $('#lgKiss'), lgDie: $('#lgDie')
 };
-const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'icBleedHow', 'cPerfDie', 'cTieCut', 'cTie', 'cTiePlace', 'cTieInset', 'cAlign', 'cShiftX', 'cShiftY', 'winSrc', 'winW', 'winH', 'winFont', 'winSize', 'winColor', 'winBoth', 'winOffX', 'winOffY', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
+const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icPreset', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'icBleedHow', 'cPerfDie', 'cTieCut', 'cTie', 'cTiePlace', 'cTieInset', 'cAlign', 'cShiftX', 'cShiftY', 'winSrc', 'winW', 'winH', 'winFont', 'winSize', 'winColor', 'winBoth', 'winOffX', 'winOffY', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
 const designs = [];
 let template = null, layout = null, gen = 0, nextId = 1, sheetCache = null, timer = null;
 
@@ -948,7 +948,7 @@ function gSheetMm() {
 }
 const G_PAGE = { get wMm() { return gSheetMm()[0]; }, get hMm() { return gSheetMm()[1]; } };
 document.getElementById('gPage').addEventListener('change', () => { document.getElementById('rowGPageCustom').hidden = document.getElementById('gPage').value !== 'custom'; });
-const SIZES = { A4: [210, 297], A5: [148, 210], A6: [105, 148], DL: [99, 210] };
+const SIZES = { A3: [297, 420], A4: [210, 297], A5: [148, 210], A6: [105, 148], DL: [99, 210] };
 // guillotine: print the PDF scaled to a standard size (orientation follows the PDF)
 function pageScale(o) {
   if ((appMode !== 'guillotine' && appMode !== 'deck') || !cards.bytes) return 1;
@@ -1078,9 +1078,8 @@ async function imagesToCardPdf(src) {
       if (!aiBleedCache.has(key)) {
         const ai = await import('./lib/ai.js'), bmp = await createImageBitmap(im.blob), cv = document.createElement('canvas');
         cv.width = im.w; cv.height = im.h; cv.getContext('2d').drawImage(bmp, 0, 0); bmp.close && bmp.close();
-        let tiles = 0;
         setCardMsg('AI is filling the missing bleed…');
-        const out = ai.toCanvas(await ai.aiExtend(ai.fromCanvas(cv), cw, ch, ox, oy, () => setCardMsg(`AI is filling the missing bleed… ${++tiles} ${tiles === 1 ? 'tile' : 'tiles'} done.`)));
+        const out = ai.toCanvas(await ai.aiExtend(ai.fromCanvas(cv), cw, ch, ox, oy, text => setCardMsg(`Missing bleed: ${text}`)));
         aiBleedCache.set(key, new Uint8Array(await (await new Promise(r => out.toBlob(r, 'image/png'))).arrayBuffer()));
         setCardMsg('');
       }
@@ -1138,10 +1137,22 @@ function syncImgRows() {
   document.getElementById('rowIcDpi').hidden = fit !== 'actual';
   document.getElementById('rowIcExtend').hidden = fit === 'stretch';
   document.getElementById('rowIcSize').hidden = appMode === 'morgana';
+  document.getElementById('rowIcPreset').hidden = appMode === 'morgana';
   document.getElementById('icSwap').hidden = !on || cards.imgSrc.imgs.length !== 2;
   syncBleedRow();
 }
 for (const id of ['icW', 'icH', 'icDpi']) document.getElementById(id).addEventListener('input', rebuildCardImages);
+// a size preset fills in the card size (the image's orientation decides which way round); typing a size sets Custom
+document.getElementById('icPreset').addEventListener('change', () => {
+  const m = /^(\d+)x(\d+)$/.exec(document.getElementById('icPreset').value);
+  if (!m) return;
+  document.getElementById('icW').value = m[1]; document.getElementById('icH').value = m[2];
+  saveOpts(); rebuildCardImages();
+});
+for (const id of ['icW', 'icH']) document.getElementById(id).addEventListener('input', () => {
+  const v = `${document.getElementById('icW').value}x${document.getElementById('icH').value}`, sel = document.getElementById('icPreset');
+  sel.value = [...sel.options].some(o => o.value === v) ? v : 'custom';
+});
 document.getElementById('icFit').addEventListener('change', () => { syncImgRows(); rebuildCardImages(); });
 document.getElementById('icExtend').addEventListener('change', rebuildCardImages);
 document.getElementById('icBleedHow').addEventListener('change', rebuildCardImages);
@@ -2427,7 +2438,7 @@ document.getElementById('exBatch').addEventListener('click', async () => {
 // (or to fit inside it), centred, imposed on 310 × 440 sheets with crop marks.
 const gang = { items: [], layout: null, sheets: 0, view: 0 };
 let gangNext = 1;
-const GFORMATS = { '100x150': [100, 150], '130x180': [130, 180], A6: [105, 148], A5: [148, 210], A4: [210, 297], DL: [99, 210], '90x50': [90, 50], '85x55': [85, 55] };
+const GFORMATS = { '100x150': [100, 150], '130x180': [130, 180], A6: [105, 148], A5: [148, 210], A4: [210, 297], A3: [297, 420], DL: [99, 210], '90x50': [90, 50], '85x55': [85, 55] };
 function gangOpts(o) { // the guillotine engine, fed with this mode's own settings
   return { ...o, cBleed: o.ggBleed, gAuto: o.ggAuto, gGap: o.ggGap, gMarkLen: o.ggMarkLen, gMarkOff: o.ggMarkOff, gMargin: o.ggEdge, gSize: 'orig' };
 }

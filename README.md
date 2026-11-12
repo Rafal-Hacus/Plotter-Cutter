@@ -113,6 +113,10 @@ Business cards and the other card modes can fill missing bleed with **AI** too (
 
 ### The AI
 
+It runs in a background thread, so the page stays responsive while it works, and it shows what it's doing
+(downloading the model with progress, then tiles done). Without a graphics card it uses several processor cores:
+the server sends the cross-origin isolation headers that this needs.
+
 Everything runs in the browser, on the computer's graphics card (WebGPU) when it has one, else on the processor;
 nothing is uploaded. The models come with the app (about 85 MB, downloaded once, then cached):
 
@@ -217,7 +221,7 @@ CI (GitHub Actions, started by hand for now: Actions → CI → Run workflow) ru
 ## Cards from images
 
 Business cards, vouchers, guillotine, card deck and Morgana CardXtra accept PNG/JPG/WebP images as well as PDFs
-(first image = front, second = back). Scaling: 100 % (size from the image's dpi), fit to the card keeping
+(first image = front, second = back). **Size** offers A3, A4, A5, A6, DL, 10 × 15 cm and the business card sizes. Scaling: 100 % (size from the image's dpi), fit to the card keeping
 proportions, or stretch. With 100 % and fit, whatever reaches past the card size is used as bleed per side, so a
 file with bleed only on the top and bottom works; sides without bleed can be filled by repeating the edge pixels.
 In Morgana mode the cut size always comes from the CardXtra setting, and the CardXtra template values are the

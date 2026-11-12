@@ -6,7 +6,7 @@
 //   page = format + bleed on every side; the picture's centre (cx, cy), its rotation (quarter turns + a small
 //   straightening angle) and its scale ax, ay (mm per source pixel along the picture's own axes; equal unless
 //   stretched).
-import { aiExtend, aiFill, aiUpscale, fromCanvas, toCanvas, fillBackend, upscaleBackend } from './lib/ai.js';
+import { aiExtend, aiFill, aiUpscale, fromCanvas, toCanvas } from './lib/ai.js';
 
 const DPI = 300;
 const $ = id => document.getElementById(id);
@@ -116,8 +116,7 @@ export async function openEditor(opts) {
     for (let i = 0; i < W * H; i++) { known[i] = a[i * 4 + 3] === 255 ? 1 : 0; if (!known[i]) holes++; }
     if (!holes) return out;
     if (S.empty === 'white') { o.globalCompositeOperation = 'destination-over'; o.fillStyle = '#fff'; o.fillRect(0, 0, W, H); return out; }
-    let tiles = 0;
-    const tick = () => status(`AI is filling the empty parts… ${++tiles} ${tiles === 1 ? 'tile' : 'tiles'} done (${fillBackend === 'webgpu' ? 'graphics card' : 'processor'}).`);
+    const tick = text => status(text);
     status('Loading the AI fill model…');
     if (Math.abs(S.angle) < 1e-9) {
       // an upright rectangle: grow it outwards (best quality)
@@ -156,9 +155,9 @@ export async function openEditor(opts) {
     const btn = $('edUpscale'); btn.disabled = true;
     try {
       const d = Math.round(25.4 * upscaled / Math.max(S.ax, S.ay)), s = d < 150 ? 4 : 2;
-      if (src.width * src.height * s * s > 64e6) throw new Error('The picture is too large to upscale further.');
+      if (src.width * src.height * s * s > 40e6) throw new Error('The picture would get too large to upscale (over 40 megapixels); it doesn’t need it at this size.');
       status('Loading the AI upscale model…');
-      const up = await aiUpscale(fromCanvas(src), s, f => status(`AI upscale ×${s}: ${Math.round(f * 100)} % (${upscaleBackend === 'webgpu' ? 'graphics card' : upscaleBackend}).`));
+      const up = await aiUpscale(fromCanvas(src), s, status);
       src = toCanvas(up); upscaled *= s; S.upscaled = upscaled;
       status(`Upscaled ×${s} with AI. Scaled back down it matches the original exactly, so nothing in the picture was changed.`);
       draw();

@@ -57,9 +57,16 @@ function csp() {
 // npm run dev with the server running too (npm start): PC_SERVER=http://localhost:8080 npm run dev
 const backend = process.env.PC_SERVER;
 
+// Cross-origin isolation: lets the AI use all processor cores (WebAssembly threads need it). The app loads nothing
+// from other sites, so it costs nothing. The production server sends the same headers (server/index.js).
+const ISOLATION = { 'Cross-Origin-Opener-Policy': 'same-origin', 'Cross-Origin-Embedder-Policy': 'require-corp' };
+
 export default defineConfig({
   base: './',
-  server: backend ? { proxy: Object.fromEntries(['/api', '/login', '/logout'].map(p => [p, { target: backend, changeOrigin: false }])) } : {},
+  // the AI worker loads its libraries on demand, which needs a module worker
+  worker: { format: 'es' },
+  preview: { headers: ISOLATION },
+  server: { headers: ISOLATION, ...(backend ? { proxy: Object.fromEntries(['/api', '/login', '/logout'].map(p => [p, { target: backend, changeOrigin: false }])) } : {}) },
   build: { target: 'es2022', sourcemap: true, chunkSizeWarningLimit: 2500 },
   plugins: [localAssets(), csp()],
   test: { include: ['tests/unit/**/*.test.js', 'tests/server/**/*.test.js'] }

@@ -124,3 +124,19 @@ test('card images: AI fills the missing side bleed (real model in the browser)',
   await expect(page.locator('#count')).toHaveText(/\d+ cards on the sheet/, { timeout: 240_000 });
   noProblems(problems.filter(p => !/WebGPU|webgpu|GPU adapter|adapters/i.test(p)));
 });
+
+test('guillotine: images at a preset size (A5), and A3 offered as a final size', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'guillotine');
+  await expect(page.locator('#gSize option[value="A3"]')).toHaveCount(1);
+  await page.setInputFiles('#cardFile', [{ name: 'flyer.png', mimeType: 'image/png', buffer: makePng(1795, 2528, 300) }]);
+  await setField(page, 'icPreset', '148x210');
+  await expect(page.locator('#icW')).toHaveValue('148');
+  await expect(page.locator('#icH')).toHaveValue('210');
+  await expect(page.locator('#cardInfo')).toContainText('148 × 210 mm', { timeout: 30_000 });
+  await expect(page.locator('#count')).toHaveText(/\d+ copies? on/);
+  // typing a size by hand switches the preset back to Custom
+  await page.fill('#icW', '150');
+  await expect(page.locator('#icPreset')).toHaveValue('custom');
+  noProblems(problems);
+});

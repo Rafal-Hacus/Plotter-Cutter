@@ -10,6 +10,10 @@ export default [
     rules: { 'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }], 'no-empty': ['error', { allowEmptyCatch: true }] }
   },
   {
+    files: ['src/**/*.worker.js'],
+    languageOptions: { globals: { ...globals.worker } }
+  },
+  {
     files: ['server/**/*.js'],
     languageOptions: { ecmaVersion: 2024, sourceType: 'module', globals: globals.node },
     rules: { 'no-unused-vars': ['error', { args: 'none', caughtErrors: 'none' }] }
