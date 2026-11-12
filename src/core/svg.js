@@ -1,6 +1,8 @@
 // SVG parsing and writing helpers (units, viewBox, ids, paths, flattening).
 
 export const XLINK = 'http://www.w3.org/1999/xlink';
+// every element that draws a shape
+export const SHAPES = 'path,rect,circle,ellipse,polygon,polyline,line';
 // created on use, so the module also loads where there is no DOM (unit tests)
 export const ser = { serializeToString: node => new XMLSerializer().serializeToString(node) };
 export const PX_PER = { '': 1, px: 1, mm: 96 / 25.4, cm: 96 / 2.54, in: 96, pt: 96 / 72, pc: 16 };
