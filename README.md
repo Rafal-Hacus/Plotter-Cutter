@@ -20,13 +20,10 @@ ARM boards like a Raspberry Pi or many NAS boxes) on every push to the default b
    container log (**Containers → …plotter-cutter… → Logs**), then choose a user name and password. The login is
    stored (hashed) in the data volume.
 5. **Use HTTPS for the AI**: browsers only let a page use the graphics card and more than one processor core when
-   it is opened over HTTPS (or on the same computer as `localhost`). Over `http://<server-ip>:8080` the AI works,
-   but on one core. In the stack set `TLS_HOSTNAMES` to the address you type in the browser (e.g.
-   `192.168.1.50`, or `192.168.1.50,plotter.local`) and open `https://<server>:8443`. The app makes its own
-   certificate (kept in the data volume); trust it once on the Mac: download `https://<server>:8443/cert.pem`
-   (or `http://<server>:8080/cert.pem`), open it, and in **Keychain Access** double-click the
-   certificate → **Trust** → **Always Trust**. Without that the browser warns, and after **Show details → visit this
-   website** it works too. The app shows a note when it's opened without HTTPS.
+   it is opened over HTTPS (or as `localhost`). Over `http://<server-ip>:8080` the AI works, but on one core. Put
+   the app behind your HTTPS reverse proxy or tunnel, set `COOKIE_SECURE=true` and `TRUST_PROXY=true`, and make
+   sure the proxy passes the app's `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers through.
+   The app shows a note when either is missing.
 
 Instead of the setup page you can fix the login in the stack's **Environment variables**: `AUTH_USERNAME` and
 `AUTH_PASSWORD` (8+ characters, avoid the `$` sign) or `AUTH_PASSWORD_HASH`; these always win. To make a hash, open
@@ -84,11 +81,6 @@ Open http://localhost:8080 (or the computer's address on your network) and sign 
 | `AUTH_USERNAME` | `admin` | user name for signing in |
 | `AUTH_PASSWORD` / `AUTH_PASSWORD_FILE` / `AUTH_PASSWORD_HASH` | (setup page) | the password, a file holding it (Docker secrets), or its hash from `node server/hash-password.js` |
 | `HOST_PORT` | `8080` | port on the host (compose) |
-| `HOST_HTTPS_PORT` | `8443` | HTTPS port on the host (compose) |
-| `TLS_HOSTNAMES` | | the server's address(es) as typed in the browser, comma separated, for the self-signed certificate |
-| `TLS_CERT_FILE` / `TLS_KEY_FILE` | | your own certificate and key (PEM) instead of the self-signed one |
-| `TLS` | `auto` | `off`: no HTTPS |
-| `HTTPS_PORT` | `8443` | HTTPS port inside the container |
 | `IMAGE` | `ghcr.io/rafal-hacus/plotter-cutter:latest` | image to run (compose) |
 | `PORT` | `8080` | port inside the container |
 | `SESSION_DAYS` | `30` | how long a sign-in lasts |

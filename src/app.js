@@ -3145,18 +3145,12 @@ ui.list.innerHTML = '<li class="empty">No stickers yet.</li>';
 renderPreview();
 run();
 initPresets({ snapshot: snapshotSettings, apply: applySettings });
-// Browsers give the in-browser AI the graphics card and all processor cores only on secure pages (https or
-// localhost). Over plain http://<ip> it is stuck on one core: say so, with the secure address when the server has one.
-(async () => {
-  if (window.isSecureContext && window.crossOriginIsolated) return;
-  let port = null;
-  try { const r = await fetch('api/me', { credentials: 'same-origin' }); if (r.ok) port = (await r.json()).httpsPort; } catch { /* no server */ }
+// Browsers give the in-browser AI the graphics card and all processor cores only on secure, cross-origin isolated
+// pages (https or localhost, with the COOP/COEP headers the server sends). Otherwise it is stuck on one core: say so.
+if (!(window.isSecureContext && window.crossOriginIsolated)) {
   const el = document.getElementById('secureNote');
-  el.append('This page is on plain HTTP, so the browser blocks the graphics card and multi-core for the AI (it runs on one processor core, slowly). ');
-  if (port) {
-    const url = `https://${location.hostname}${port === 443 ? '' : ':' + port}${location.pathname}`, a = document.createElement('a');
-    a.href = url; a.textContent = `Open ${url}`;
-    el.append(a, '. The first time, the browser warns about the self-signed certificate: continue, or trust it once (see the README).');
-  } else el.append('Open it over https to use the graphics card.');
+  el.textContent = window.isSecureContext
+    ? 'The page is missing the cross-origin isolation headers (a proxy in front of the app may drop them), so the AI runs on one processor core. Pass Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy through.'
+    : 'This page is on plain HTTP, so the browser blocks the graphics card and multi-core for the AI (it runs on one processor core, slowly). Open the app over https to use them.';
   el.hidden = false;
-})();
+}
