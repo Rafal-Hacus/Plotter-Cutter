@@ -28,8 +28,8 @@ function applySheetSize() {
   document.getElementById('rowSheetCustom').hidden = o.sheetSize !== 'custom';
   document.getElementById('rowSheetFeed').hidden = !o.sheetFeed;
   setTemplate(makeMarksTemplate(W, H, T), T ? `Generated SignCut marks, ${num(T)} mm blank strip at the top` : 'Generated SignCut marks', true);
-  template.generated = true;
-  template.feedTop = T;
+  state.template.generated = true;
+  state.template.feedTop = T;
 }
 
 /* ---------- state ---------- */
@@ -43,7 +43,9 @@ const ui = {
 };
 const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icPreset', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'icBleedHow', 'icSafe', 'cPerfDie', 'cTieCut', 'cTie', 'cTiePlace', 'cTieInset', 'cAlign', 'cShiftX', 'cShiftY', 'winSrc', 'winW', 'winH', 'winFont', 'winSize', 'winColor', 'winBoth', 'winOffX', 'winOffY', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
 const designs = [];
-let template = null, layout = null, gen = 0, nextId = 1, sheetCache = null, timer = null;
+// what the modes share: the current mode, the sheet template, the sticker layout, the preview viewport
+const state = { mode: 'stickers', template: null, layout: null, sheetCache: null, vinylLayout: null, job: null, gen: 0, view: null, previewFrame: null };
+let nextId = 1, timer = null;
 
 function readOpts() {
   const v = id => document.getElementById(id);
@@ -137,10 +139,10 @@ function prepareTemplate(text, name, dpi) {
   return { name, text, vb, u, unitless, open, inner, wMm: vb.w / u, hMm: vb.h / u, ink: null, marks: measureMarks(text) };
 }
 async function templateSheet(o) {
-  const t = template;
+  const t = state.template;
   const Gw = Math.ceil(t.wMm / CELL), Gh = Math.ceil(t.hMm / CELL);
   const key = [t.name, t.u, o.clearance].join('|');
-  if (sheetCache && sheetCache.key === key) return sheetCache;
+  if (state.sheetCache && state.sheetCache.key === key) return state.sheetCache;
   if (!t.ink || t.ink.Gw !== Gw || t.ink.Gh !== Gh) {
     const img = await loadImg(sizedSvg(t.text, t.wMm / CELL, t.hMm / CELL));
     const cv = document.createElement('canvas'); cv.width = Gw; cv.height = Gh;
@@ -164,17 +166,17 @@ async function templateSheet(o) {
     blocked[i] = b;
     if (!b) { if (x < fx0) fx0 = x; if (x > fx1) fx1 = x; if (y < fy0) fy0 = y; if (y > fy1) fy1 = y; }
   }
-  sheetCache = { key, Gw, Gh, blocked, free: fx1 >= 0 ? { x0: fx0, y0: fy0, x1: fx1, y1: fy1 } : null };
-  return sheetCache;
+  state.sheetCache = { key, Gw, Gh, blocked, free: fx1 >= 0 ? { x0: fx0, y0: fy0, x1: fx1, y1: fy1 } : null };
+  return state.sheetCache;
 }
 function setTemplate(text, name, isDefault) {
   const o = readOpts();
-  template = prepareTemplate(text, name, o.dpi);
-  sheetCache = null;
-  view = null;
+  state.template = prepareTemplate(text, name, o.dpi);
+  state.sheetCache = null;
+  state.view = null;
   ui.tplReset.hidden = !!isDefault;
-  ui.dpiRow.hidden = !template.unitless;
-  ui.sheetInfo.textContent = `${name}${isDefault ? '' : ' template'}: ${num(Math.round(template.wMm * 10) / 10)} × ${num(Math.round(template.hMm * 10) / 10)} mm.`;
+  ui.dpiRow.hidden = !state.template.unitless;
+  ui.sheetInfo.textContent = `${name}${isDefault ? '' : ' template'}: ${num(Math.round(state.template.wMm * 10) / 10)} × ${num(Math.round(state.template.hMm * 10) / 10)} mm.`;
 }
 
 /* ---------- designs ---------- */
@@ -482,26 +484,26 @@ const artTransform = d => `translate(${num(d.res.offX)} ${num(d.res.offY)}) scal
 
 /* ---------- rendering ---------- */
 function renderPreview() {
-  if (appMode === 'duplex') { renderDuplexPreview(); return; }
-  if (appMode === 'svgplt') { renderSvgPltPreview(); return; }
-  if (appMode === 'squares') { renderSquaresPreview(); return; }
-  if (appMode === 'gang') { renderGangPreview(); return; }
+  if (state.mode === 'duplex') { renderDuplexPreview(); return; }
+  if (state.mode === 'svgplt') { renderSvgPltPreview(); return; }
+  if (state.mode === 'squares') { renderSquaresPreview(); return; }
+  if (state.mode === 'gang') { renderGangPreview(); return; }
   if (isMarkless()) { renderVinylPreview(); return; }
-  previewFrame = null;
+  state.previewFrame = null;
   if (isPrintMode()) { renderCardPreview(); return; }
-  const t = template, o = readOpts(), showArt = ui.showArt.checked;
+  const t = state.template, o = readOpts(), showArt = ui.showArt.checked;
   const p = [];
   p.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${t.vb.x} ${t.vb.y} ${t.vb.w} ${t.vb.h}" role="img" aria-label="Sticker sheet preview">`);
   p.push(`<rect x="${t.vb.x}" y="${t.vb.y}" width="${t.vb.w}" height="${t.vb.h}" fill="#fff"/>`);
   p.push(`<g>${t.inner.replace(SLOT_RE, '')}</g>`);
   p.push(`<g transform="translate(${t.vb.x} ${t.vb.y}) scale(${t.u})">`);
-  if (sheetCache && sheetCache.free) {
-    const f = sheetCache.free;
+  if (state.sheetCache && state.sheetCache.free) {
+    const f = state.sheetCache.free;
     p.push(`<rect x="${f.x0 * CELL}" y="${f.y0 * CELL}" width="${(f.x1 - f.x0 + 1) * CELL}" height="${(f.y1 - f.y0 + 1) * CELL}" fill="none" stroke="#9fb0a9" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>`);
   }
-  if (layout && showArt) {
+  if (state.layout && showArt) {
     p.push('<defs>');
-    for (const d of new Set(layout.items.map(it => it.d))) {
+    for (const d of new Set(state.layout.items.map(it => it.d))) {
       const r = d.res;
       const im = `<image href="${r.cutMode ? d.urlNoCut : d.url}" x="${num(r.offX)}" y="${num(r.offY)}" width="${num(r.artW)}" height="${num(r.artH)}" preserveAspectRatio="none"/>`;
       p.push(r.cutMode
@@ -510,8 +512,8 @@ function renderPreview() {
     }
     p.push('</defs>');
   }
-  if (layout) {
-    for (const it of layout.items) {
+  if (state.layout) {
+    for (const it of state.layout.items) {
       const r = it.d.res, M = placeMatrix(it);
       p.push(`<g transform="matrix(${M.map(num).join(',')})">`);
       if (showArt) {
@@ -531,26 +533,26 @@ function renderStats(busyText) {
   renderStatsCore(busyText);
 }
 function renderStatsCore(busyText) {
-  if (appMode === 'duplex') { renderDuplexStats(); return; }
-  if (appMode === 'svgplt') { renderSvgPltStats(busyText); return; }
-  if (appMode === 'squares') { renderSquaresStats(busyText); return; }
-  if (appMode === 'gang') { renderGangStats(busyText); return; }
+  if (state.mode === 'duplex') { renderDuplexStats(); return; }
+  if (state.mode === 'svgplt') { renderSvgPltStats(busyText); return; }
+  if (state.mode === 'squares') { renderSquaresStats(busyText); return; }
+  if (state.mode === 'gang') { renderGangStats(busyText); return; }
   if (isMarkless()) { renderVinylStats(busyText); return; }
   if (isPrintMode()) { renderCardStats(busyText); return; }
-  const total = layout ? layout.items.length : 0;
+  const total = state.layout ? state.layout.items.length : 0;
   const ready = designs.filter(d => d.res);
   ui.dropNote.hidden = designs.length > 0;
   for (const b of [ui.exAll, ui.exPrint, ui.exCut]) b.disabled = !total || !!busyText;
   document.getElementById('exPdf').disabled = !total || !!busyText;
   document.getElementById('exCutPdf').disabled = !total || !!busyText;
-  document.getElementById('exBatch').disabled = !designs.some(d => d.res) || !!busyText || !(template && template.marks);
-  ui.exPlt.disabled = !total || !!busyText || !(template && template.marks);
+  document.getElementById('exBatch').disabled = !designs.some(d => d.res) || !!busyText || !(state.template && state.template.marks);
+  ui.exPlt.disabled = !total || !!busyText || !(state.template && state.template.marks);
   if (busyText) { ui.count.textContent = busyText; return; }
   ui.count.textContent = !designs.length ? 'Empty sheet' : total === 1 ? '1 sticker on the sheet' : `${total} stickers on the sheet`;
   const notes = [];
-  if (layout) {
+  if (state.layout) {
     for (const d of ready) {
-      const got = layout.counts.get(d.id) || 0;
+      const got = state.layout.counts.get(d.id) || 0;
       if (d.qty != null && got < d.qty) notes.push(`Only ${got} of ${d.qty} copies of ${d.name} fit.`);
       if (d.qty == null && got === 0) notes.push(`${d.name} is too big for the free area.`);
     }
@@ -573,8 +575,8 @@ function updateRow(d) {
     st.classList.toggle('err', !!d.verr);
     if (d.verr) { st.textContent = d.verr; return; }
     if (d.busy || !d.vres) { st.textContent = 'Reading the shapes…'; return; }
-    const r = d.vres, n = vinylLayout ? vinylLayout.counts.get(d.id) || 0 : 0;
-    st.textContent = `${appMode === 'pen' ? 'Drawing' : 'Cut'} ${num(Math.round(r.frW * 10) / 10)} × ${num(Math.round(r.frH * 10) / 10)} mm, ${r.nPaths} paths. ${n === 1 ? `1 on the ${appMode === 'pen' ? 'sheet' : 'vinyl'}.` : `${n} on the ${appMode === 'pen' ? 'sheet' : 'vinyl'}.`}${vOpts().vMirror ? ' Mirrored.' : ''}`;
+    const r = d.vres, n = state.vinylLayout ? state.vinylLayout.counts.get(d.id) || 0 : 0;
+    st.textContent = `${state.mode === 'pen' ? 'Drawing' : 'Cut'} ${num(Math.round(r.frW * 10) / 10)} × ${num(Math.round(r.frH * 10) / 10)} mm, ${r.nPaths} paths. ${n === 1 ? `1 on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.` : `${n} on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.`}${vOpts().vMirror ? ' Mirrored.' : ''}`;
     return;
   }
   st.classList.toggle('err', !!d.error);
@@ -582,7 +584,7 @@ function updateRow(d) {
   if (d.busy || !d.res) { st.textContent = 'Tracing outline…'; return; }
   const r = d.res, bits = [];
   bits.push(`${r.cutMode ? 'Cut line' : 'Art'} ${num(Math.round(r.frW * 10) / 10)} × ${num(Math.round(r.frH * 10) / 10)} mm, die cut ${num(Math.round(r.cutW * 10) / 10)} × ${num(Math.round(r.cutH * 10) / 10)} mm.`);
-  if (layout) { const n = layout.counts.get(d.id) || 0; bits.push(n === 1 ? '1 on the sheet.' : `${n} on the sheet.`); }
+  if (state.layout) { const n = state.layout.counts.get(d.id) || 0; bits.push(n === 1 ? '1 on the sheet.' : `${n} on the sheet.`); }
   if (d.circle) bits.push(d.circle.found ? 'Round sticker: the cut circle was placed on the circle found in the PDF (2 % inside its edge); adjust it below if needed.' : 'Round sticker: no clear circle found in the PDF, so the cut circle is centred at 90 % of the page; adjust it below.');
   else if (r.cutMode) bits.push('Kiss cut follows the line in the file; everything outside the easy-peel margin is cropped off.');
   if (r.bleedShort) bits.push('The image doesn’t reach the die line everywhere, so parts of the easy-peel margin will print white.');
@@ -657,17 +659,17 @@ function addRow(d) {
 /* ---------- pipeline ---------- */
 function schedule() { clearTimeout(timer); timer = setTimeout(run, 280); }
 async function run() {
-  const my = ++gen, o = readOpts();
+  const my = ++state.gen, o = readOpts();
   saveOpts();
   try {
     renderStats('Preparing the sheet…');
-    if (appMode === 'svgplt' || appMode === 'duplex') { renderPreview(); renderStats(); return; }
-    if (appMode === 'squares') { squaresCompute(o); renderPreview(); renderStats(); return; }
-    if (appMode === 'gang') { gangCompute(o); renderPreview(); renderStats(); return; }
+    if (state.mode === 'svgplt' || state.mode === 'duplex') { renderPreview(); renderStats(); return; }
+    if (state.mode === 'squares') { squaresCompute(o); renderPreview(); renderStats(); return; }
+    if (state.mode === 'gang') { gangCompute(o); renderPreview(); renderStats(); return; }
     if (isMarkless()) { await runVinyl(my, vOpts()); return; }
     const sheet = await templateSheet(o);
-    if (my !== gen) return;
-    if (isPrintMode()) { cards.layout = computeCardLayout(sheet, o); renderPreview(); renderStats(); return; }
+    if (my !== state.gen) return;
+    if (isPrintMode()) { state.job.layout = computeCardLayout(sheet, o); renderPreview(); renderStats(); return; }
     for (const d of designs) {
       const key = [d.mode, d.heightMm, o.kiss, o.die, o.gap, o.joinGap, o.quality, o.ignoreWhite].join('|');
       if (d.key === key) continue;
@@ -677,21 +679,21 @@ async function run() {
       let res = null, err = null;
       try { res = await processDesign(d, o); }
       catch (e) { err = e.message || String(e); }
-      if (my !== gen) return;
+      if (my !== state.gen) return;
       d.res = res; d.error = err; d.key = key; d.busy = false;
       updateRow(d);
     }
     const ready = designs.filter(d => d.res && d.qty !== 0);
     renderStats('Arranging stickers…');
     await tick();
-    const lay = ready.length ? await nestAll(ready, sheet, o, () => my !== gen) : null;
-    if (my !== gen) return;
-    layout = lay;
+    const lay = ready.length ? await nestAll(ready, sheet, o, () => my !== state.gen) : null;
+    if (my !== state.gen) return;
+    state.layout = lay;
     renderPreview();
     designs.forEach(updateRow);
     renderStats();
   } catch (e) {
-    if (my === gen) { renderStats(); ui.msg.textContent = e.message || String(e); ui.msg.className = 'msg warn'; }
+    if (my === state.gen) { renderStats(); ui.msg.textContent = e.message || String(e); ui.msg.className = 'msg warn'; }
   }
 }
 
@@ -745,7 +747,7 @@ async function addFiles(fileList) {
 // A rotated PDF page is printed from its rendered image: the vector embed would come out unrotated.
 const vecCircle = d => !!(d.circle && d.circle.pdf && !d.circle.rot);
 function buildExport(kind, vec = false) {
-  const t = template, o = readOpts(), L = layout;
+  const t = state.template, o = readOpts(), L = state.layout;
   const s = [];
   s.push('<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n');
   // SignCut chokes on xlink:href, so the cut file carries no xlink at all
@@ -797,7 +799,7 @@ function buildExport(kind, vec = false) {
 // Sticker outlines placed on the sheet, in sheet mm.
 function stickerLoops(key) {
   const res = [];
-  for (const it of layout.items) {
+  for (const it of state.layout.items) {
     const M = placeMatrix(it);
     for (const loop of it.d.res[key]) res.push(loop.map(p => [M[0] * p[0] + M[2] * p[1] + M[4], M[1] * p[0] + M[3] * p[1] + M[5]]));
   }
@@ -807,7 +809,7 @@ function stickerLoops(key) {
 const markFrame = t => ({ top: (t.marks.top - t.vb.y) / t.u, bottom: (t.marks.bottom - t.vb.y) / t.u, left: (t.marks.left - t.vb.x) / t.u, right: (t.marks.right - t.vb.x) / t.u });
 const pltOpts = (o, force) => ({ force, overcut: o.overcut, bladeOffset: o.bladeOffset, pltForce: o.pltForce, cutSpeed: o.cutSpeed, upSpeed: o.upSpeed });
 function buildPlt(sheetLoops, force, openLines = [], ...laterLines) {
-  return writePlt(markFrame(template), pltOpts(readOpts(), force), sheetLoops, openLines, ...laterLines);
+  return writePlt(markFrame(state.template), pltOpts(readOpts(), force), sheetLoops, openLines, ...laterLines);
 }
 async function saveFile(name, text) {
   const blob = text instanceof Blob ? text : new Blob([text], { type: 'image/svg+xml' });
@@ -817,7 +819,7 @@ async function saveFile(name, text) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 function exportName(kind) {
-  const n = layout ? layout.items.length : 0;
+  const n = state.layout ? state.layout.items.length : 0;
   const base = `sticker-sheet-${n}pcs`;
   return kind === 'all' ? `${base}.svg` : `${base}-${kind}.svg`;
 }
@@ -825,7 +827,7 @@ ui.exAll.addEventListener('click', () => saveFile(exportName('all'), buildExport
 ui.exPrint.addEventListener('click', () => saveFile(exportName('print'), buildExport('print')));
 ui.exCut.addEventListener('click', () => {
   const o = readOpts(), dieName = o.dieLayer === o.kissLayer ? o.dieLayer + ' 2' : o.dieLayer;
-  saveFile(exportName('cut'), template.generated ? lemurCutSvg([
+  saveFile(exportName('cut'), state.template.generated ? lemurCutSvg([
     { name: o.kissLayer, color: o.kissColor, paths: stickerLoops('kissLoops').map(pts => ({ pts, closed: true })) },
     { name: dieName, color: o.dieColor, paths: stickerLoops('dieLoops').map(pts => ({ pts, closed: true })) }]) : buildExport('cut'));
 });
@@ -848,9 +850,9 @@ for (const id of ['sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm']) 
 for (const id of OPT_IDS) {
   const e = document.getElementById(id);
   e.addEventListener(e.type === 'color' || e.type === 'checkbox' || e.tagName === 'SELECT' ? 'change' : 'input', () => {
-    if (id === 'dpi' && template && template.unitless) { setTemplate(template.text, template.name, ui.tplReset.hidden); }
+    if (id === 'dpi' && state.template && state.template.unitless) { setTemplate(state.template.text, state.template.name, ui.tplReset.hidden); }
     if (['kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'borderFill', 'borderColor', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed'].includes(id)) {
-      saveOpts(); if (template) renderPreview(); designs.forEach(updateRow); return;
+      saveOpts(); if (state.template) renderPreview(); designs.forEach(updateRow); return;
     }
     schedule();
   });
@@ -859,8 +861,8 @@ ui.showArt.addEventListener('change', () => renderPreview());
 
 /* ---------- zoom & pan on the sheet preview ---------- */
 // view = visible part of the sheet in template units (same aspect as the sheet); null = whole sheet.
-let view = null, pan = null;
-function fullView() { const v = previewFrame || template.vb; return { x: v.x, y: v.y, w: v.w, h: v.h }; }
+let pan = null;
+function fullView() { const v = state.previewFrame || state.template.vb; return { x: v.x, y: v.y, w: v.w, h: v.h }; }
 function clampView(v) {
   const f = fullView(), minW = f.w / 40;
   if (v.w >= f.w) return null;
@@ -871,11 +873,11 @@ function clampView(v) {
 }
 function applyView() {
   const svg = ui.stage.querySelector('svg');
-  if (!svg || !template) return;
-  const v = view || fullView();
+  if (!svg || !state.template) return;
+  const v = state.view || fullView();
   svg.setAttribute('viewBox', `${v.x} ${v.y} ${v.w} ${v.h}`);
   $('#zLbl').textContent = Math.round(fullView().w / v.w * 100) + '%';
-  ui.stage.classList.toggle('zoomed', !!view);
+  ui.stage.classList.toggle('zoomed', !!state.view);
 }
 function svgPoint(svg, cx, cy) {
   const m = svg.getScreenCTM().inverse();
@@ -883,11 +885,11 @@ function svgPoint(svg, cx, cy) {
 }
 function zoomAt(factor, cx, cy) {
   const svg = ui.stage.querySelector('svg');
-  if (!svg || !template) return;
-  const v = view || fullView();
+  if (!svg || !state.template) return;
+  const v = state.view || fullView();
   const p = cx == null ? { x: v.x + v.w / 2, y: v.y + v.h / 2 } : svgPoint(svg, cx, cy);
   const nw = v.w / factor, nh = v.h / factor;
-  view = clampView({ x: p.x - (p.x - v.x) * (nw / v.w), y: p.y - (p.y - v.y) * (nh / v.h), w: nw, h: nh });
+  state.view = clampView({ x: p.x - (p.x - v.x) * (nw / v.w), y: p.y - (p.y - v.y) * (nh / v.h), w: nw, h: nh });
   applyView();
 }
 ui.stage.addEventListener('wheel', e => {
@@ -899,8 +901,8 @@ ui.stage.addEventListener('wheel', e => {
 }, { passive: false });
 ui.stage.addEventListener('pointerdown', e => {
   const svg = ui.stage.querySelector('svg');
-  if (!svg || !view || e.button !== 0) return;
-  const r = svg.getBoundingClientRect(), v = view;
+  if (!svg || !state.view || e.button !== 0) return;
+  const r = svg.getBoundingClientRect(), v = state.view;
   const scale = Math.min(r.width / v.w, r.height / v.h);
   pan = { id: e.pointerId, sx: e.clientX, sy: e.clientY, v: { ...v }, scale };
   ui.stage.setPointerCapture(e.pointerId);
@@ -908,17 +910,17 @@ ui.stage.addEventListener('pointerdown', e => {
 });
 ui.stage.addEventListener('pointermove', e => {
   if (!pan || e.pointerId !== pan.id) return;
-  view = clampView({ ...pan.v, x: pan.v.x - (e.clientX - pan.sx) / pan.scale, y: pan.v.y - (e.clientY - pan.sy) / pan.scale });
+  state.view = clampView({ ...pan.v, x: pan.v.x - (e.clientX - pan.sx) / pan.scale, y: pan.v.y - (e.clientY - pan.sy) / pan.scale });
   applyView();
 });
 const endPan = e => { if (pan && e.pointerId === pan.id) { pan = null; ui.stage.classList.remove('panning'); } };
 ui.stage.addEventListener('pointerup', endPan);
 ui.stage.addEventListener('pointercancel', endPan);
-ui.stage.addEventListener('dblclick', () => { view = null; applyView(); });
+ui.stage.addEventListener('dblclick', () => { state.view = null; applyView(); });
 ui.stage.title = 'Scroll to zoom, drag to move, double-click to fit';
 $('#zIn').addEventListener('click', () => zoomAt(1.5));
 $('#zOut').addEventListener('click', () => zoomAt(1 / 1.5));
-$('#zFit').addEventListener('click', () => { view = null; applyView(); });
+$('#zFit').addEventListener('click', () => { state.view = null; applyView(); });
 let dragDepth = 0;
 window.addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; document.body.classList.add('dropping'); });
 window.addEventListener('dragleave', () => { dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) document.body.classList.remove('dropping'); });
@@ -926,18 +928,18 @@ window.addEventListener('dragover', e => e.preventDefault());
 window.addEventListener('drop', e => {
   e.preventDefault(); dragDepth = 0; document.body.classList.remove('dropping');
   if (!e.dataTransfer || !e.dataTransfer.files.length) return;
-  if (appMode === 'winietka') winAddFiles(e.dataTransfer.files); else if (appMode === 'svgplt') spLoad(e.dataTransfer.files[0]); else if (appMode === 'gang') gangAddFiles(e.dataTransfer.files); else if (isPrintMode()) loadCardFile(e.dataTransfer.files); else addFiles(e.dataTransfer.files);
+  if (state.mode === 'winietka') winAddFiles(e.dataTransfer.files); else if (state.mode === 'svgplt') spLoad(e.dataTransfer.files[0]); else if (state.mode === 'gang') gangAddFiles(e.dataTransfer.files); else if (isPrintMode()) loadCardFile(e.dataTransfer.files); else addFiles(e.dataTransfer.files);
 });
 
 /* ---------- business cards mode ---------- */
-let appMode = 'stickers';
+
 const newPrintJob = () => ({ imgSrc: null, name: null, bytes: null, pages: 0, pageW: 0, pageH: 0, mbx: 0, mby: 0, previews: [], layout: null, bleed: null });
 const kinds = { cards: newPrintJob(), vouchers: newPrintJob(), guillotine: newPrintJob(), morgana: newPrintJob(), gang: newPrintJob(), deck: newPrintJob(), winietka: newPrintJob() };
-let cards = kinds.cards; // the PDF job of the current mode
-function isPrintMode() { return appMode === 'cards' || appMode === 'vouchers' || appMode === 'guillotine' || appMode === 'morgana' || appMode === 'deck' || appMode === 'winietka'; }
+state.job = kinds.cards; // the PDF job of the current mode
+function isPrintMode() { return state.mode === 'cards' || state.mode === 'vouchers' || state.mode === 'guillotine' || state.mode === 'morgana' || state.mode === 'deck' || state.mode === 'winietka'; }
 // guillotine sheet (also the card deck): chosen under Sheet; print sheets mode stays on 310 × 440
 function gSheetMm() {
-  if (appMode === 'gang') return [310, 440];
+  if (state.mode === 'gang') return [310, 440];
   const sel = document.getElementById('gPage').value;
   if (sel === 'custom') {
     const w = parseFloat(document.getElementById('gPageW').value), h = parseFloat(document.getElementById('gPageH').value);
@@ -951,15 +953,15 @@ document.getElementById('gPage').addEventListener('change', () => { document.get
 const SIZES = { A3: [297, 420], A4: [210, 297], A5: [148, 210], A6: [105, 148], DL: [99, 210] };
 // guillotine: print the PDF scaled to a standard size (orientation follows the PDF)
 function pageScale(o) {
-  if ((appMode !== 'guillotine' && appMode !== 'deck') || !cards.bytes) return 1;
+  if ((state.mode !== 'guillotine' && state.mode !== 'deck') || !state.job.bytes) return 1;
   if (o.gSize === 'custom') return Math.max(0.05, o.gScale / 100);
   const t = SIZES[o.gSize];
-  const sw = cards.pageW - 2 * o.cBleed, sh = cards.pageH - 2 * o.cBleed;
+  const sw = state.job.pageW - 2 * o.cBleed, sh = state.job.pageH - 2 * o.cBleed;
   if (!t || sw <= 0 || sh <= 0) return 1;
   const [a, b] = sw >= sh ? [t[1], t[0]] : t;
   return Math.min(a / sw, b / sh);
 }
-function pageDims() { return appMode === 'guillotine' || appMode === 'gang' || appMode === 'deck' ? G_PAGE : appMode === 'morgana' ? M_PAGE : { wMm: template.wMm, hMm: template.hMm }; }
+function pageDims() { return state.mode === 'guillotine' || state.mode === 'gang' || state.mode === 'deck' ? G_PAGE : state.mode === 'morgana' ? M_PAGE : { wMm: state.template.wMm, hMm: state.template.hMm }; }
 // Morgana CardXtra SRA3 template (calibrated, 20-up): 90 × 50 slot trims and the reading mark, taken 1:1 from the template PDF.
 const M_PAGE = { wMm: 450, hMm: 320 };
 const M_TPL = {
@@ -969,7 +971,7 @@ const M_TPL = {
 };
 const rotPlace = (r, Bx, By, pw, ph) => r === 90 ? [0, 1, -1, 0, Bx + ph, By] : r === 180 ? [-1, 0, 0, -1, Bx + pw, By + ph] : r === 270 ? [0, -1, 1, 0, Bx, By + pw] : [1, 0, 0, 1, Bx, By];
 function morganaLayout(o) {
-  const pw = cards.pageW, ph = cards.pageH, b = o.cBleed, tw = pw - 2 * b, th = ph - 2 * b;
+  const pw = state.job.pageW, ph = state.job.pageH, b = o.cBleed, tw = pw - 2 * b, th = ph - 2 * b;
   const base = { n: 0, items: [], b, tw, th, e: 0, gap: 0, guil: false, morgana: true, pw, ph, sc: 1 };
   const land = tw >= th, [W, H] = { '90x50': [90, 50], '85x55': [85, 55] }[o.mSize] || [90, 55];
   if (Math.abs(Math.max(tw, th) - W) > 0.6 || Math.abs(Math.min(tw, th) - H) > 0.6) return { ...base, error: `The CardXtra is set to cut ${W} × ${H} mm; this PDF is ${num(Math.round(tw * 10) / 10)} × ${num(Math.round(th * 10) / 10)} mm after the bleed.` };
@@ -993,8 +995,8 @@ const backT = (it, o) => it.Tb ? mul([1, 0, 0, 1, o.cOffX, o.cOffY], it.Tb) : ba
 const backClip = (it, o) => it.bclip ? shiftRect(it.bclip, o) : backRect(it.clip, o);
 // a multi-page job laid out card by card: the card deck (front + back per card) or the guillotine with
 // "every page a separate card" (one page per card, one-sided)
-const deckLike = () => appMode === 'deck' || (appMode === 'guillotine' && document.getElementById('gPages').value === 'each');
-const deckPer = () => appMode === 'deck' ? 2 : 1;
+const deckLike = () => state.mode === 'deck' || (state.mode === 'guillotine' && document.getElementById('gPages').value === 'each');
+const deckPer = () => state.mode === 'deck' ? 2 : 1;
 // the crop marks as they land on the back page (mirrored like the cards, with the back shift)
 function backMarks(L, o) {
   const pg = pageDims();
@@ -1037,7 +1039,7 @@ async function readCardImage(f) {
 function imageTrim(im) {
   const v = id => parseFloat(document.getElementById(id).value);
   let W, H;
-  if (appMode === 'morgana') { const m = /^(\d+)x(\d+)$/.exec(document.getElementById('mSize').value) || [0, 90, 55]; W = +m[1]; H = +m[2]; }
+  if (state.mode === 'morgana') { const m = /^(\d+)x(\d+)$/.exec(document.getElementById('mSize').value) || [0, 90, 55]; W = +m[1]; H = +m[2]; }
   else { W = Math.max(10, v('icW') || 90); H = Math.max(10, v('icH') || 50); }
   const land = im.edit ? !im.edit.state.portrait : im.w >= im.h;
   return land === (W >= H) ? [W, H] : [H, W];
@@ -1142,30 +1144,30 @@ const aiBleedCache = new Map(); // AI-filled card pages (PNG), by image and plac
 function rebuildCardImages() {
   clearTimeout(icTimer);
   icTimer = setTimeout(async () => {
-    const src = cards.imgSrc;
+    const src = state.job.imgSrc;
     if (!src) return;
     try { const r = await imagesToCardPdf(src); await loadCardPdf(r.bytes, src.name, r.bleed); }
     catch (e) { setCardMsg(`Couldn’t use the image: ${e.message || e}`, true); }
   }, 250);
 }
 function syncImgRows() {
-  const on = !!(isPrintMode() && appMode !== 'winietka' && cards.imgSrc);
+  const on = !!(isPrintMode() && state.mode !== 'winietka' && state.job.imgSrc);
   document.getElementById('imgCardRows').hidden = !on;
   const fit = document.getElementById('icFit').value;
   document.getElementById('rowIcDpi').hidden = fit !== 'actual';
   document.getElementById('rowIcExtend').hidden = false; // the bleed is filled last, also around a stretched picture
   document.getElementById('rowIcSafe').hidden = fit === 'actual';
-  document.getElementById('rowIcSize').hidden = appMode === 'morgana';
-  document.getElementById('rowIcPreset').hidden = appMode === 'morgana';
-  document.getElementById('icSwap').hidden = !on || cards.imgSrc.imgs.length !== 2;
+  document.getElementById('rowIcSize').hidden = state.mode === 'morgana';
+  document.getElementById('rowIcPreset').hidden = state.mode === 'morgana';
+  document.getElementById('icSwap').hidden = !on || state.job.imgSrc.imgs.length !== 2;
   icList();
   syncBleedRow();
 }
 // the pictures of an image card job, each with the full editor (fit, rotate, stretch, AI fill and upscale)
 function icList() {
-  const ul = document.getElementById('icList'), src = cards.imgSrc;
+  const ul = document.getElementById('icList'), src = state.job.imgSrc;
   ul.innerHTML = '';
-  if (!src || appMode === 'winietka') return;
+  if (!src || state.mode === 'winietka') return;
   src.imgs.forEach((im, i) => {
     const li = document.createElement('li');
     li.className = 'icitem';
@@ -1207,25 +1209,25 @@ for (const id of ['icW', 'icH']) document.getElementById(id).addEventListener('i
 document.getElementById('icFit').addEventListener('change', () => { syncImgRows(); rebuildCardImages(); });
 document.getElementById('icExtend').addEventListener('change', rebuildCardImages);
 document.getElementById('icBleedHow').addEventListener('change', rebuildCardImages);
-document.getElementById('icSwap').addEventListener('click', () => { const s = cards.imgSrc; if (s && s.imgs.length > 1) { s.imgs.reverse(); rebuildCardImages(); } });
-document.getElementById('mSize').addEventListener('change', () => { if (appMode === 'morgana' && cards.imgSrc) rebuildCardImages(); });
-document.getElementById('cBleed').addEventListener('input', () => { if (cards.imgSrc && document.getElementById('icFit').value === 'stretch') rebuildCardImages(); });
+document.getElementById('icSwap').addEventListener('click', () => { const s = state.job.imgSrc; if (s && s.imgs.length > 1) { s.imgs.reverse(); rebuildCardImages(); } });
+document.getElementById('mSize').addEventListener('change', () => { if (state.mode === 'morgana' && state.job.imgSrc) rebuildCardImages(); });
+document.getElementById('cBleed').addEventListener('input', () => { if (state.job.imgSrc && document.getElementById('icFit').value === 'stretch') rebuildCardImages(); });
 async function loadCardFile(input) {
   const list = Array.from(input && input.length != null ? input : input ? [input] : []);
   const pdfF = list.find(isPdfFile), imgs = list.filter(isImageFile);
   if (!pdfF && imgs.length) {
     setCardMsg('Reading the image…');
     try {
-      const max = appMode === 'deck' || appMode === 'guillotine' ? 400 : 2;
-      cards.imgSrc = { imgs: [], name: imgs[0].name.replace(/\.[^.]+$/, '') };
-      for (const f of imgs.slice(0, max)) cards.imgSrc.imgs.push(await readCardImage(f));
+      const max = state.mode === 'deck' || state.mode === 'guillotine' ? 400 : 2;
+      state.job.imgSrc = { imgs: [], name: imgs[0].name.replace(/\.[^.]+$/, '') };
+      for (const f of imgs.slice(0, max)) state.job.imgSrc.imgs.push(await readCardImage(f));
       syncImgRows();
-      const r = await imagesToCardPdf(cards.imgSrc); await loadCardPdf(r.bytes, cards.imgSrc.name, r.bleed);
-    } catch (e) { cards.imgSrc = null; syncImgRows(); setCardMsg(`Couldn’t use the image: ${e.message || e}`, true); }
+      const r = await imagesToCardPdf(state.job.imgSrc); await loadCardPdf(r.bytes, state.job.imgSrc.name, r.bleed);
+    } catch (e) { state.job.imgSrc = null; syncImgRows(); setCardMsg(`Couldn’t use the image: ${e.message || e}`, true); }
     return;
   }
   if (!pdfF) { setCardMsg('Load a PDF or an image file.', true); return; }
-  cards.imgSrc = null; syncImgRows();
+  state.job.imgSrc = null; syncImgRows();
   setCardMsg('Reading the PDF…');
   try { await loadCardPdf(new Uint8Array(await pdfF.arrayBuffer()), pdfF.name, null); }
   catch (e) { setCardMsg(`Couldn’t read the PDF: ${e.message || e}`, true); }
@@ -1238,32 +1240,32 @@ async function loadCardPdf(bytes, fileName, imgBleed) {
     const pdf = await window.pdfjsLib.getDocument(pdfSource(bytes.slice())).promise;
     const lib = await window.PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
     const p0 = lib.getPage(0), mb = p0.getMediaBox(), tb = p0.getTrimBox();
-    cards.pageW = mb.width / PT; cards.pageH = mb.height / PT; cards.mbx = mb.x; cards.mby = mb.y;
-    cards.bleed = null;
-    if (fromImages) { cards.bleed = Math.round(imgBleed * 1000) / 1000; document.getElementById('cBleed').value = cards.bleed; }
+    state.job.pageW = mb.width / PT; state.job.pageH = mb.height / PT; state.job.mbx = mb.x; state.job.mby = mb.y;
+    state.job.bleed = null;
+    if (fromImages) { state.job.bleed = Math.round(imgBleed * 1000) / 1000; document.getElementById('cBleed').value = state.job.bleed; }
     else if (tb.width < mb.width - 0.5 && tb.height < mb.height - 0.5) {
-      cards.bleed = Math.round((mb.width - tb.width) / 2 / PT * 100) / 100;
-      document.getElementById('cBleed').value = cards.bleed;
+      state.job.bleed = Math.round((mb.width - tb.width) / 2 / PT * 100) / 100;
+      document.getElementById('cBleed').value = state.job.bleed;
     }
-    if (cards.bleed == null && appMode === 'deck') { // no trim box: recognise a standard format plus bleed
+    if (state.job.bleed == null && state.mode === 'deck') { // no trim box: recognise a standard format plus bleed
       const fmts = [[105, 148], [148, 210], [210, 297], [99, 210], [100, 150], [90, 50], [85, 55], [90, 55]];
       for (const [a, b] of fmts) for (const [fw, fh] of [[a, b], [b, a]]) {
-        const bw = (cards.pageW - fw) / 2, bh = (cards.pageH - fh) / 2;
-        if (cards.bleed == null && bw >= 0 && bw <= 6 && Math.abs(bw - bh) < 0.3) { cards.bleed = Math.round((bw + bh) / 2 * 10) / 10; document.getElementById('cBleed').value = cards.bleed; }
+        const bw = (state.job.pageW - fw) / 2, bh = (state.job.pageH - fh) / 2;
+        if (state.job.bleed == null && bw >= 0 && bw <= 6 && Math.abs(bw - bh) < 0.3) { state.job.bleed = Math.round((bw + bh) / 2 * 10) / 10; document.getElementById('cBleed').value = state.job.bleed; }
       }
     }
-    cards.pages = appMode === 'deck' || appMode === 'guillotine' ? pdf.numPages : Math.min(pdf.numPages, 2);
-    cards.previews = [];
-    for (let i = 1; i <= cards.pages; i++) {
-      const pg = await pdf.getPage(i), vp = pg.getViewport({ scale: (appMode === 'deck' || cards.pages > 2 ? 5 : 12) / PT }); // px per mm
+    state.job.pages = state.mode === 'deck' || state.mode === 'guillotine' ? pdf.numPages : Math.min(pdf.numPages, 2);
+    state.job.previews = [];
+    for (let i = 1; i <= state.job.pages; i++) {
+      const pg = await pdf.getPage(i), vp = pg.getViewport({ scale: (state.mode === 'deck' || state.job.pages > 2 ? 5 : 12) / PT }); // px per mm
       const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
       await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-      cards.previews.push(cv.toDataURL('image/jpeg', 0.88));
+      state.job.previews.push(cv.toDataURL('image/jpeg', 0.88));
     }
-    cards.name = fileName; cards.bytes = bytes;
-    if (appMode === 'morgana') { // pick the CardXtra cut size that matches the PDF
+    state.job.name = fileName; state.job.bytes = bytes;
+    if (state.mode === 'morgana') { // pick the CardXtra cut size that matches the PDF
       const b = parseFloat(document.getElementById('cBleed').value) || 0;
-      const a = Math.max(cards.pageW, cards.pageH) - 2 * b, c = Math.min(cards.pageW, cards.pageH) - 2 * b;
+      const a = Math.max(state.job.pageW, state.job.pageH) - 2 * b, c = Math.min(state.job.pageW, state.job.pageH) - 2 * b;
       const hit = [['90x55', 90, 55], ['90x50', 90, 50], ['85x55', 85, 55]].find(([, W, H]) => Math.abs(a - W) < 0.6 && Math.abs(c - H) < 0.6);
       if (hit) document.getElementById('mSize').value = hit[0];
     }
@@ -1275,15 +1277,15 @@ async function loadCardPdf(bytes, fileName, imgBleed) {
 function setCardMsg(text, warn) { ui.msg.textContent = text; ui.msg.className = 'msg' + (warn ? ' warn' : ''); }
 function updateCardInfo() {
   const el = document.getElementById('cardInfo');
-  if (!cards.bytes) { el.textContent = KIND[appMode].hint; return; }
-  const o = readOpts(), b = o.cBleed, tw = cards.pageW - 2 * b, th = cards.pageH - 2 * b, sc = pageScale(o);
-  el.textContent = `${cards.name}: ${num(Math.round(tw * 10) / 10)} × ${num(Math.round(th * 10) / 10)} mm ${KIND[appMode].one} + ${num(b)} mm bleed${cards.bleed == null ? ' (from the setting, the PDF has no trim box)' : ''}, ${cards.pages > 1 ? 'two-sided' : 'single-sided'}.${Math.abs(sc - 1) > 0.001 ? ` Printed at ${num(Math.round(sc * 1000) / 10)}%: ${num(Math.round(tw * sc * 10) / 10)} × ${num(Math.round(th * sc * 10) / 10)} mm.` : ''}`;
+  if (!state.job.bytes) { el.textContent = KIND[state.mode].hint; return; }
+  const o = readOpts(), b = o.cBleed, tw = state.job.pageW - 2 * b, th = state.job.pageH - 2 * b, sc = pageScale(o);
+  el.textContent = `${state.job.name}: ${num(Math.round(tw * 10) / 10)} × ${num(Math.round(th * 10) / 10)} mm ${KIND[state.mode].one} + ${num(b)} mm bleed${state.job.bleed == null ? ' (from the setting, the PDF has no trim box)' : ''}, ${state.job.pages > 1 ? 'two-sided' : 'single-sided'}.${Math.abs(sc - 1) > 0.001 ? ` Printed at ${num(Math.round(sc * 1000) / 10)}%: ${num(Math.round(tw * sc * 10) / 10)} × ${num(Math.round(th * sc * 10) / 10)} mm.` : ''}`;
 }
 // Grid of cards inside the free area. T maps card-page mm (y down, origin at the bleed corner) to sheet mm.
 function computeCardLayout(sheet, o) {
-  if (!cards.bytes) return null;
-  if (appMode === 'morgana') return morganaLayout(o);
-  const guil = appMode === 'guillotine' || appMode === 'gang' || appMode === 'deck', sc = pageScale(o), pw = cards.pageW * sc, ph = cards.pageH * sc;
+  if (!state.job.bytes) return null;
+  if (state.mode === 'morgana') return morganaLayout(o);
+  const guil = state.mode === 'guillotine' || state.mode === 'gang' || state.mode === 'deck', sc = pageScale(o), pw = state.job.pageW * sc, ph = state.job.pageH * sc;
   const b = o.cBleed * sc, tw = pw - 2 * b, th = ph - 2 * b;
   // auto: the gap is the two bleeds (after scaling), so the space between the cuts is fully printed; if a narrower
   // gap (not under 3 mm, still two cuts) fits more copies, the widest such gap is used and the inner bleed trimmed to half of it
@@ -1356,13 +1358,13 @@ function cropMarks(L, o) { // [[x1,y1,x2,y2]...] in sheet mm
   return out;
 }
 function backMatrix(T, o) {
-  const S = [-1, 0, 0, 1, cards.layout ? cards.layout.pw : cards.pageW, 0];
+  const S = [-1, 0, 0, 1, state.job.layout ? state.job.layout.pw : state.job.pageW, 0];
   return mul([1, 0, 0, 1, o.cOffX, o.cOffY], mul(sheetMirror(o), mul(T, S)));
 }
 const cardTrim = (L, o) => roundRect(L.b, L.b, L.tw, L.th, o.cRadius);
 // Voucher fold: a perforation across the long side (dashes, with uncut gaps at both edges), in card-page mm.
 function cardFoldLines(L, o) {
-  if ((appMode !== 'vouchers' && appMode !== 'winietka') || o.cFold !== 'perf' || !L) return [];
+  if ((state.mode !== 'vouchers' && state.mode !== 'winietka') || o.cFold !== 'perf' || !L) return [];
   // the fold runs across the longer side (square cards: horizontally, like a tent card), unless set
   const vert = o.cFoldDir === 'v' ? true : o.cFoldDir === 'h' ? false : L.tw > L.th + 0.01, len = vert ? L.th : L.tw, along = vert ? L.tw : L.th;
   const pos = o.cFoldPos > 0 && o.cFoldPos < along ? o.cFoldPos : along / 2;
@@ -1376,17 +1378,17 @@ function cardFoldLines(L, o) {
   return segs;
 }
 function cardSheetFolds() {
-  const L = cards.layout, f = cardFoldLines(L, readOpts());
+  const L = state.job.layout, f = cardFoldLines(L, readOpts());
   return L.items.flatMap(it => f.map(sg => sg.map(p => apply(it.T, p))));
 }
 // Grid cutting: straight lines through every card edge, running across the free area (the sheet border
 // stays whole, so it keeps feeding). Only for square corners.
-const gridCut = o => (appMode === 'cards' || appMode === 'vouchers' || appMode === 'winietka') && o.cCutStyle === 'grid' && !(o.cRadius > 0);
+const gridCut = o => (state.mode === 'cards' || state.mode === 'vouchers' || state.mode === 'winietka') && o.cCutStyle === 'grid' && !(o.cRadius > 0);
 // Cut order: after the start mark (bottom right), vertical lines from right to left, the first going up,
 // then alternating. Horizontal lines start on the side where the verticals ended (top or bottom),
 // the first going left to right, then alternating.
 function cardGridLines() {
-  const L = cards.layout;
+  const L = state.job.layout;
   const xs = L.cutsX.slice().sort((a, b) => b - a);
   const v = xs.map((x, i) => i % 2 ? [[x, L.fy0], [x, L.fy1]] : [[x, L.fy1], [x, L.fy0]]);
   const endTop = xs.length % 2 === 1;
@@ -1395,19 +1397,19 @@ function cardGridLines() {
   return { v: Object.assign(v, { ordered: true }), h: Object.assign(h, { ordered: true }) };
 }
 function cardSheetLoops() {
-  const L = cards.layout, o = readOpts();
+  const L = state.job.layout, o = readOpts();
   if (gridCut(o)) return [];
   const trim = cardTrim(L, o);
   return L.items.map(it => trim.map(p => apply(it.T, p)));
 }
 // Perforated die cut (business cards): the cut lines become cuts with uncut bridges, so the sheet holds together
 // without a cutting mat. Business cards only for now.
-const perfDie = o => (appMode === 'cards' || appMode === 'winietka') && o.cPerfDie;
+const perfDie = o => (state.mode === 'cards' || state.mode === 'winietka') && o.cPerfDie;
 // Every card cut line on the sheet, in sheet mm, the way it is cut:
 // loops (closed outlines), folds (fold perforation), v and h (grid lines, cut in this exact order),
 // dashes (perforated outlines, any order).
 function cardCuts() {
-  const o = readOpts(), L = cards.layout, grid = gridCut(o), folds = cardSheetFolds();
+  const o = readOpts(), L = state.job.layout, grid = gridCut(o), folds = cardSheetFolds();
   const gl = grid ? cardGridLines() : { v: [], h: [] };
   if (!perfDie(o)) return { loops: cardSheetLoops(), folds, v: gl.v, h: gl.h, dashes: [] };
   const opens = list => list.flatMap(d => d.closed ? [d.pts.concat([d.pts[0]])] : [d.pts]);
@@ -1427,9 +1429,9 @@ function cardCuts() {
 }
 // Winietki cut without the sensor: the PLT starts at a printed dot (where the bottom-right mark would be)
 // instead of reading the registration marks.
-const dotCut = o => appMode === 'winietka' && o.cAlign === 'dot';
+const dotCut = o => state.mode === 'winietka' && o.cAlign === 'dot';
 // the start dot in sheet mm: the centre of the bottom-right registration mark
-const startDot = () => { const f = markFrame(template); return [f.right, f.bottom]; };
+const startDot = () => { const f = markFrame(state.template); return [f.right, f.bottom]; };
 // The start dot on a print page: a 1.2 mm dot inside a 4 mm ring, with 12 mm cross-hairs to aim the knife tip.
 function drawStartDot(page, Hpt) {
   const { rgb } = window.PDFLib, [x, y] = startDot(), X = x * PT, Y = Hpt - y * PT, black = rgb(0, 0, 0);
@@ -1441,12 +1443,12 @@ function drawStartDot(page, Hpt) {
 const startDotSvg = () => { const [x, y] = startDot(); return `<g stroke="#000" fill="none"><circle cx="${num(x)}" cy="${num(y)}" r="0.6" fill="#000" stroke="none"/><circle cx="${num(x)}" cy="${num(y)}" r="2" stroke-width="0.15"/><path d="M${num(x - 6)} ${num(y)}h12M${num(x)} ${num(y - 6)}v12" stroke-width="0.1"/></g>`; };
 // The card cut as a PLT, lined up by the marks or by the start dot.
 function cardPlt(c, o) {
-  const frame = markFrame(template), opts = pltOpts(o, o.dieForce);
+  const frame = markFrame(state.template), opts = pltOpts(o, o.dieForce);
   if (dotCut(o)) { frame.right -= o.cShiftX; frame.bottom -= o.cShiftY; opts.markless = true; }
   return gridCut(o) ? writePlt(frame, opts, [], c.folds, c.v, c.h) : writePlt(frame, opts, c.loops, c.folds, c.dashes);
 }
 function syncPerfDie() {
-  const on = appMode === 'cards' || appMode === 'winietka';
+  const on = state.mode === 'cards' || state.mode === 'winietka';
   document.getElementById('perfDie').hidden = !on;
   document.getElementById('perfDieRows').hidden = !on || !document.getElementById('cPerfDie').checked;
   const corners = document.getElementById('cTiePlace').value === 'corners';
@@ -1458,13 +1460,13 @@ document.getElementById('cPerfDie').addEventListener('change', syncPerfDie);
 document.getElementById('cTiePlace').addEventListener('change', syncPerfDie);
 document.getElementById('cAlign').addEventListener('change', syncPerfDie);
 function renderCardPreview() {
-  const t = template, o = readOpts(), L = cards.layout, back = document.getElementById('showBack').checked && cards.pages > 1 && !(deckLike() && deckPer() === 1);
-  const deck = deckLike(), win = appMode === 'winietka', guil = appMode === 'guillotine' || deck, morg = appMode === 'morgana';
+  const t = state.template, o = readOpts(), L = state.job.layout, back = document.getElementById('showBack').checked && state.job.pages > 1 && !(deckLike() && deckPer() === 1);
+  const deck = deckLike(), win = state.mode === 'winietka', guil = state.mode === 'guillotine' || deck, morg = state.mode === 'morgana';
   const p = [];
   if (guil || morg) {
     const pg = pageDims();
-    previewFrame = { x: -8, y: -8, w: pg.wMm + 16, h: pg.hMm + 16 };
-    p.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${previewFrame.x} ${previewFrame.y} ${previewFrame.w} ${previewFrame.h}" role="img" aria-label="${back ? 'Back' : 'Front'} of the sheet">`);
+    state.previewFrame = { x: -8, y: -8, w: pg.wMm + 16, h: pg.hMm + 16 };
+    p.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${state.previewFrame.x} ${state.previewFrame.y} ${state.previewFrame.w} ${state.previewFrame.h}" role="img" aria-label="${back ? 'Back' : 'Front'} of the sheet">`);
     p.push(`<rect x="0" y="0" width="${pg.wMm}" height="${pg.hMm}" fill="#fff"/><g>`);
     if (guil && !back) { const m = o.gMargin; p.push(`<rect x="${m}" y="${m}" width="${G_PAGE.wMm - 2 * m}" height="${G_PAGE.hMm - 2 * m}" fill="none" stroke="#9fb0a9" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>`); }
     if (morg) { const k = M_TPL.mark; p.push(`<rect x="${k[0]}" y="${k[1]}" width="${k[2]}" height="${k[3]}" fill="#000"/>`); }
@@ -1474,20 +1476,20 @@ function renderCardPreview() {
     if (!back && dotCut(o)) p.push(`<g transform="translate(${t.vb.x} ${t.vb.y}) scale(${t.u})">${startDotSvg()}</g>`);
     else if (!back) p.push(`<g>${t.inner.replace(SLOT_RE, '')}</g>`);
     p.push(`<g transform="translate(${t.vb.x} ${t.vb.y}) scale(${t.u})">`);
-    if (!back && sheetCache && sheetCache.free) {
-      const f = sheetCache.free;
+    if (!back && state.sheetCache && state.sheetCache.free) {
+      const f = state.sheetCache.free;
       p.push(`<rect x="${f.x0 * CELL}" y="${f.y0 * CELL}" width="${(f.x1 - f.x0 + 1) * CELL}" height="${(f.y1 - f.y0 + 1) * CELL}" fill="none" stroke="#9fb0a9" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>`);
     }
   }
   if (L && L.n) {
-    const img = cards.previews[back ? 1 : 0];
+    const img = state.job.previews[back ? 1 : 0];
     const trimD = 'M' + cardTrim(L, o).map(q => num(q[0]) + ' ' + num(q[1])).join('L') + 'Z';
     const foldD = cardFoldLines(L, o).map(sg => `M${num(sg[0][0])} ${num(sg[0][1])}L${num(sg[1][0])} ${num(sg[1][1])}`).join('');
     const multi = deck || win, dk = deck ? deckPlan(o) : null, used = new Map(), shIdx = multi ? +document.getElementById(deck ? 'deckSheet' : 'winSheet').value || 0 : 0;
     // deck: page per card side; winietki: one file/page per slot
     const slotKey = j => {
-      if (deck) { const c = deckCard(dk, shIdx, j), pi = c == null ? -1 : deckPer() * c + (back ? 1 : 0); return cards.previews[pi] ? [pi, cards.previews[pi]] : null; }
-      const k = winItem(shIdx, j); return k == null ? null : [k, cards.items[k].preview];
+      if (deck) { const c = deckCard(dk, shIdx, j), pi = c == null ? -1 : deckPer() * c + (back ? 1 : 0); return state.job.previews[pi] ? [pi, state.job.previews[pi]] : null; }
+      const k = winItem(shIdx, j); return k == null ? null : [k, state.job.items[k].preview];
     };
     if (multi) L.items.forEach((it, j) => { const s = slotKey(j); if (s) used.set(s[0], s[1]); });
     p.push(`<defs>${multi ? [...used].map(([k, url]) => `<g id="dimg${k}"><image href="${url}" x="0" y="0" width="${num(L.pw)}" height="${num(L.ph)}" preserveAspectRatio="none"/></g>`).join('') : `<g id="cimg"><image href="${img}" x="0" y="0" width="${num(L.pw)}" height="${num(L.ph)}" preserveAspectRatio="none"/></g>`}</defs>`);
@@ -1521,29 +1523,29 @@ function renderCardPreview() {
   applyView();
 }
 function renderCardStats(busyText) {
-  const n = cards.layout ? cards.layout.n : 0;
-  ui.dropNote.hidden = !!cards.bytes;
+  const n = state.job.layout ? state.job.layout.n : 0;
+  ui.dropNote.hidden = !!state.job.bytes;
   for (const id of ['exCardPdf', 'exCardCut']) document.getElementById(id).disabled = !n || !!busyText;
-  const guil = appMode === 'guillotine' || appMode === 'morgana' || appMode === 'deck';
+  const guil = state.mode === 'guillotine' || state.mode === 'morgana' || state.mode === 'deck';
   document.getElementById('exCardCut').hidden = guil; document.getElementById('exCardPlt').hidden = guil; document.getElementById('exCardCutPdf').hidden = guil;
   document.getElementById('exCardCutPdf').disabled = !n || !!busyText;
-  document.getElementById('exCardPlt').disabled = !n || !!busyText || !(template && template.marks);
+  document.getElementById('exCardPlt').disabled = !n || !!busyText || !(state.template && state.template.marks);
   if (busyText) { ui.count.textContent = busyText; return; }
-  const K = KIND[appMode];
-  ui.count.textContent = !cards.bytes ? `No ${K.many} loaded` : appMode === 'guillotine' && deckLike() && n ? (dkx => `${dkx.total} cards on ${dkx.sheets} ${dkx.sheets === 1 ? 'sheet' : 'sheets'}`)(deckPlan(readOpts())) : appMode === 'winietka' && n ? (wpx => `${wpx.total} ${wpx.total === 1 ? 'card' : 'cards'} on ${wpx.sheets} ${wpx.sheets === 1 ? 'sheet' : 'sheets'}`)(winPlan(readOpts())) : n === 1 ? `1 ${K.one} on the sheet` : `${n} ${K.many} on the sheet`;
+  const K = KIND[state.mode];
+  ui.count.textContent = !state.job.bytes ? `No ${K.many} loaded` : state.mode === 'guillotine' && deckLike() && n ? (dkx => `${dkx.total} cards on ${dkx.sheets} ${dkx.sheets === 1 ? 'sheet' : 'sheets'}`)(deckPlan(readOpts())) : state.mode === 'winietka' && n ? (wpx => `${wpx.total} ${wpx.total === 1 ? 'card' : 'cards'} on ${wpx.sheets} ${wpx.sheets === 1 ? 'sheet' : 'sheets'}`)(winPlan(readOpts())) : n === 1 ? `1 ${K.one} on the sheet` : `${n} ${K.many} on the sheet`;
   const notes = [];
-  if (cards.bytes && cards.layout) {
-    if (n) notes.push(`${cards.layout.cols} × ${cards.layout.rows}${cards.layout.rot ? ', rotated' : ''}.`);
-    else if (!cards.layout.error) notes.push(`The ${K.one} doesn’t fit in the free area.`);
-    if (cards.layout.error) notes.push(cards.layout.error);
+  if (state.job.bytes && state.job.layout) {
+    if (n) notes.push(`${state.job.layout.cols} × ${state.job.layout.rows}${state.job.layout.rot ? ', rotated' : ''}.`);
+    else if (!state.job.layout.error) notes.push(`The ${K.one} doesn’t fit in the free area.`);
+    if (state.job.layout.error) notes.push(state.job.layout.error);
     if (n && perfDie(readOpts())) {
       const c = cardCuts(), oo = readOpts(), cuts = c.v.length + c.h.length + c.dashes.length;
       notes.push(`Perforated die cut: ${cuts} cuts with ${num(oo.cTie)} mm bridges ${oo.cTiePlace === 'corners' ? `${num(oo.cTieInset)} mm from the corners` : 'along the edges'}, so the sheet holds together without a mat.`);
     }
-    { const oo = readOpts(); if (cards.pages > 1 && (oo.cOffX || oo.cOffY)) notes.push(`The back side is shifted by X ${num(oo.cOffX)} mm, Y ${num(oo.cOffY)} mm (Back side shift).`); }
-    if (cards.pages < 2 && appMode !== 'winietka') notes.push('The PDF has one page, so the sheet is single-sided.');
-    if (n && appMode === 'winietka') {
-      const wp = winPlan(readOpts()), odd = cards.items.filter(c => Math.abs(c.w - cards.items[0].w) > 1.5 || Math.abs(c.h - cards.items[0].h) > 1.5).length;
+    { const oo = readOpts(); if (state.job.pages > 1 && (oo.cOffX || oo.cOffY)) notes.push(`The back side is shifted by X ${num(oo.cOffX)} mm, Y ${num(oo.cOffY)} mm (Back side shift).`); }
+    if (state.job.pages < 2 && state.mode !== 'winietka') notes.push('The PDF has one page, so the sheet is single-sided.');
+    if (n && state.mode === 'winietka') {
+      const wp = winPlan(readOpts()), odd = state.job.items.filter(c => Math.abs(c.w - state.job.items[0].w) > 1.5 || Math.abs(c.h - state.job.items[0].h) > 1.5).length;
       notes.unshift(`${wp.items} ${wp.items === 1 ? 'card' : 'cards'}${wp.copies > 1 ? ` × ${wp.copies}` : ''} = ${wp.total} on ${wp.sheets} ${wp.sheets === 1 ? 'sheet' : 'sheets'} (${n} per sheet), single-sided. Every sheet is cut with the same PLT.`);
       if (odd) notes.push(`${odd} ${odd === 1 ? 'card has' : 'cards have'} a different page size than the first and ${odd === 1 ? 'is' : 'are'} stretched to fit.`);
       const sel = document.getElementById('winSheet'), cur = sel.value;
@@ -1554,26 +1556,26 @@ function renderCardStats(busyText) {
       const dk = deckPlan(readOpts());
       notes.unshift(deckPer() === 1
         ? `${dk.cards} ${dk.cards === 1 ? 'card' : 'cards'} (one per page)${dk.sets > 1 ? ` × ${dk.sets} sets` : ''} = ${dk.total} on ${dk.sheets} ${dk.sheets === 1 ? 'sheet' : 'sheets'}, one-sided.`
-        : `${dk.cards} ${dk.cards === 1 ? 'card' : 'cards'} per set (${cards.pages} pages${cards.pages % 2 ? ', the last back is blank' : ''}), ${dk.sets} sets: ${dk.sheets} ${dk.sheets === 1 ? 'sheet' : 'sheets'}, double-sided.`);
+        : `${dk.cards} ${dk.cards === 1 ? 'card' : 'cards'} per set (${state.job.pages} pages${state.job.pages % 2 ? ', the last back is blank' : ''}), ${dk.sets} sets: ${dk.sheets} ${dk.sheets === 1 ? 'sheet' : 'sheets'}, double-sided.`);
       notes.push(dk.order === 'stack' ? 'Cut the whole pile, then stack the piles in slot order (left to right, top to bottom): you get complete sets in order.' : 'Each sheet carries one card; collate the piles by card.');
       const sel = document.getElementById('deckSheet'), cur = sel.value;
       sel.innerHTML = Array.from({ length: dk.sheets }, (_, i) => `<option value="${i}">Sheet ${i + 1} of ${dk.sheets}</option>`).join('');
       sel.value = +cur < dk.sheets ? cur : '0';
     }
-    if (n && (appMode === 'guillotine' || appMode === 'deck')) {
-      const L = cards.layout, f = v => num(Math.round(v * 10) / 10), oo = readOpts();
+    if (n && (state.mode === 'guillotine' || state.mode === 'deck')) {
+      const L = state.job.layout, f = v => num(Math.round(v * 10) / 10), oo = readOpts();
       const sides = [['top', markSide(L, oo, L.sy)], ['bottom', markSide(L, oo, G_PAGE.hMm - L.sy - L.totH)], ['left', markSide(L, oo, L.sx)], ['right', markSide(L, oo, G_PAGE.wMm - L.sx - L.totW)]];
       const weak = sides.filter(([, m]) => !m || m.printable < 1).map(([nm]) => nm);
       if (weak.length) notes.push(`Not enough room for printable crop marks at the ${weak.join(' and ')}; use the cut positions below or lower the unprintable edge if your printer allows.`);
       notes.push(`Cuts from the left edge: ${L.cutsX.map(f).join(', ')} mm. From the top: ${L.cutsY.map(f).join(', ')} mm.`);
     }
   }
-  setCardMsg(notes.join(' '), !n && !!cards.bytes);
+  setCardMsg(notes.join(' '), !n && !!state.job.bytes);
   updateCardInfo();
 }
 // Template drawing as plain shapes in sheet mm (for the PDF): needs the live DOM.
 function templateShapes() {
-  const t = template;
+  const t = state.template;
   let host = null;
   try {
     const doc = parseSvg(t.text); sanitize(doc);
@@ -1621,13 +1623,13 @@ const cssRgb = c => {
 async function buildCardsPdf() {
   await ensureLibs();
   const { PDFDocument, pushGraphicsState, popGraphicsState, concatTransformationMatrix, rectangle, clip, endPath, drawObject } = window.PDFLib;
-  const o = readOpts(), t = pageDims(), L = cards.layout, guil = appMode === 'guillotine', morg = appMode === 'morgana';
-  const src = await PDFDocument.load(cards.bytes, { ignoreEncryption: true });
+  const o = readOpts(), t = pageDims(), L = state.job.layout, guil = state.mode === 'guillotine', morg = state.mode === 'morgana';
+  const src = await PDFDocument.load(state.job.bytes, { ignoreEncryption: true });
   const out = await PDFDocument.create();
-  const emb = await out.embedPdf(src, cards.pages > 1 ? [0, 1] : [0]);
+  const emb = await out.embedPdf(src, state.job.pages > 1 ? [0, 1] : [0]);
   const Wpt = t.wMm * PT, Hpt = t.hMm * PT, ph = L.ph, sc = L.sc;
   const F = [PT, 0, 0, -PT, 0, Hpt];                                                   // sheet mm (y down) -> PDF points
-  const G = [sc / PT, 0, 0, -sc / PT, -cards.mbx * sc / PT, ph + cards.mby * sc / PT];   // card page points -> card mm (y down), scaled
+  const G = [sc / PT, 0, 0, -sc / PT, -state.job.mbx * sc / PT, ph + state.job.mby * sc / PT];   // card page points -> card mm (y down), scaled
   // each copy is clipped to its own rect on the sheet (trim plus the bleed it may keep), then drawn
   const place = (page, e, list) => {
     const name = page.node.newXObject('Card', e.ref);
@@ -1654,13 +1656,13 @@ async function buildCardsPdf() {
   place(front, emb[0], L.items.map(it => ({ T: it.T, rc: it.clip })));
   if (emb[1]) {
     const back = printPage(out, Wpt, Hpt); if (morg) drawMark(back); place(back, emb[1], L.items.map(it => ({ T: backT(it, o), rc: backClip(it, o) })));
-    if (appMode === 'guillotine' && o.gMarksBack) for (const m of backMarks(L, o)) back.drawLine({ start: { x: m[0] * PT, y: Hpt - m[1] * PT }, end: { x: m[2] * PT, y: Hpt - m[3] * PT }, thickness: 0.25, color: window.PDFLib.rgb(0, 0, 0) });
+    if (state.mode === 'guillotine' && o.gMarksBack) for (const m of backMarks(L, o)) back.drawLine({ start: { x: m[0] * PT, y: Hpt - m[1] * PT }, end: { x: m[2] * PT, y: Hpt - m[3] * PT }, thickness: 0.25, color: window.PDFLib.rgb(0, 0, 0) });
   }
-  out.setTitle(`${KIND[appMode].title}, ${L.n} pcs`);
+  out.setTitle(`${KIND[state.mode].title}, ${L.n} pcs`);
   return new Blob([await out.save()], { type: 'application/pdf' });
 }
 function buildCardCutSvg() {
-  const t = template, o = readOpts(), u = t.u;
+  const t = state.template, o = readOpts(), u = t.u;
   const s = ['<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n', t.open.replace(/\s+xmlns:xlink="[^"]*"/g, '') + '\n', t.inner.replace(SLOT_RE, '') + '\n'];
   s.push(`<g id="${aiId(o.dieLayer)}">\n`);
   const st = `fill:none;stroke:${o.dieColor};stroke-width:${num(o.lineW * u)}`, doc = q => [q[0] * u + t.vb.x, q[1] * u + t.vb.y];
@@ -1676,14 +1678,14 @@ function buildCardCutSvg() {
 function printPage(doc, Wpt, Hpt) {
   const page = doc.addPage([Wpt, Hpt]), { rgb } = window.PDFLib;
   page.drawRectangle({ x: 0, y: 0, width: Wpt, height: Hpt, color: rgb(1, 1, 1) });
-  if (template && template.feedTop && Math.abs(Wpt - template.wMm * PT) < 1 && Math.abs(Hpt - template.hMm * PT) < 1) {
-    for (const x of [3, template.wMm - 3.3]) page.drawRectangle({ x: x * PT, y: Hpt - 3.3 * PT, width: 0.3 * PT, height: 0.3 * PT, color: rgb(0.985, 0.985, 0.985) });
+  if (state.template && state.template.feedTop && Math.abs(Wpt - state.template.wMm * PT) < 1 && Math.abs(Hpt - state.template.hMm * PT) < 1) {
+    for (const x of [3, state.template.wMm - 3.3]) page.drawRectangle({ x: x * PT, y: Hpt - 3.3 * PT, width: 0.3 * PT, height: 0.3 * PT, color: rgb(0.985, 0.985, 0.985) });
   }
   return page;
 }
 /* ---------- card deck: a multi-page PDF as double-sided cards, many sets ---------- */
 function deckPlan(o) {
-  const L = cards.layout, N = L ? L.n : 0, nCards = Math.ceil(cards.pages / deckPer()), sets = appMode === 'deck' ? o.deckSets : o.gEachSets, total = nCards * sets;
+  const L = state.job.layout, N = L ? L.n : 0, nCards = Math.ceil(state.job.pages / deckPer()), sets = state.mode === 'deck' ? o.deckSets : o.gEachSets, total = nCards * sets;
   if (!N) return { N: 0, cards: nCards, sets, total, sheets: 0, order: o.deckOrder };
   if (o.deckOrder === 'card') { const per = Math.ceil(sets / N); return { N, cards: nCards, sets, total, per, sheets: per * nCards, order: 'card' }; }
   return { N, cards: nCards, sets, total, sheets: Math.ceil(total / N), order: 'stack' };
@@ -1698,11 +1700,11 @@ function deckCard(dk, i, j) {
 async function buildDeckPdf() {
   await ensureLibs();
   const { PDFDocument, pushGraphicsState, popGraphicsState, concatTransformationMatrix, rectangle, clip, endPath, drawObject, rgb } = window.PDFLib;
-  const o = readOpts(), L = cards.layout, dk = deckPlan(o), pg = pageDims();
-  const src = await PDFDocument.load(cards.bytes, { ignoreEncryption: true }), out = await PDFDocument.create();
-  const emb = await out.embedPdf(src, Array.from({ length: cards.pages }, (_, i) => i));
+  const o = readOpts(), L = state.job.layout, dk = deckPlan(o), pg = pageDims();
+  const src = await PDFDocument.load(state.job.bytes, { ignoreEncryption: true }), out = await PDFDocument.create();
+  const emb = await out.embedPdf(src, Array.from({ length: state.job.pages }, (_, i) => i));
   const Wpt = pg.wMm * PT, Hpt = pg.hMm * PT, ph = L.ph, sc = L.sc;
-  const F = [PT, 0, 0, -PT, 0, Hpt], G = [sc / PT, 0, 0, -sc / PT, -cards.mbx * sc / PT, ph + cards.mby * sc / PT];
+  const F = [PT, 0, 0, -PT, 0, Hpt], G = [sc / PT, 0, 0, -sc / PT, -state.job.mbx * sc / PT, ph + state.job.mby * sc / PT];
   const marks = cropMarks(L, o), black = rgb(0, 0, 0);
   for (let i = 0; i < dk.sheets; i++) {
     setCardMsg(`Sheet ${i + 1} of ${dk.sheets}…`);
@@ -1711,7 +1713,7 @@ async function buildDeckPdf() {
       const page = printPage(out, Wpt, Hpt), names = new Map();
       L.items.forEach((it, j) => {
         const c = deckCard(dk, i, j), pi = c == null ? -1 : deckPer() * c + (back ? 1 : 0);
-        if (pi < 0 || pi >= cards.pages) return; // empty slot, or the blank back of an odd last page
+        if (pi < 0 || pi >= state.job.pages) return; // empty slot, or the blank back of an odd last page
         if (!names.has(pi)) names.set(pi, page.node.newXObject(`P${pi}`, emb[pi].ref));
         const T = back ? backT(it, o) : it.T, rc = back ? backClip(it, o) : it.clip, M = mul(F, mul(T, G));
         page.pushOperators(pushGraphicsState(), rectangle(rc[0] * PT, Hpt - (rc[1] + rc[3]) * PT, rc[2] * PT, rc[3] * PT), clip(), endPath(),
@@ -1720,12 +1722,12 @@ async function buildDeckPdf() {
       if (!back || o.gMarksBack) for (const m of back ? backMarks(L, o) : marks) page.drawLine({ start: { x: m[0] * PT, y: Hpt - m[1] * PT }, end: { x: m[2] * PT, y: Hpt - m[3] * PT }, thickness: 0.25, color: black });
     }
   }
-  out.setTitle(appMode === 'deck' ? `Card deck, ${dk.sets} sets` : `Guillotine, ${dk.total} cards`);
+  out.setTitle(state.mode === 'deck' ? `Card deck, ${dk.sets} sets` : `Guillotine, ${dk.total} cards`);
   return new Blob([await out.save()], { type: 'application/pdf' });
 }
 /* ---------- winietki: many different single-sided cards, print + straight-line cut ---------- */
 function winPlan(o) {
-  const L = cards.layout, N = L ? L.n : 0, items = (cards.items || []).length, copies = Math.max(1, Math.round(o.winCopies || 1)), total = items * copies;
+  const L = state.job.layout, N = L ? L.n : 0, items = (state.job.items || []).length, copies = Math.max(1, Math.round(o.winCopies || 1)), total = items * copies;
   return { N, items, copies, total, sheets: N ? Math.ceil(total / N) : 0 };
 }
 // which file/page sits in slot j of sheet s (copies of one card next to each other), or null
@@ -1740,16 +1742,16 @@ async function winIngest(bytes, fileName, { labels = null, bleed = null } = {}) 
   const lib = await window.PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
   for (let i = 0; i < pdf.numPages; i++) {
     const lp = lib.getPage(i), mb = lp.getMediaBox(), tb = lp.getTrimBox();
-    if (!cards.items.length) { // the first card sets the size and the bleed
-      cards.pageW = mb.width / PT; cards.pageH = mb.height / PT; cards.mbx = mb.x; cards.mby = mb.y; cards.bleed = null;
-      if (bleed != null) cards.bleed = bleed;
-      else if (tb.width < mb.width - 0.5 && tb.height < mb.height - 0.5) cards.bleed = Math.round((mb.width - tb.width) / 2 / PT * 100) / 100;
-      if (cards.bleed != null) document.getElementById('cBleed').value = cards.bleed;
+    if (!state.job.items.length) { // the first card sets the size and the bleed
+      state.job.pageW = mb.width / PT; state.job.pageH = mb.height / PT; state.job.mbx = mb.x; state.job.mby = mb.y; state.job.bleed = null;
+      if (bleed != null) state.job.bleed = bleed;
+      else if (tb.width < mb.width - 0.5 && tb.height < mb.height - 0.5) state.job.bleed = Math.round((mb.width - tb.width) / 2 / PT * 100) / 100;
+      if (state.job.bleed != null) document.getElementById('cBleed').value = state.job.bleed;
     }
     const pg = await pdf.getPage(i + 1), vp = pg.getViewport({ scale: 6 / PT });
     const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
     await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-    cards.items.push({ name: labels ? labels[i] : pdf.numPages > 1 ? `${fileName} p.${i + 1}` : fileName, bytes, page: i, w: mb.width, h: mb.height, mbx: mb.x, mby: mb.y, preview: cv.toDataURL('image/jpeg', 0.85) });
+    state.job.items.push({ name: labels ? labels[i] : pdf.numPages > 1 ? `${fileName} p.${i + 1}` : fileName, bytes, page: i, w: mb.width, h: mb.height, mbx: mb.x, mby: mb.y, preview: cv.toDataURL('image/jpeg', 0.85) });
     cv.width = cv.height = 1;
     if (i % 20 === 19) await tick();
   }
@@ -1761,7 +1763,7 @@ async function winAddFiles(list) {
   setCardMsg('Reading the PDFs…');
   try {
     await ensureLibs();
-    cards.items = cards.items || [];
+    state.job.items = state.job.items || [];
     for (const f of files) await winIngest(new Uint8Array(await f.arrayBuffer()), f.name);
     winSync();
   } catch (e) {
@@ -1772,7 +1774,7 @@ async function winAddFiles(list) {
 /* ---------- winietki from a list of names ---------- */
 const winNames = { bg: null, bgName: '', fontFile: null, fontName: '', timer: null, gen: 0 };
 try { document.getElementById('winNames').value = localStorage.getItem('stickerSheet.winNames') || ''; } catch (e) { /* storage unavailable */ }
-const winNamesOn = () => appMode === 'winietka' && document.getElementById('winSrc').value === 'names';
+const winNamesOn = () => state.mode === 'winietka' && document.getElementById('winSrc').value === 'names';
 // the fold as the names see it (same rules as cardFoldLines), in card mm
 function winFold(o, W, H) {
   if (o.cFold !== 'perf') return null;
@@ -1782,7 +1784,7 @@ function winFold(o, W, H) {
 // The "Bleed in the PDF" field is hidden where the bleed is known exactly: card images in 100 % / fit mode
 // (the bleed comes from the image) and winietki from names (2 mm with a background, none without).
 function syncBleedRow() {
-  const img = isPrintMode() && appMode !== 'winietka' && cards.imgSrc && document.getElementById('icFit').value !== 'stretch' && !cards.imgSrc.imgs.some(im => im.edit);
+  const img = isPrintMode() && state.mode !== 'winietka' && state.job.imgSrc && document.getElementById('icFit').value !== 'stretch' && !state.job.imgSrc.imgs.some(im => im.edit);
   document.getElementById('cBleed').closest('.row').hidden = !!img || winNamesOn();
 }
 function syncWinRows() {
@@ -1799,17 +1801,17 @@ async function winBuildNames() {
   try { localStorage.setItem('stickerSheet.winNames', document.getElementById('winNames').value); } catch (e) { /* storage unavailable */ }
   const info = document.getElementById('winNamesInfo');
   info.textContent = list.length ? `${list.length} ${list.length === 1 ? 'name' : 'names'}.` : 'Type or paste the names, one per line.';
-  if (!list.length) { cards.items = []; winSync(); return; }
+  if (!list.length) { state.job.items = []; winSync(); return; }
   if (o.winFont === 'custom' && !winNames.fontFile) { info.textContent += ' Load a font file, or pick one of the fonts.'; return; }
   setCardMsg('Setting the names…');
   try {
     const W = o.winW, H = o.winH;
     const r = await buildNameCardsPdf({ names: list, W, H, bg: winNames.bg, font: o.winFont, fontFile: winNames.fontFile, size: o.winSize, color: o.winColor, fold: winFold(o, W, H), both: o.winBoth, offX: o.winOffX, offY: o.winOffY });
     if (my !== winNames.gen) return;
-    const items = [], saved = cards.items;
-    cards.items = items;
+    const items = [], saved = state.job.items;
+    state.job.items = items;
     try { await winIngest(r.bytes, 'names', { labels: list, bleed: r.bleed }); }
-    catch (e) { cards.items = saved; throw e; }
+    catch (e) { state.job.items = saved; throw e; }
     if (my !== winNames.gen) return;
     if (r.shrunk) info.textContent += ` ${r.shrunk} long ${r.shrunk === 1 ? 'name was' : 'names were'} set smaller to fit.`;
     winSync();
@@ -1823,7 +1825,7 @@ function winNamesChanged() {
 }
 for (const id of ['winNames', 'winW', 'winH', 'winSize', 'winColor', 'winBoth', 'winFont', 'winOffX', 'winOffY', 'cFoldOn', 'cFoldDir', 'cFoldPos'])
   document.getElementById(id).addEventListener(['winNames', 'winW', 'winH', 'winSize', 'winOffX', 'winOffY', 'cFoldPos'].includes(id) ? 'input' : 'change', winNamesChanged);
-document.getElementById('winSrc').addEventListener('change', () => { cards.items = []; winSync(); winNamesChanged(); });
+document.getElementById('winSrc').addEventListener('change', () => { state.job.items = []; winSync(); winNamesChanged(); });
 const BG_NONE = 'No background: plain white cards without bleed. A background fills the card plus 2 mm bleed on every side (proportions kept, centred).';
 const setBgInfo = () => { document.getElementById('winBgInfo').textContent = winNames.bg ? `Background: ${winNames.bgName}${winNames.bg === winNames.bgEdited ? ' (edited)' : ''}. It fills each card plus 2 mm bleed on every side (proportions kept, centred).` : BG_NONE; };
 let winLib = null;
@@ -1899,15 +1901,15 @@ document.getElementById('winFontFile').addEventListener('change', async e => {
   winNamesChanged();
 });
 function winSync() {
-  const it = cards.items || [];
-  cards.bytes = it.length ? true : null; cards.pages = 1;
-  cards.previews = it.length ? [it[0].preview] : [];
-  cards.name = `${it.length} ${it.length === 1 ? 'card' : 'cards'}`;
-  if (!it.length) cards.layout = null;
+  const it = state.job.items || [];
+  state.job.bytes = it.length ? true : null; state.job.pages = 1;
+  state.job.previews = it.length ? [it[0].preview] : [];
+  state.job.name = `${it.length} ${it.length === 1 ? 'card' : 'cards'}`;
+  if (!it.length) state.job.layout = null;
   winList(); updateCardInfo(); schedule();
 }
 function winList() {
-  const ul = document.getElementById('winList'), it = cards.items || [];
+  const ul = document.getElementById('winList'), it = state.job.items || [];
   ul.innerHTML = it.length ? '' : '<li class="empty">No cards yet.</li>';
   it.forEach((c, i) => {
     const li = document.createElement('li');
@@ -1924,11 +1926,11 @@ function winList() {
 async function buildWinietkaPdf() {
   await ensureLibs();
   const { PDFDocument, pushGraphicsState, popGraphicsState, concatTransformationMatrix, rectangle, clip, endPath, drawObject } = window.PDFLib;
-  const o = readOpts(), t = pageDims(), L = cards.layout, wp = winPlan(o), out = await PDFDocument.create();
+  const o = readOpts(), t = pageDims(), L = state.job.layout, wp = winPlan(o), out = await PDFDocument.create();
   const Wpt = t.wMm * PT, Hpt = t.hMm * PT, F = [PT, 0, 0, -PT, 0, Hpt], docs = new Map(), embs = new Map(), marks = templateShapes();
   const embOf = async k => {
     if (embs.has(k)) return embs.get(k);
-    const it = cards.items[k];
+    const it = state.job.items[k];
     if (!docs.has(it.bytes)) docs.set(it.bytes, await PDFDocument.load(it.bytes, { ignoreEncryption: true }));
     const [e] = await out.embedPdf(docs.get(it.bytes), [it.page]);
     embs.set(k, e);
@@ -1949,7 +1951,7 @@ async function buildWinietkaPdf() {
     for (let j = 0; j < L.n; j++) {
       const k = winItem(s, j);
       if (k == null) continue;
-      const it = cards.items[k], e = await embOf(k);
+      const it = state.job.items[k], e = await embOf(k);
       if (!names.has(k)) names.set(k, page.node.newXObject(`W${k}`, e.ref));
       // card page points -> slot mm (y down); a card of another size is stretched to the slot
       const sx = L.pw / it.w, sy = L.ph / it.h, G = [sx, 0, 0, -sy, -it.mbx * sx, L.ph + it.mby * sy];
@@ -1962,39 +1964,39 @@ async function buildWinietkaPdf() {
   return new Blob([await out.save()], { type: 'application/pdf' });
 }
 document.getElementById('winFile').addEventListener('change', e => { const l = Array.from(e.target.files); e.target.value = ''; winAddFiles(l); });
-document.getElementById('winClear').addEventListener('click', () => { cards.items = []; winSync(); });
+document.getElementById('winClear').addEventListener('click', () => { state.job.items = []; winSync(); });
 document.getElementById('winSheet').addEventListener('change', () => renderPreview());
 
 function syncGRows() {
-  const g = appMode === 'guillotine', each = deckLike() && deckPer() === 1;
+  const g = state.mode === 'guillotine', each = deckLike() && deckPer() === 1;
   document.getElementById('deckRows').hidden = !deckLike();
   document.getElementById('rowGPages').hidden = !g;
   document.getElementById('rowGMarksBack').hidden = each;
-  document.getElementById('backToggle').hidden = !isPrintMode() || appMode === 'winietka' || each;
+  document.getElementById('backToggle').hidden = !isPrintMode() || state.mode === 'winietka' || each;
   if (each) document.getElementById('showBack').checked = false;
   document.getElementById('rowDeckSets').hidden = each;
   document.getElementById('rowGEachSets').hidden = !each;
 }
-document.getElementById('gPages').addEventListener('change', () => { syncGRows(); view = null; schedule(); });
+document.getElementById('gPages').addEventListener('change', () => { syncGRows(); state.view = null; schedule(); });
 function setAppMode(m) {
-  appMode = m;
+  state.mode = m;
   for (const b of document.querySelectorAll('.modes button')) b.setAttribute('aria-pressed', String(b.dataset.mode === m));
   document.body.dataset.mode = m;
   const pm = m === 'cards' || m === 'vouchers' || m === 'guillotine' || m === 'morgana' || m === 'deck' || m === 'winietka';
   if (pm) {
-    cards = kinds[m];
+    state.job = kinds[m];
     document.getElementById('h-cards').textContent = KIND[m].title;
     document.getElementById('foldRows').hidden = m !== 'vouchers' && m !== 'winietka';
     document.getElementById('winRows').hidden = m !== 'winietka';
     document.getElementById('cardLoadRow').hidden = m === 'winietka';
     for (const id of ['rowCOffX', 'rowCOffY']) document.getElementById(id).hidden = m === 'winietka';
-    if (m === 'winietka') { winList(); syncWinRows(); if (winNamesOn() && !(cards.items || []).length) winNamesChanged(); }
+    if (m === 'winietka') { winList(); syncWinRows(); if (winNamesOn() && !(state.job.items || []).length) winNamesChanged(); }
     syncImgRows();
     document.getElementById('exCardPdf').textContent = m === 'winietka' ? 'Print PDF' : 'Print PDF (both sides)';
     document.getElementById('gRows').hidden = m !== 'guillotine' && m !== 'deck';
     document.getElementById('rowMSize').hidden = m !== 'morgana';
     for (const id of ['rowCGap', 'rowCutStyle', 'rowCRadius', 'rowCFlip', 'cardsCutHint']) document.getElementById(id).hidden = m === 'guillotine' || m === 'morgana' || m === 'deck' || (id === 'rowCFlip' && m === 'winietka');
-    if (cards.bleed != null) document.getElementById('cBleed').value = cards.bleed;
+    if (state.job.bleed != null) document.getElementById('cBleed').value = state.job.bleed;
     updateCardInfo();
   }
   document.getElementById('secStickers').hidden = pm || m === 'gang' || m === 'squares' || m === 'svgplt' || m === 'duplex';
@@ -2019,7 +2021,7 @@ function setAppMode(m) {
   document.getElementById('lgKissT').textContent = m === 'stickers' ? 'Kiss cut' : m === 'pen' ? 'Pen line' : m === 'guillotine' || m === 'deck' || m === 'gang' ? 'Guillotine cut' : m === 'morgana' ? 'CardXtra cut' : 'Cut line';
   document.getElementById('lgDieW').hidden = m !== 'stickers';
   document.getElementById('lgKissW').hidden = m === 'duplex';
-  view = null;
+  state.view = null;
   ui.dropNote.textContent = m === 'winietka' ? 'Drop the winietki PDFs here (one card per page).' : m === 'svgplt' ? 'Drop the print-and-cut SVG here.' : m === 'gang' ? 'Drop photos and PDFs here.' : m === 'deck' ? 'Drop the multi-page card PDF here (front, back, front, back…).' : m === 'guillotine' || m === 'morgana' ? 'Drop the PDF here (page 1 front, page 2 back).' : pm ? `Drop the ${KIND[m].one} PDF here (page 1 ${m === 'vouchers' ? 'outside' : 'front'}, page 2 ${m === 'vouchers' ? 'inside' : 'back'}).` : m === 'vinyl' ? 'Drop SVG files with the shapes to cut.' : m === 'pen' ? 'Drop SVG files with the lines to draw.' : 'Drop SVG files (or PDFs for round stickers) here to start filling the sheet.';
   designs.forEach(updateRow);
   ui.msg.textContent = '';
@@ -2034,19 +2036,19 @@ const syncPerf = () => { document.getElementById('perfRows').hidden = !document.
 document.getElementById('gAutoGap').addEventListener('change', syncPerf);
 document.getElementById('gSize').addEventListener('change', syncPerf);
 document.getElementById('cFoldOn').addEventListener('change', syncPerf);
-const cardBase = () => `${KIND[appMode] ? KIND[appMode].file : 'cards'}-${cards.layout ? cards.layout.n : 0}pcs`;
+const cardBase = () => `${KIND[state.mode] ? KIND[state.mode].file : 'cards'}-${state.job.layout ? state.job.layout.n : 0}pcs`;
 document.getElementById('exCardPdf').addEventListener('click', async () => {
   const btn = document.getElementById('exCardPdf');
   btn.disabled = true; setCardMsg('Building the PDF…');
-  try { if (appMode === 'winietka') { await saveFile(`winietki-${winPlan(readOpts()).total}pcs-print.pdf`, await buildWinietkaPdf()); renderStats(); return; }
+  try { if (state.mode === 'winietka') { await saveFile(`winietki-${winPlan(readOpts()).total}pcs-print.pdf`, await buildWinietkaPdf()); renderStats(); return; }
     const dl = deckLike(), dk = dl ? deckPlan(readOpts()) : null;
-    await saveFile(dl ? (appMode === 'deck' ? `deck-${dk.sets}sets-print.pdf` : `guillotine-${dk.total}pcs-${dk.sheets}sheets-print.pdf`) : `${cardBase()}-print.pdf`, dl ? await buildDeckPdf() : await buildCardsPdf()); renderStats(); }
+    await saveFile(dl ? (state.mode === 'deck' ? `deck-${dk.sets}sets-print.pdf` : `guillotine-${dk.total}pcs-${dk.sheets}sheets-print.pdf`) : `${cardBase()}-print.pdf`, dl ? await buildDeckPdf() : await buildCardsPdf()); renderStats(); }
   catch (e) { setCardMsg(`Couldn’t build the PDF: ${e.message || e}`, true); }
   finally { btn.disabled = false; }
 });
 document.getElementById('exCardCut').addEventListener('click', () => {
   const o = readOpts(), c = cardCuts();
-  saveFile(`${cardBase()}-cut.svg`, template.generated ? lemurCutSvg([{ name: o.dieLayer, color: o.dieColor, paths: [
+  saveFile(`${cardBase()}-cut.svg`, state.template.generated ? lemurCutSvg([{ name: o.dieLayer, color: o.dieColor, paths: [
     ...c.loops.map(pts => ({ pts, closed: true })), ...[...c.folds, ...c.v, ...c.h, ...c.dashes].map(pts => ({ pts, closed: false }))] }]) : buildCardCutSvg());
 });
 document.getElementById('exCardPlt').addEventListener('click', () => {
@@ -2054,9 +2056,9 @@ document.getElementById('exCardPlt').addEventListener('click', () => {
   saveFile(`${name}-plt.zip`, makeZip([{ name: `${name}-die.plt`, text: cardPlt(cardCuts(), o) }]));
 });
 
-let previewFrame = null;
+
 /* ---------- vinyl (markless) mode ---------- */
-let vinylLayout = null;
+
 let geoGroup = 0; // id shared by the subpaths of one element (so holes stay holes when filling)
 // Every visible vector shape in the design, flattened, in root user units. Needs the live DOM (for CTMs and styles).
 function extractGeometry(d) {
@@ -2179,14 +2181,14 @@ async function nestVinyl(list, o, cancelled) {
   });
   return { items, counts: lay.counts, W, L: Lm };
 }
-function isMarkless() { return appMode === 'vinyl' || appMode === 'pen'; }
+function isMarkless() { return state.mode === 'vinyl' || state.mode === 'pen'; }
 // pen mode: same engine as vinyl, but drawn with a pen (no blade offset, overcut, weeding or mirroring)
 function vOpts() {
   const o = readOpts();
-  return appMode === 'pen' ? { ...o, vWeed: 'none', vMirror: false, overcut: 0, bladeOffset: 0, kissForce: o.penForce } : { ...o, penFill: false };
+  return state.mode === 'pen' ? { ...o, vWeed: 'none', vMirror: false, overcut: 0, bladeOffset: 0, kissForce: o.penForce } : { ...o, penFill: false };
 }
 function vinylPaths() {
-  const out = [], L = vinylLayout;
+  const out = [], L = state.vinylLayout;
   for (const it of L.items) {
     const M = placeMatrix(it);
     for (const p of it.d.res.paths) out.push({ pts: p.pts.map(q => [M[0] * q[0] + M[2] * q[1] + M[4], M[1] * q[0] + M[3] * q[1] + M[5]]), closed: p.closed });
@@ -2202,7 +2204,7 @@ function vinylPaths() {
 }
 // Markless PLT: origin at the knife (bottom right of the material), X along the feed, Y across.
 function buildVinylPlt() {
-  const o = vOpts(), L = vinylLayout, oc = o.overcut * 40, bo = o.bladeOffset * 40;
+  const o = vOpts(), L = state.vinylLayout, oc = o.overcut * 40, bo = o.bladeOffset * 40;
   const conv = ([x, y]) => [Math.round((L.L - y) * 40), Math.round((L.W - x) * 40)];
   const polys = vinylPaths().map(p => {
     const pts = [];
@@ -2256,7 +2258,7 @@ function buildVinylPlt() {
   return out.join(' ');
 }
 function buildVinylSvg() {
-  const o = vOpts(), L = vinylLayout;
+  const o = vOpts(), L = state.vinylLayout;
   const s = [`<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="${num(L.W)}mm" height="${num(L.L)}mm" viewBox="0 0 ${num(L.W)} ${num(L.L)}">\n`];
   s.push(`<g id="${aiId(o.kissLayer)}">\n`);
   for (const p of vinylPaths()) s.push(pathEl(p.pts, p.closed, `fill:none;stroke:${o.kissColor};stroke-width:${o.lineW}`) + '\n');
@@ -2264,10 +2266,10 @@ function buildVinylSvg() {
   return s.join('');
 }
 function renderVinylPreview() {
-  const o = vOpts(), W = o.vWidth, Lm = o.vLength, mg = o.vMargin, L = vinylLayout;
-  previewFrame = { x: -6, y: -6, w: W + 12, h: Lm + 12 };
+  const o = vOpts(), W = o.vWidth, Lm = o.vLength, mg = o.vMargin, L = state.vinylLayout;
+  state.previewFrame = { x: -6, y: -6, w: W + 12, h: Lm + 12 };
   const p = [];
-  p.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${previewFrame.x} ${previewFrame.y} ${previewFrame.w} ${previewFrame.h}" role="img" aria-label="Vinyl cutting layout">`);
+  p.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${state.previewFrame.x} ${state.previewFrame.y} ${state.previewFrame.w} ${state.previewFrame.h}" role="img" aria-label="Vinyl cutting layout">`);
   p.push(`<rect x="0" y="0" width="${num(W)}" height="${num(Lm)}" fill="#f3f1ec"/>`);
   p.push(`<rect x="${mg}" y="${mg}" width="${num(W - 2 * mg)}" height="${num(Lm - 2 * mg)}" fill="none" stroke="#9fb0a9" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>`);
   if (L) {
@@ -2290,24 +2292,24 @@ function renderVinylPreview() {
   applyView();
 }
 function vinylUsedLength() {
-  const L = vinylLayout;
+  const L = state.vinylLayout;
   if (!L || !L.items.length) return 0;
   let top = Infinity;
   for (const p of vinylPaths()) for (const q of p.pts) top = Math.min(top, q[1]);
   return L.L - top;
 }
 function renderVinylStats(busyText) {
-  const n = vinylLayout ? vinylLayout.items.length : 0;
+  const n = state.vinylLayout ? state.vinylLayout.items.length : 0;
   ui.dropNote.hidden = designs.length > 0;
   for (const id of ['exVinylSvg', 'exVinylPlt', 'exVinylPdf']) document.getElementById(id).disabled = !n || !!busyText;
   if (busyText) { ui.count.textContent = busyText; return; }
-  const where = appMode === 'pen' ? 'sheet' : 'vinyl', tool = appMode === 'pen' ? 'pen' : 'knife';
+  const where = state.mode === 'pen' ? 'sheet' : 'vinyl', tool = state.mode === 'pen' ? 'pen' : 'knife';
   ui.count.textContent = !designs.length ? `Empty ${where}` : n === 1 ? `1 copy on the ${where}` : `${n} copies on the ${where}`;
   const notes = [];
   if (n) notes.push(`Uses ${Math.ceil(vinylUsedLength())} mm of the material length. The ${tool} starts at the bottom right corner, the material feeds up.`);
   for (const d of designs) {
     if (!d.vres) continue;
-    const got = vinylLayout ? vinylLayout.counts.get(d.id) || 0 : 0;
+    const got = state.vinylLayout ? state.vinylLayout.counts.get(d.id) || 0 : 0;
     if (d.qty != null && got < d.qty) notes.push(`Only ${got} of ${d.qty} copies of ${d.name} fit.`);
   }
   setCardMsg(notes.join(' '), false);
@@ -2321,23 +2323,23 @@ async function runVinyl(my, o) {
     await tick();
     let res = null, err = null;
     try { res = await processVinyl(d, o); } catch (e) { err = e.message || String(e); }
-    if (my !== gen) return;
+    if (my !== state.gen) return;
     d.vres = res; d.verr = err; d.vkey = key; d.busy = false;
     updateRow(d);
   }
   const ready = designs.filter(d => d.vres && d.qty !== 0);
   renderStats('Arranging…');
   await tick();
-  const lay = ready.length ? await nestVinyl(ready, o, () => my !== gen) : null;
-  if (my !== gen) return;
-  vinylLayout = lay;
+  const lay = ready.length ? await nestVinyl(ready, o, () => my !== state.gen) : null;
+  if (my !== state.gen) return;
+  state.vinylLayout = lay;
   renderPreview();
   designs.forEach(updateRow);
   renderStats();
 }
-document.getElementById('exVinylSvg').addEventListener('click', () => saveFile(`${appMode === 'pen' ? 'pen' : 'vinyl'}-${vinylLayout.items.length}pcs-${appMode === 'pen' ? 'draw' : 'cut'}.svg`, buildVinylSvg()));
+document.getElementById('exVinylSvg').addEventListener('click', () => saveFile(`${state.mode === 'pen' ? 'pen' : 'vinyl'}-${state.vinylLayout.items.length}pcs-${state.mode === 'pen' ? 'draw' : 'cut'}.svg`, buildVinylSvg()));
 document.getElementById('exVinylPlt').addEventListener('click', () => {
-  const base = `${appMode === 'pen' ? 'pen' : 'vinyl'}-${vinylLayout.items.length}pcs`;
+  const base = `${state.mode === 'pen' ? 'pen' : 'vinyl'}-${state.vinylLayout.items.length}pcs`;
   saveFile(`${base}-plt.zip`, makeZip([{ name: `${base}.plt`, text: buildVinylPlt() }]));
 });
 
@@ -2414,7 +2416,7 @@ async function renderSheetPage(pdf, t, marks, dpi, cache = new Map()) {
   cv.width = cv.height = 1;
   const page = printPage(pdf, Wpt, Hpt);
   page.drawImage(await pdf.embedJpg(new Uint8Array(await jpg.arrayBuffer())), { x: 0, y: 0, width: Wpt, height: Hpt });
-  await drawVectorStickers(page, pdf, layout, Hpt, cache);
+  await drawVectorStickers(page, pdf, state.layout, Hpt, cache);
   for (const sh of marks) {
     const dd = 'M ' + sh.pts.map(q => `${(q[0] * PT).toFixed(3)} ${(q[1] * PT).toFixed(3)}`).join(' L ') + (sh.closed ? ' Z' : '');
     const opt = { x: 0, y: Hpt };
@@ -2427,8 +2429,8 @@ async function renderSheetPage(pdf, t, marks, dpi, cache = new Map()) {
 async function buildSinglePdf() {
   await ensureLibs();
   const pdf = await window.PDFLib.PDFDocument.create();
-  await renderSheetPage(pdf, template, templateShapes(), 300);
-  pdf.setTitle(`Sticker sheet, ${layout.items.length} pcs`);
+  await renderSheetPage(pdf, state.template, templateShapes(), 300);
+  pdf.setTitle(`Sticker sheet, ${state.layout.items.length} pcs`);
   return new Blob([await pdf.save()], { type: 'application/pdf' });
 }
 document.getElementById('exPdf').addEventListener('click', async () => {
@@ -2438,7 +2440,7 @@ document.getElementById('exPdf').addEventListener('click', async () => {
   finally { btn.disabled = false; }
 });
 async function buildBatch() {
-  const o = readOpts(), t = template, saved = layout;
+  const o = readOpts(), t = state.template, saved = state.layout;
   setCardMsg('Planning the sheets…');
   await ensureLibs();
   const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
@@ -2456,8 +2458,8 @@ async function buildBatch() {
       const id = `S${String(i + 1).padStart(2, '0')}`;
       setCardMsg(`Sheet ${i + 1} of ${total}…`);
       await tick();
-      layout = sheets[i];
-      const key = layout.items.map(it => `${it.d.id}:${it.rot}:${it.X}:${it.Y}`).sort().join('|');
+      state.layout = sheets[i];
+      const key = state.layout.items.map(it => `${it.d.id}:${it.rot}:${it.X}:${it.Y}`).sort().join('|');
       if (!pltOf.has(key)) {
         const L = letter(pltOf.size);
         pltOf.set(key, L);
@@ -2474,7 +2476,7 @@ async function buildBatch() {
       cv.width = cv.height = 1;
       const page = printPage(pdf, Wpt, Hpt);
       page.drawImage(await pdf.embedJpg(new Uint8Array(await jpg.arrayBuffer())), { x: 0, y: 0, width: Wpt, height: Hpt });
-      await drawVectorStickers(page, pdf, layout, Hpt, vcache);
+      await drawVectorStickers(page, pdf, state.layout, Hpt, vcache);
       for (const sh of marks) {
         const dd = 'M ' + sh.pts.map(q => `${(q[0] * PT).toFixed(3)} ${(q[1] * PT).toFixed(3)}`).join(' L ') + (sh.closed ? ' Z' : '');
         const opt = { x: 0, y: Hpt };
@@ -2486,7 +2488,7 @@ async function buildBatch() {
       const lw = font.widthOfTextAtSize(label, size);
       page.drawText(label, { x: (rightMm - 23.5) * PT - lw, y: (t.hMm - bottomMm - 0.5) * PT, size, font, color: rgb(0, 0, 0) });
     }
-  } finally { layout = saved; }
+  } finally { state.layout = saved; }
   pdf.setTitle(`Sticker batch ${date}, ${total} sheets`);
   const summary = sheets.map((l, i) => `S${String(i + 1).padStart(2, '0')} (PLT ${sheetPlt[i]}): ${sheetSummary(l)}`).join('\n');
   files.unshift({ name: 'batch-print.pdf', bytes: await pdf.save() }, { name: 'batch-sheets.txt', text: summary + '\n' });
@@ -2585,7 +2587,7 @@ function gangCompute(o) {
   const go = gangOpts(o), [fw, fh] = gangFormat(o);
   const job = kinds.gang;
   job.pageW = fw + 2 * go.cBleed; job.pageH = fh + 2 * go.cBleed; job.bytes = gang.items.length ? true : null;
-  cards = job;
+  state.job = job;
   gang.layout = gang.items.length ? computeCardLayout(null, go) : null;
   const total = gang.items.reduce((s, it) => s + it.copies, 0), n = gang.layout ? gang.layout.n : 0;
   gang.sheets = n ? Math.ceil(total / n) : 0;
@@ -2612,8 +2614,8 @@ function gangPlace(it, box, fill) {
 }
 function renderGangPreview() {
   const o = readOpts(), go = gangOpts(o), L = gang.layout, pg = G_PAGE, fill = o.ggFit === 'fill';
-  previewFrame = { x: -8, y: -8, w: pg.wMm + 16, h: pg.hMm + 16 };
-  const p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${previewFrame.x} ${previewFrame.y} ${previewFrame.w} ${previewFrame.h}" role="img" aria-label="Print sheet preview"><rect x="0" y="0" width="${pg.wMm}" height="${pg.hMm}" fill="#fff"/>`];
+  state.previewFrame = { x: -8, y: -8, w: pg.wMm + 16, h: pg.hMm + 16 };
+  const p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${state.previewFrame.x} ${state.previewFrame.y} ${state.previewFrame.w} ${state.previewFrame.h}" role="img" aria-label="Print sheet preview"><rect x="0" y="0" width="${pg.wMm}" height="${pg.hMm}" fill="#fff"/>`];
   if (go.gMargin) p.push(`<rect x="${go.gMargin}" y="${go.gMargin}" width="${pg.wMm - 2 * go.gMargin}" height="${pg.hMm - 2 * go.gMargin}" fill="none" stroke="#9fb0a9" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>`);
   if (L && L.n) {
     const seq = gangSlots(), base = gang.view * L.n;
@@ -2816,8 +2818,8 @@ function buildSquaresSvg() {
 }
 function renderSquaresPreview() {
   const o = readOpts(), L = squares.L || { n: 0, W: o.sqSheetW, H: o.sqSheetH };
-  previewFrame = { x: -8, y: -8, w: L.W + 16, h: L.H + 16 };
-  const p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${previewFrame.x} ${previewFrame.y} ${previewFrame.w} ${previewFrame.h}" role="img" aria-label="Squares cutting layout"><rect x="0" y="0" width="${num(L.W)}" height="${num(L.H)}" fill="#fff"/>`];
+  state.previewFrame = { x: -8, y: -8, w: L.W + 16, h: L.H + 16 };
+  const p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${state.previewFrame.x} ${state.previewFrame.y} ${state.previewFrame.w} ${state.previewFrame.h}" role="img" aria-label="Squares cutting layout"><rect x="0" y="0" width="${num(L.W)}" height="${num(L.H)}" fill="#fff"/>`];
   if (L.n) {
     for (let r = 0; r < L.rows; r++) for (let c = 0; c < L.cols; c++) p.push(`<rect x="${num(L.sx + c * (L.pw + L.g))}" y="${num(L.sy + r * (L.ph + L.g))}" width="${num(L.pw)}" height="${num(L.ph)}" fill="#e7f2ed"/>`);
     p.push(`<path d="${squaresLines().map(l => `M${num(l[0][0])} ${num(l[0][1])}L${num(l[1][0])} ${num(l[1][1])}`).join('')}" stroke="${CUT_RED}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`);
@@ -2845,14 +2847,14 @@ document.getElementById('exSqSvg').addEventListener('click', () => { const L = s
 /* ---------- cut SVG for SignCut, built 1:1 like the LemurPrints.CutMarks tool ---------- */
 // layers: [{ name, color, paths: [{ pts (sheet mm), closed }] }]
 function lemurCutSvg(layers) {
-  const W = template.wMm, H = template.hMm, sw = num(readOpts().lineW);
+  const W = state.template.wMm, H = state.template.hMm, sw = num(readOpts().lineW);
   const s = [`<?xml version="1.0" encoding="UTF-8" standalone="no"?>\n<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="${num(W)}mm" height="${num(H)}mm" viewBox="0 0 ${num(W)} ${num(H)}">\n`];
   for (const L of layers) {
     s.push(`  <g id="${aiId(L.name)}">\n`);
     for (const p of L.paths) s.push('    ' + pathEl(p.pts, p.closed, `fill:none;stroke:${L.color};stroke-width:${sw}px;`) + '\n');
     s.push('  </g>\n');
   }
-  s.push(lemurMarks(W, H, template.feedTop || 0), '</svg>\n');
+  s.push(lemurMarks(W, H, state.template.feedTop || 0), '</svg>\n');
   return s.join('');
 }
 
@@ -2903,21 +2905,21 @@ const pdfClick = (id, name, make) => document.getElementById(id).addEventListene
 const closedAll = loops => loops.map(pts => ({ pts, closed: true })), openAll = lines => lines.map(pts => ({ pts, closed: false }));
 pdfClick('exCutPdf', () => exportName('cut').replace(/\.svg$/, '.pdf'), () => {
   const o = readOpts(), dieName = o.dieLayer === o.kissLayer ? o.dieLayer + ' 2' : o.dieLayer;
-  return buildCutPdf(template.wMm, template.hMm, [
+  return buildCutPdf(state.template.wMm, state.template.hMm, [
     { name: o.kissLayer, color: o.kissColor, paths: closedAll(stickerLoops('kissLoops')) },
     { name: dieName, color: o.dieColor, paths: closedAll(stickerLoops('dieLoops')) }], true);
 });
 pdfClick('exCardCutPdf', () => `${cardBase()}-cut.pdf`, () => {
   const o = readOpts(), c = cardCuts();
-  return buildCutPdf(template.wMm, template.hMm, [{ name: o.dieLayer, color: o.dieColor, paths: [...closedAll(c.loops), ...openAll([...c.folds, ...c.v, ...c.h, ...c.dashes])] }], true);
+  return buildCutPdf(state.template.wMm, state.template.hMm, [{ name: o.dieLayer, color: o.dieColor, paths: [...closedAll(c.loops), ...openAll([...c.folds, ...c.v, ...c.h, ...c.dashes])] }], true);
 });
 pdfClick('exSqPdf', () => `squares-${num(squares.L.pw)}x${num(squares.L.ph)}-${squares.L.n}pcs-cut.pdf`, () => {
   const o = readOpts();
   return buildCutPdf(squares.L.W, squares.L.H, [{ name: o.dieLayer, color: o.dieColor, paths: openAll(squaresLines()) }], false);
 });
-pdfClick('exVinylPdf', () => `${appMode === 'pen' ? 'pen' : 'vinyl'}-${vinylLayout.items.length}pcs-cut.pdf`, () => {
+pdfClick('exVinylPdf', () => `${state.mode === 'pen' ? 'pen' : 'vinyl'}-${state.vinylLayout.items.length}pcs-cut.pdf`, () => {
   const o = vOpts();
-  return buildCutPdf(vinylLayout.W, vinylLayout.L, [{ name: o.kissLayer, color: o.kissColor, paths: vinylPaths() }], false);
+  return buildCutPdf(state.vinylLayout.W, state.vinylLayout.L, [{ name: o.kissLayer, color: o.kissColor, paths: vinylPaths() }], false);
 });
 
 /* ---------- SVG to PLT: a finished print-and-cut SVG (registration marks + cut lines) to Skycut PLTs ---------- */
@@ -3013,7 +3015,7 @@ async function spLoad(file) {
   try { sp.text = await file.text(); sp.name = file.name.replace(/\.svg$/i, ''); }
   catch (e) { sp.err = `Couldn’t read ${file.name}.`; }
   analyseSvgPlt();
-  view = null;
+  state.view = null;
   renderPreview(); renderStats();
 }
 function spPlt(group) {
@@ -3021,10 +3023,10 @@ function spPlt(group) {
   return writePlt(markFrame(sp), pltOpts(readOpts(), group.force), loops, open);
 }
 function renderSvgPltPreview() {
-  if (!sp.vb) { previewFrame = { x: -8, y: -8, w: 326, h: 456 }; ui.stage.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 -8 326 456"><rect x="0" y="0" width="310" height="440" fill="#fff"/></svg>`; applyView(); return; }
+  if (!sp.vb) { state.previewFrame = { x: -8, y: -8, w: 326, h: 456 }; ui.stage.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-8 -8 326 456"><rect x="0" y="0" width="310" height="440" fill="#fff"/></svg>`; applyView(); return; }
   const W = sp.W, H = sp.H;
-  previewFrame = { x: -8, y: -8, w: W + 16, h: H + 16 };
-  const p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${previewFrame.x} ${previewFrame.y} ${previewFrame.w} ${previewFrame.h}" role="img" aria-label="SVG with cut lines"><rect x="0" y="0" width="${num(W)}" height="${num(H)}" fill="#fff"/>`];
+  state.previewFrame = { x: -8, y: -8, w: W + 16, h: H + 16 };
+  const p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${state.previewFrame.x} ${state.previewFrame.y} ${state.previewFrame.w} ${state.previewFrame.h}" role="img" aria-label="SVG with cut lines"><rect x="0" y="0" width="${num(W)}" height="${num(H)}" fill="#fff"/>`];
   if (ui.showArt.checked) p.push(`<image href="${dataUri(windowSvg(sp.text, sp.vb.x, sp.vb.y, sp.vb.w, sp.vb.h, Math.round(W * 4), Math.round(H * 4)))}" x="0" y="0" width="${num(W)}" height="${num(H)}" preserveAspectRatio="none" opacity="0.55"/>`);
   for (const g of sp.groups) if (g.include) p.push(`<path d="${g.paths.map(q => 'M' + q.pts.map(v => num(v[0]) + ' ' + num(v[1])).join('L') + (q.closed ? 'Z' : '')).join('')}" fill="none" stroke="${g.color}" stroke-width="1.4" vector-effect="non-scaling-stroke"/>`);
   if (sp.marks) {
@@ -3053,7 +3055,7 @@ function renderSvgPltStats(busyText) {
   setCardMsg(notes.join(' '), !!sp.err);
 }
 document.getElementById('spFile').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; spLoad(f); });
-document.getElementById('spDpi').addEventListener('change', () => { analyseSvgPlt(); view = null; renderPreview(); renderStats(); });
+document.getElementById('spDpi').addEventListener('change', () => { analyseSvgPlt(); state.view = null; renderPreview(); renderStats(); });
 document.getElementById('exSpPlt').addEventListener('click', () => {
   const slug = s => s.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'cut';
   const files = sp.groups.filter(g => g.include).map(g => ({ name: `${sp.name}-${slug(g.name)}.plt`, text: spPlt(g) }));
@@ -3129,8 +3131,8 @@ function duplexSize() {
 const DX_FRAMES = [5, 10]; // frame insets, mm
 function renderDuplexPreview() {
   const [W, H] = duplexSize(), n = document.getElementById('showBack').checked ? 2 : 1, fs = Math.min(W, H) * 0.12;
-  previewFrame = { x: -8, y: -8, w: W + 16, h: H + 16 };
-  const p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${previewFrame.x} ${previewFrame.y} ${previewFrame.w} ${previewFrame.h}" role="img" aria-label="Duplex test page ${n}"><rect x="0" y="0" width="${num(W)}" height="${num(H)}" fill="#fff"/>`];
+  state.previewFrame = { x: -8, y: -8, w: W + 16, h: H + 16 };
+  const p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${state.previewFrame.x} ${state.previewFrame.y} ${state.previewFrame.w} ${state.previewFrame.h}" role="img" aria-label="Duplex test page ${n}"><rect x="0" y="0" width="${num(W)}" height="${num(H)}" fill="#fff"/>`];
   for (const i of DX_FRAMES) p.push(`<rect x="${i}" y="${i}" width="${num(W - 2 * i)}" height="${num(H - 2 * i)}" fill="none" stroke="#000" stroke-width="1" vector-effect="non-scaling-stroke"/>`);
   p.push(`<path d="M${num(W / 2)} 10V${num(H - 10)}M10 ${num(H / 2)}H${num(W - 10)}" stroke="#000" stroke-width="0.6" vector-effect="non-scaling-stroke"/>`);
   p.push(`<text x="${num(W / 2)}" y="${num(H / 2 - fs * 0.25)}" font-family="Helvetica, Arial, sans-serif" font-weight="700" font-size="${num(fs)}" text-anchor="middle">PAGE ${n}</text>`);
@@ -3162,8 +3164,8 @@ async function buildDuplexPdf() {
   out.setTitle(`Duplex test ${num(W)} x ${num(H)} mm`);
   return new Blob([await out.save()], { type: 'application/pdf' });
 }
-document.getElementById('dxSize').addEventListener('change', () => { document.getElementById('rowDxCustom').hidden = document.getElementById('dxSize').value !== 'custom'; view = null; schedule(); });
-for (const id of ['dxW', 'dxH']) document.getElementById(id).addEventListener('input', () => { view = null; schedule(); });
+document.getElementById('dxSize').addEventListener('change', () => { document.getElementById('rowDxCustom').hidden = document.getElementById('dxSize').value !== 'custom'; state.view = null; schedule(); });
+for (const id of ['dxW', 'dxH']) document.getElementById(id).addEventListener('input', () => { state.view = null; schedule(); });
 document.getElementById('exDuplex').addEventListener('click', async () => {
   const [W, H] = duplexSize();
   try { await saveFile(`duplex-test-${num(W)}x${num(H)}.pdf`, await buildDuplexPdf()); }
@@ -3182,7 +3184,7 @@ function syncOptionRows() {
   syncWinRows();
 }
 // Saved settings: the mode plus every option field.
-function snapshotSettings() { return { mode: appMode, settings: optionValues() }; }
+function snapshotSettings() { return { mode: state.mode, settings: optionValues() }; }
 function applySettings({ mode, settings }) {
   for (const id of OPT_IDS) {
     if (!Object.hasOwn(settings, id)) continue;
@@ -3190,10 +3192,10 @@ function applySettings({ mode, settings }) {
     if (e.type === 'checkbox') e.checked = !!settings[id]; else e.value = String(settings[id]);
   }
   syncOptionRows();
-  if (!template || template.generated) applySheetSize(); // a template you loaded yourself stays
-  else if (template.unitless) setTemplate(template.text, template.name, false);
+  if (!state.template || state.template.generated) applySheetSize(); // a template you loaded yourself stays
+  else if (state.template.unitless) setTemplate(state.template.text, state.template.name, false);
   saveOpts();
-  if (cards.imgSrc) rebuildCardImages();
+  if (state.job.imgSrc) rebuildCardImages();
   if (sp.text) analyseSvgPlt();
   setAppMode(mode);
   if (winNamesOn()) winNamesChanged();
