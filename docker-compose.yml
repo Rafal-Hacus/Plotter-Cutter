@@ -8,6 +8,8 @@ services:
     restart: unless-stopped
     ports:
       - "${HOST_PORT:-8080}:8080"
+      # HTTPS: browsers only let the in-browser AI use the graphics card and all cores on secure pages
+      - "${HOST_HTTPS_PORT:-8443}:8443"
     environment:
       AUTH_USERNAME: ${AUTH_USERNAME:-admin}
       # Optional. Without them the first visit shows a setup page where you create the login, using the
@@ -20,6 +22,10 @@ services:
       # "true" only behind a reverse proxy that sets X-Forwarded-For
       TRUST_PROXY: ${TRUST_PROXY:-false}
       SESSION_DAYS: ${SESSION_DAYS:-30}
+      # The address(es) you open the app at, e.g. 192.168.1.50 or plotter.local (comma separated), so the
+      # self-signed HTTPS certificate matches them. Or your own: TLS_CERT_FILE / TLS_KEY_FILE.
+      TLS_HOSTNAMES: ${TLS_HOSTNAMES:-}
+      PUBLIC_HTTPS_PORT: ${HOST_HTTPS_PORT:-8443}
     volumes:
       - plotter-data:/data
     read_only: true

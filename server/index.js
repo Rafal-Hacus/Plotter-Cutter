@@ -1,6 +1,7 @@
 // HTTP server: the built app behind a login, plus the saved-settings API.
 // No framework and no runtime dependencies: only Node's own modules.
 import { createServer } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
 import { readFileSync, existsSync, writeFileSync, mkdirSync, rmSync, renameSync } from 'node:fs';
 import { randomBytes, createHash } from 'node:crypto';
 import { join, dirname } from 'node:path';
@@ -9,6 +10,7 @@ import { hashPassword, verifyPassword, isPasswordHash, safeEqual, sessionSigner,
 import { openStore, ValidationError } from './store.js';
 import { staticHandler } from './static.js';
 import { openLibrary } from './library.js';
+import { loadTls } from './tls.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const COOKIE = 'pc_session';
@@ -33,7 +35,12 @@ export function loadConfig(env = process.env) {
     // kept only to derive a stable session key (the stored hash gets a new random salt on every start)
     password: password || null,
     sessionSecret: env.SESSION_SECRET || null, sessionDays: Math.max(1, +(env.SESSION_DAYS || 30)),
-    cookieSecure: bool(env.COOKIE_SECURE), trustProxy: bool(env.TRUST_PROXY)
+    cookieSecure: bool(env.COOKIE_SECURE), trustProxy: bool(env.TRUST_PROXY),
+    // HTTPS next to HTTP (browsers only give the in-browser AI the graphics card and all cores on secure pages)
+    tls: /^(off|false|0|no)$/i.test(env.TLS || '') ? 'off' : 'auto', httpsPort: +(env.HTTPS_PORT || 8443),
+    publicHttpsPort: +(env.PUBLIC_HTTPS_PORT || env.HTTPS_PORT || 8443),
+    tlsHosts: String(env.TLS_HOSTNAMES || '').split(/[\s,]+/).filter(Boolean),
+    tlsCertFile: env.TLS_CERT_FILE || null, tlsKeyFile: env.TLS_KEY_FILE || null
   };
 }
 
@@ -61,6 +68,7 @@ const LOGIN_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;
 
 export async function createApp(cfg) {
   const store = await openStore(join(cfg.dataDir, 'presets.json'));
+  const tls = loadTls(cfg);
   const library = await openLibrary(cfg.dataDir);
   const secret = sessionSecret(cfg);
   // The login: from the environment if a password is set there, else from /data/auth.json (made on the setup page).
@@ -143,7 +151,7 @@ export async function createApp(cfg) {
       if (!part && m === 'PUT') { const it = await library.update(id, await body(), user); return it ? json(res, 200, it) : json(res, 404, { error: 'No such background.' }); }
       if (!part && m === 'DELETE') return (await library.remove(id)) ? json(res, 200, { ok: true }) : json(res, 404, { error: 'No such background.' });
     }
-    if (path === '/api/me' && m === 'GET') return json(res, 200, { user, authDisabled: cfg.authDisabled });
+    if (path === '/api/me' && m === 'GET') return json(res, 200, { user, authDisabled: cfg.authDisabled, httpsPort: tls ? cfg.publicHttpsPort : null });
     if (path === '/api/presets' && m === 'GET') return json(res, 200, { presets: store.list(), defaultId: store.defaultId() });
     if (path === '/api/presets' && m === 'POST') return json(res, 201, await store.create(await body(), user));
     if (path === '/api/default' && m === 'PUT') {
@@ -164,6 +172,8 @@ export async function createApp(cfg) {
     const url = new URL(req.url, 'http://x'), path = url.pathname;
     headers(res, path === '/login' || path === '/setup' ? LOGIN_CSP : APP_CSP);
     if (path === '/healthz') return send(res, 200, 'ok');
+    // the self-signed certificate, to trust it once on a computer (it is public, like any certificate)
+    if (path === '/cert.pem' && tls && tls.selfSigned) { res.setHeader('Content-Disposition', 'attachment; filename="plotter-cutter.pem"'); return send(res, 200, tls.cert, 'application/x-pem-file'); }
 
     // first start without a password in the environment: create the login, proven by the code in the log
     if (needsSetup()) {
@@ -237,17 +247,18 @@ export async function createApp(cfg) {
     return send(res, 404, 'Not found');
   }
 
-  const server = createServer((req, res) => {
+  const onRequest = (req, res) => {
     handle(req, res).catch(e => {
       if (e instanceof ValidationError) return json(res, 400, { error: e.message });
       if (e.status === 413) return res.headersSent ? res.end() : json(res, 413, { error: 'Too large.' });
       console.error(e);
       if (!res.headersSent) json(res, 500, { error: 'Server error.' }); else res.end();
     });
-  });
-  server.requestTimeout = 60_000;
-  server.headersTimeout = 20_000;
-  return { server, store, library, setupCode: () => setupCode, login: () => creds && creds.username };
+  };
+  const server = createServer(onRequest);
+  const httpsServer = tls ? createHttpsServer({ cert: tls.cert, key: tls.key }, onRequest) : null;
+  for (const sv of [server, httpsServer]) if (sv) { sv.requestTimeout = 120_000; sv.headersTimeout = 20_000; }
+  return { server, httpsServer, tls, store, library, setupCode: () => setupCode, login: () => creds && creds.username };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
@@ -255,7 +266,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   try { cfg = loadConfig(); } catch (e) { console.error(e.message); process.exit(1); }
   if (cfg.authDisabled) console.warn('WARNING: AUTH_DISABLED is set: anyone who can reach this server can use it and change saved settings.');
   if (!existsSync(join(cfg.staticDir, 'index.html'))) console.warn(`No built app in ${cfg.staticDir}; run "npm run build" first.`);
-  const { server, store, library, setupCode, login } = await createApp(cfg);
+  const { server, httpsServer, tls, store, library, setupCode, login } = await createApp(cfg);
+  if (httpsServer) httpsServer.listen(cfg.httpsPort, cfg.host, () => {
+    console.log(`Listening on https://${cfg.host}:${cfg.httpsPort} (${tls.selfSigned ? `self-signed certificate for ${tls.hosts.join(', ')}; trust it once: download /cert.pem` : 'your certificate'})`);
+    if (tls.selfSigned && !cfg.tlsHosts.length) console.log('  Tip: set TLS_HOSTNAMES to this server\'s IP address or name, so the certificate matches the address you open.');
+  });
   server.listen(cfg.port, cfg.host, () => {
     console.log(`Listening on http://${cfg.host}:${cfg.port}, data in ${cfg.dataDir}`);
     if (setupCode()) {
@@ -265,6 +280,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       console.log('');
     } else if (!cfg.authDisabled) console.log(`Login: "${login()}"${cfg.passwordHash ? ' (from the environment)' : ''}`);
   });
-  const stop = () => { server.close(); Promise.all([store.flush(), library.flush()]).finally(() => process.exit(0)); setTimeout(() => process.exit(0), 5000).unref(); };
+  const stop = () => { server.close(); if (httpsServer) httpsServer.close(); Promise.all([store.flush(), library.flush()]).finally(() => process.exit(0)); setTimeout(() => process.exit(0), 5000).unref(); };
   process.on('SIGTERM', stop); process.on('SIGINT', stop);
 }

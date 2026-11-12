@@ -4,6 +4,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp, loadConfig } from '../../server/index.js';
 import { hashPassword, verifyPassword, sessionSigner } from '../../server/auth.js';
+import { selfSignedCert } from '../../server/tls.js';
+import { X509Certificate } from 'node:crypto';
+import { request as httpsRequest } from 'node:https';
 import { openStore, validatePreset } from '../../server/store.js';
 
 const PASSWORD = 'correct horse battery';
@@ -183,6 +186,39 @@ describe('background library API', () => {
     expect((await add({ settings: { 'a.b': 1 } })).status).toBe(400);
     const pdf = await add({ data: Buffer.from('%PDF-1.7 test').toString('base64') });
     expect((await pdf.json()).kind).toBe('pdf');
+  });
+});
+
+describe('HTTPS (secure pages unlock the graphics card and all cores for the AI)', () => {
+  it('makes a valid self-signed certificate for the given names and IP addresses', () => {
+    const { cert } = selfSignedCert(['localhost', '127.0.0.1', '192.168.1.50', 'plotter.local']);
+    const x = new X509Certificate(cert);
+    expect(x.subjectAltName).toBe('DNS:localhost, IP Address:127.0.0.1, IP Address:192.168.1.50, DNS:plotter.local');
+    expect(x.verify(x.publicKey)).toBe(true);
+    expect(x.checkIP('192.168.1.50')).toBe('192.168.1.50');
+    expect((new Date(x.validTo) - Date.now()) / 86400_000).toBeLessThan(826); // Apple's limit for server certificates
+  });
+  it('serves the app over HTTPS next to HTTP, with the certificate at /cert.pem', async () => {
+    const d = mkdtempSync(join(tmpdir(), 'pc-tls-'));
+    const app = await createApp(loadConfig({ DATA_DIR: d, STATIC_DIR: staticDir, AUTH_PASSWORD: PASSWORD, SESSION_SECRET: 'x', TLS_HOSTNAMES: '192.168.1.50', PUBLIC_HTTPS_PORT: '9443' }));
+    expect(app.tls.hosts).toEqual(['localhost', '127.0.0.1', '192.168.1.50']);
+    await new Promise(ok => app.httpsServer.listen(0, '127.0.0.1', ok));
+    const port = app.httpsServer.address().port;
+    const get = path => new Promise((ok, fail) => httpsRequest({ host: '127.0.0.1', port, path, ca: app.tls.cert, servername: 'localhost' }, r => { let b = ''; r.on('data', c => { b += c; }); r.on('end', () => ok({ status: r.statusCode, body: b, headers: r.headers })); }).on('error', fail).end());
+    const h = await get('/healthz');
+    expect(h.status).toBe(200); // the certificate verifies (no "insecure" flag needed)
+    const c = await get('/cert.pem');
+    expect(c.body).toBe(app.tls.cert);
+    expect(c.headers['cross-origin-embedder-policy']).toBe('require-corp');
+    app.httpsServer.close();
+    // the same certificate is reused on the next start, a new one is made when the names change
+    const again = await createApp(loadConfig({ DATA_DIR: d, STATIC_DIR: staticDir, AUTH_PASSWORD: PASSWORD, SESSION_SECRET: 'x', TLS_HOSTNAMES: '192.168.1.50' }));
+    expect(again.tls.cert).toBe(app.tls.cert);
+    const other = await createApp(loadConfig({ DATA_DIR: d, STATIC_DIR: staticDir, AUTH_PASSWORD: PASSWORD, SESSION_SECRET: 'x', TLS_HOSTNAMES: '10.0.0.7' }));
+    expect(other.tls.cert).not.toBe(app.tls.cert);
+    expect(new X509Certificate(other.tls.cert).subjectAltName).toContain('10.0.0.7');
+    // TLS=off: no HTTPS
+    expect((await createApp(loadConfig({ DATA_DIR: d, STATIC_DIR: staticDir, AUTH_PASSWORD: PASSWORD, SESSION_SECRET: 'x', TLS: 'off' }))).httpsServer).toBeNull();
   });
 });
 

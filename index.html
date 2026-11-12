@@ -14,6 +14,7 @@
         <div class="userbox" id="userBox" hidden><span id="userName"></span><button type="button" class="link" id="signOut">Sign out</button></div></div>
       <p class="lede">Add SVGs, set their height, and get a nested sheet with kiss and die cut lines around every sticker.</p>
     </header>
+    <p class="securenote" id="secureNote" role="note" hidden></p>
     <section class="presets" id="secPresets" aria-labelledby="h-presets" hidden>
       <h2 id="h-presets">Saved settings</h2>
       <div class="presetpick"><select id="presetSel" aria-label="Saved settings"><option value="">Choose saved settings…</option></select><span class="dirty" id="presetDirty" hidden>changed</span></div>
@@ -50,8 +51,9 @@
         <p class="hint">Images: the first one is the front, the second (optional) the back. Any bleed in the image is found from its size: whatever reaches past the card size is bleed, also when it’s only on the top and bottom.</p>
         <div class="row" id="rowIcPreset"><label for="icPreset">Size</label><select id="icPreset"><option value="custom">Custom (below)</option><option value="297x420">A3 (297 × 420)</option><option value="210x297">A4 (210 × 297)</option><option value="148x210">A5 (148 × 210)</option><option value="105x148">A6 (105 × 148)</option><option value="99x210">DL (99 × 210)</option><option value="100x150">10 × 15 cm</option><option value="90x50">90 × 50</option><option value="90x55">90 × 55</option><option value="85x55">85 × 55</option></select></div>
         <div class="row" id="rowIcSize"><label for="icW">Card size (trim)</label><span class="mm"><input id="icW" type="number" min="10" step="0.5" value="90" aria-label="Card width">×<input id="icH" type="number" min="10" step="0.5" value="50" aria-label="Card height">mm</span></div>
-        <div class="row"><label for="icFit">Image scaling</label><select id="icFit"><option value="actual">100% (actual size, centred)</option><option value="fill">Fit to the card, keep proportions</option><option value="stretch">Stretch to card + bleed</option></select></div>
+        <div class="row"><label for="icFit">Image scaling</label><select id="icFit"><option value="actual">100% (actual size, centred)</option><option value="fill">Fit to the card, keep proportions</option><option value="stretch">Stretch to the card, then fill the bleed</option></select></div>
         <div class="row" id="rowIcDpi"><label for="icDpi">Image resolution at 100%</label><span class="mm"><input id="icDpi" type="number" min="30" max="2400" step="1" value="300">dpi</span></div>
+        <div class="row" id="rowIcSafe"><label for="icSafe">Safe margin inside the cut</label><span class="mm"><input id="icSafe" type="number" min="0" step="0.5" value="0">mm</span></div>
         <div class="row" id="rowIcExtend"><label for="icExtend">Fill missing bleed</label><span class="mm"><select id="icBleedHow" aria-label="How to fill the missing bleed"><option value="edge">Repeat the edge pixels</option><option value="ai">AI (continues the picture)</option></select><input id="icExtend" type="checkbox" checked aria-label="Fill missing bleed"></span></div>
         <p class="hint" id="icInfo"></p>
         <div class="actions"><button type="button" id="icSwap" hidden>Swap front and back</button></div>
@@ -354,12 +356,13 @@
         <p class="xlabel">Page</p>
         <div class="row"><label for="edOrient">Orientation</label><select id="edOrient"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select></div>
         <p class="xlabel">Picture</p>
-        <div class="actions"><button type="button" id="edFit" title="The whole picture inside the cut line">Fit inside</button><button type="button" id="edFill" title="Cover the page, the overflow is cut off">Fill</button><button type="button" id="edStretch" title="Stretch to the page, proportions not kept">Stretch</button></div>
+        <div class="actions"><button type="button" id="edFit" title="The whole picture inside the cut line">Fit inside</button><button type="button" id="edFill" title="Cover the page, the overflow is cut off">Fill</button><button type="button" id="edStretch" title="Stretch to the cut (less the safe margin), proportions not kept; the bleed is filled afterwards">Stretch</button></div>
         <div class="actions"><button type="button" id="edRotL" aria-label="Rotate left">⟲ 90°</button><button type="button" id="edRotR" aria-label="Rotate right">⟳ 90°</button></div>
         <div class="row"><label for="edZoom">Size</label><input id="edZoom" type="range" min="10" max="400" step="1" value="100"><span class="edval" id="edZoomV">100 %</span></div>
         <div class="row"><label for="edStretchH">Height</label><input id="edStretchH" type="number" min="20" max="500" step="1" value="100"><span class="edval">% of width</span></div>
         <div class="row"><label for="edAngle">Straighten</label><input id="edAngle" type="range" min="-10" max="10" step="0.1" value="0"><span class="edval" id="edAngleV">0.0°</span></div>
-        <p class="hint">Drag the picture to move it; scroll to make it bigger or smaller. The red line is the cut, the shaded edge is the bleed.</p>
+        <div class="row"><label for="edSafe">Safe margin</label><input id="edSafe" type="number" min="0" step="0.5" value="0"><span class="edval">mm inside the cut</span></div>
+        <p class="hint">Drag the picture to move it; scroll to make it bigger or smaller. The red line is the cut, the shaded edge is the bleed, the dashed line the safe margin. <b>Fit inside</b> and <b>Stretch</b> use the area inside the safe margin; everything around the picture (margin and bleed) is filled last, when you make the page.</p>
         <p class="xlabel">Empty parts of the page</p>
         <div class="row"><label for="edEmpty">Fill with</label><select id="edEmpty"><option value="ai">AI: continue the picture</option><option value="white">White</option></select></div>
         <p class="hint">The AI only paints where the picture doesn’t reach (bleed, or the rest of the page when the shape doesn’t match); the picture itself stays exactly as it is.</p>

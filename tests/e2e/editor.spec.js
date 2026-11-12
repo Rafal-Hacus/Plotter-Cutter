@@ -71,3 +71,19 @@ test('edit picture: AI fills the rest of the page (runs the real model in the br
   expect(h).toBe(600); expect(Math.abs(w - 600 * 34 / 49)).toBeLessThan(1.5);
   expect(errors.filter(e => !/WebGPU|webgpu|GPU adapter|adapters/i.test(e))).toEqual([]);
 });
+
+test('edit picture: safe margin — Stretch and Fit use the area inside it', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'gang');
+  await page.setInputFiles('#gangFile', fixture('square-party.png'));
+  await page.click('.ged');
+  await page.click('#edStretch');
+  const sizeAt = async () => page.evaluate(() => [document.getElementById('edZoom').value, document.getElementById('edStretchH').value].join('/'));
+  const before = await sizeAt();
+  await setField(page, 'edSafe', 5);
+  const after = await sizeAt();
+  expect(after).not.toBe(before); // stretched again, to the smaller area inside the margin
+  // 100 x 150 mm cut, 5 mm margin: stretched to 90 x 140 mm -> height = 140/90 of width
+  expect(after.split('/')[1]).toBe(String(Math.round(140 / 90 * 100)));
+  noProblems(problems);
+});
