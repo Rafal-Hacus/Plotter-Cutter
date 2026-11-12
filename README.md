@@ -129,8 +129,8 @@ Everything runs in the browser, on the computer's graphics card (WebGPU) when it
 nothing is uploaded. The models come with the app (about 85 MB, downloaded once, then cached):
 
 - **MI-GAN** (Picsart AI Research, MIT licence) for filling. It works on 512 px tiles at full resolution, growing
-  the picture outwards 48 px at a time with blurred edge colours as context, so it continues backgrounds without
-  copying text or shapes from near the edge.
+  the picture outwards 64 px at a time next to the real picture, so the fill keeps the picture's sharpness and
+  texture.
 - **ESRGAN thick ×2 / ×4** (UpscalerJS, MIT licence) for upscaling, followed by back-projection so the result
   stays true to the original.
 

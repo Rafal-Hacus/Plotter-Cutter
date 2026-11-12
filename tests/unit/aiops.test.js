@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { image, mirrorPad, fillTiles, extendGrow, backProject, boxError, boxBlur } from '../../src/core/aiops.js';
+import { image, mirrorPad, nearFill, fillTiles, extendGrow, backProject, boxError, boxBlur } from '../../src/core/aiops.js';
 
 const rnd = (w, h, seed = 1) => { const im = image(w, h); let s = seed; for (let i = 0; i < im.rgb.length; i++) { s = (s * 16807) % 2147483647; im.rgb[i] = s % 256; } return im; };
 // a stand-in model: paints holes in a marker colour and records what it was given
@@ -39,6 +39,16 @@ describe('fillTiles', () => {
   });
 });
 
+describe('nearFill', () => {
+  it('gives the hole next to the picture the picture\'s colour, a few pixels deep (no dark line along the fill)', () => {
+    const t = image(20, 1), mask = new Uint8Array(20);
+    for (let x = 0; x < 10; x++) { mask[x] = 1; t.rgb.set([200, 100, 50], x * 3); }
+    nearFill(t, mask, 6);
+    expect(Array.from({ length: 20 }, (_, x) => t.rgb[x * 3])).toEqual([...Array(16).fill(200), 0, 0, 0, 0]);
+    expect(mask.reduce((a, b) => a + b, 0)).toBe(10); // the mask itself is untouched
+  });
+});
+
 describe('extendGrow', () => {
   it('outpaints around a placed picture, keeps the picture pixel for pixel, a band of at most `step` at a time', async () => {
     const src = rnd(300, 300), m = fakeModel();
@@ -50,7 +60,7 @@ describe('extendGrow', () => {
     // everything outside the picture was filled by the model
     expect(out.rgb[0]).toBe(77); expect(out.rgb[(479 * 340 + 339) * 3]).toBe(77);
     // at most 48 px of new band per step: the tiles always see known context around the hole
-    expect(m.calls.length).toBeGreaterThan(2);
+    expect(m.calls.length).toBeGreaterThanOrEqual(2);
   });
   it('a thin bleed is one step', async () => {
     const src = rnd(200, 120), m = fakeModel();
