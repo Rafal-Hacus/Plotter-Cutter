@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { image, mirrorPad, nearFill, fillTiles, extendGrow, backProject, boxError, boxBlur } from '../../src/core/aiops.js';
+import { image, mirrorPad, nearFill, steady, calmFlat, fillTiles, extendGrow, backProject, boxError, boxBlur } from '../../src/core/aiops.js';
 
 const rnd = (w, h, seed = 1) => { const im = image(w, h); let s = seed; for (let i = 0; i < im.rgb.length; i++) { s = (s * 16807) % 2147483647; im.rgb[i] = s % 256; } return im; };
 // a stand-in model: paints holes in a marker colour and records what it was given
@@ -46,6 +46,32 @@ describe('nearFill', () => {
     nearFill(t, mask, 6);
     expect(Array.from({ length: 20 }, (_, x) => t.rgb[x * 3])).toEqual([...Array(16).fill(200), 0, 0, 0, 0]);
     expect(mask.reduce((a, b) => a + b, 0)).toBe(10); // the mask itself is untouched
+  });
+});
+
+describe('steady', () => {
+  it('keeps what the three runs agree on and drops what only one of them made up', async () => {
+    let n = 0;
+    const run = async (rgb, mask, w, h) => { const o = rgb.slice(); for (let i = 0; i < w * h; i++) if (!mask[i]) o.fill(77, i * 3, i * 3 + 3); if (n++ === 0) o.fill(250, 0, 3); return o; };
+    const out = await steady(run)(new Uint8Array(4 * 3), Uint8Array.from([0, 0, 0, 0]), 2, 2);
+    expect(Array.from(out)).toEqual(Array(12).fill(77)); // the 250 from the first run is gone
+    expect(n).toBe(3);
+  });
+});
+
+describe('calmFlat', () => {
+  it('keeps a plain border plain, and keeps foreign colours out of a textured one', () => {
+    const plain = image(40, 40); for (let i = 0; i < 1600; i++) plain.rgb.set([0, 90, 177], i * 3);
+    const out = image(60, 60); for (let i = 0; i < 3600; i++) out.rgb.set([200, 30, 30], i * 3); // the AI's junk
+    calmFlat(out, plain, 10, 10);
+    expect(Array.from(out.rgb.subarray(0, 3))).toEqual([0, 90, 177]);
+    expect(Array.from(out.rgb.subarray((59 * 60 + 30) * 3, (59 * 60 + 30) * 3 + 3))).toEqual([0, 90, 177]);
+    // a textured edge (stripes of two greens): the fill keeps its texture but only within the greens' colours
+    const tex = image(40, 40); for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) tex.rgb.set(x % 4 < 2 ? [40, 120, 40] : [90, 170, 60], (y * 40 + x) * 3);
+    const o2 = image(60, 60); for (let i = 0; i < 3600; i++) o2.rgb.set([200, 30, 30], i * 3);
+    calmFlat(o2, tex, 10, 10);
+    const p = Array.from(o2.rgb.subarray((5 * 60 + 30) * 3, (5 * 60 + 30) * 3 + 3));
+    expect(p[0]).toBeLessThanOrEqual(90 + 12); expect(p[1]).toBeGreaterThanOrEqual(120 - 12);
   });
 });
 

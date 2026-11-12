@@ -118,26 +118,93 @@ export async function fillTiles(img, known, runTile, { T = 512, M = 32, onTile }
   }
 }
 
+// runTile made steadier: the tile as is, mirrored left-right and mirrored top-bottom, and per pixel the middle of the
+// three results. What the picture really suggests comes out (about) the same each time and stays; the stray bits the
+// model makes up now and then differ between the three and are dropped. Three times the work.
+const flipT = (a, w, h, fx, fy, n) => {
+  const o = new Uint8Array(a.length);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const s = ((fy ? h - 1 - y : y) * w + (fx ? w - 1 - x : x)) * n, d = (y * w + x) * n; for (let c = 0; c < n; c++) o[d + c] = a[s + c]; }
+  return o;
+};
+export const steady = run => async (rgb, mask, w, h) => {
+  const a = await run(rgb, mask, w, h);
+  const b = flipT(await run(flipT(rgb, w, h, 1, 0, 3), flipT(mask, w, h, 1, 0, 1), w, h), w, h, 1, 0, 3);
+  const c = flipT(await run(flipT(rgb, w, h, 0, 1, 3), flipT(mask, w, h, 0, 1, 1), w, h), w, h, 0, 1, 3);
+  const o = new Uint8Array(a.length);
+  for (let i = 0; i < a.length; i++) { const p = a[i], q = b[i], r = c[i]; o[i] = Math.max(Math.min(p, q), Math.min(Math.max(p, q), r)); }
+  return o;
+};
+
 // src placed at (x0, y0) in a W x H canvas (the rest unknown); returns the filled canvas. The known rectangle grows
 // outwards `step` px at a time; each step the model sees the real picture next to the band it fills (no stand-in
 // context: a blurred or stretched one made the fill blurry and streaky), so it continues textures at full sharpness.
-export async function extendGrow(src, W, H, x0, y0, runTile, { step = 64, T = 512, M = 32, onTile } = {}) {
-  const C = image(W, H);
-  // the part of src that lies on the canvas
+// The model is weakest right at the border of its tile (stray blobs, a dark line), so every step it fills `P` px
+// further than it keeps, and the canvas has P px extra on every side that are thrown away at the end: no pixel that
+// ends up on the page was painted at a tile's border.
+export async function extendGrow(src, W, H, x0, y0, runTile, { step = 64, P = 32, T = 512, M = 32, onTile } = {}) {
+  const CW = W + 2 * P, CH = H + 2 * P, C = image(CW, CH);
+  // the part of src that lies on the page
   const cx0 = Math.max(0, x0), cy0 = Math.max(0, y0), cx1 = Math.min(W, x0 + src.w), cy1 = Math.min(H, y0 + src.h);
   if (cx1 <= cx0 || cy1 <= cy0) throw new Error('The picture is outside the page.');
-  paste(C, crop(src, cx0 - x0, cy0 - y0, cx1 - cx0, cy1 - cy0), cx0, cy0);
-  let l = cx0, t = cy0, r = cx1, b = cy1;
-  while (l > 0 || t > 0 || r < W || b < H) {
-    const dl = Math.min(step, l), dt = Math.min(step, t), dr = Math.min(step, W - r), db = Math.min(step, H - b);
-    // the known rectangle plus the band around it; the model only needs a tile's worth of picture next to the band
-    const R = crop(C, l - dl, t - dt, r - l + dl + dr, b - t + dt + db), known = new Uint8Array(R.w * R.h);
-    for (let y = dt; y < dt + b - t; y++) known.fill(1, y * R.w + dl, y * R.w + dl + r - l);
+  paste(C, crop(src, cx0 - x0, cy0 - y0, cx1 - cx0, cy1 - cy0), cx0 + P, cy0 + P);
+  let l = cx0 + P, t = cy0 + P, r = cx1 + P, b = cy1 + P;
+  while (l > P || t > P || r < P + W || b < P + H) {
+    // kept this step (d), filled this step (e = d + P where the canvas allows, 0 on finished sides)
+    const dl = Math.min(step, l - P), dt = Math.min(step, t - P), dr = Math.min(step, P + W - r), db = Math.min(step, P + H - b);
+    const el = dl && Math.min(dl + P, l), et = dt && Math.min(dt + P, t), er = dr && Math.min(dr + P, CW - r), eb = db && Math.min(db + P, CH - b);
+    const R = crop(C, l - el, t - et, r - l + el + er, b - t + et + eb), known = new Uint8Array(R.w * R.h);
+    for (let y = et; y < et + b - t; y++) known.fill(1, y * R.w + el, y * R.w + el + r - l);
     await fillTiles(R, known, runTile, { T, M, onTile });
-    paste(C, R, l - dl, t - dt);
+    paste(C, crop(R, el - dl, et - dt, r - l + dl + dr, b - t + dt + db), l - dl, t - dt);
     l -= dl; t -= dt; r += dr; b += db;
   }
-  return C;
+  const out = crop(C, P, P, W, H);
+  return calmFlat(out, src, x0, y0);
+}
+
+// Keeps the AI honest near the picture (it sometimes paints stray bits of nearby photos or letters into a border):
+//  - where the picture near its edge is mostly one colour (a plain background, also with a pattern of small dots on
+//    it, typical of graphics and flyers), the fill near it is that colour: the edge pixel carried straight out when
+//    it is that colour, else the main colour itself (so a dot cut by the edge doesn't become a bar). Mostly: the
+//    share of pixels within `near` of the median colour in a box of radius R around the nearest edge pixel, from
+//    lo (the AI's fill) to hi (the plain colour);
+//  - elsewhere the fill may only use colours found in the picture around the nearest edge pixel (radius RC, plus
+//    tol), so a texture continues but nothing foreign appears.
+// Both fade out from D to 2D px away from the picture, where the AI is on its own.
+export function calmFlat(out, src, x0, y0, { R = 8, RC = 16, lo = 0.75, hi = 0.92, close = 6, tol = 12, D = 48 } = {}) {
+  const { w, h } = src, memo = new Map();
+  const stats = (x, y) => {
+    const key = y * w + x;
+    let v = memo.get(key);
+    if (v) return v;
+    const ch = [[], [], []], mn = [255, 255, 255], mx = [0, 0, 0];
+    for (let yy = Math.max(0, y - RC); yy <= Math.min(h - 1, y + RC); yy++) for (let xx = Math.max(0, x - RC); xx <= Math.min(w - 1, x + RC); xx++) {
+      const q = (yy * w + xx) * 3, inner = Math.abs(yy - y) <= R && Math.abs(xx - x) <= R;
+      for (let c = 0; c < 3; c++) { const p = src.rgb[q + c]; if (p < mn[c]) mn[c] = p; if (p > mx[c]) mx[c] = p; if (inner) ch[c].push(p); }
+    }
+    const med = ch.map(a => a.sort((p, q) => p - q)[a.length >> 1]), n = ch[0].length;
+    let same = 0; // pixels close to the median colour (the sorted channels no longer line up, so go over the pixels)
+    for (let yy = Math.max(0, y - R); yy <= Math.min(h - 1, y + R); yy++) for (let xx = Math.max(0, x - R); xx <= Math.min(w - 1, x + R); xx++) {
+      const q = (yy * w + xx) * 3;
+      if (Math.abs(src.rgb[q] - med[0]) <= close && Math.abs(src.rgb[q + 1] - med[1]) <= close && Math.abs(src.rgb[q + 2] - med[2]) <= close) same++;
+    }
+    const e = (y * w + x) * 3, edgeIsMain = Math.abs(src.rgb[e] - med[0]) <= close && Math.abs(src.rgb[e + 1] - med[1]) <= close && Math.abs(src.rgb[e + 2] - med[2]) <= close;
+    v = { plain: Math.min(1, Math.max(0, (same / n - lo) / (hi - lo))), colour: edgeIsMain ? [src.rgb[e], src.rgb[e + 1], src.rgb[e + 2]] : med, mn, mx };
+    memo.set(key, v);
+    return v;
+  };
+  for (let y = 0; y < out.h; y++) for (let x = 0; x < out.w; x++) {
+    const sx = x - x0, sy = y - y0;
+    if (sx >= 0 && sx < w && sy >= 0 && sy < h) continue; // the picture itself
+    const cx = Math.min(w - 1, Math.max(0, sx)), cy = Math.min(h - 1, Math.max(0, sy)), dist = Math.max(Math.abs(sx - cx), Math.abs(sy - cy));
+    if (dist >= 2 * D) continue;
+    const near = Math.min(1, Math.max(0, (2 * D - dist) / D)), st = stats(cx, cy), k = st.plain * near, o = (y * out.w + x) * 3;
+    for (let c = 0; c < 3; c++) {
+      const v = out.rgb[o + c], cl = Math.min(st.mx[c] + tol, Math.max(st.mn[c] - tol, v)), a = v + (cl - v) * near; // clamped, fading out
+      out.rgb[o + c] = Math.round(k * st.colour[c] + (1 - k) * a);
+    }
+  }
+  return out;
 }
 
 // out: the AI upscale of inp by the whole number s (out.w = inp.w * s). Adjusts out in place so that its s x s

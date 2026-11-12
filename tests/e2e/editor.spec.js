@@ -69,6 +69,21 @@ test('edit picture: AI fills the rest of the page (runs the real model in the br
   // the preview of the finished page has the page's shape: (30 + 4) x (45 + 4) mm
   const [w, h] = await pngSize(page, '.design .thumb img');
   expect(h).toBe(600); expect(Math.abs(w - 600 * 34 / 49)).toBeLessThan(1.5);
+  // the model and the runtime are kept in the browser's cache: after a reload nothing is downloaded again
+  const cached = await page.evaluate(async () => (await (await caches.open('plotter-cutter-models-1')).keys()).map(r => new URL(r.url).pathname));
+  expect(cached.sort()).toEqual(['/models/migan.onnx', '/ort/ort-wasm-simd-threaded.asyncify.wasm']);
+  await page.reload();
+  await expect(page.locator('#secPresets')).toBeVisible();
+  const fetched = [];
+  page.on('request', r => { if (/models\/|ort\/.*\.wasm/.test(r.url())) fetched.push(r.url()); });
+  await mode(page, 'gang');
+  await page.setInputFiles('#gangFile', fixture('square-party.png'));
+  await page.locator('.ged').first().click();
+  await page.click('#edFit');
+  await setField(page, 'edEmpty', 'ai');
+  await page.click('#edApply');
+  await expect(page.locator('#edUse')).toBeVisible({ timeout: 200_000 });
+  expect(fetched).toEqual([]);
   expect(errors.filter(e => !/WebGPU|webgpu|GPU adapter|adapters/i.test(e))).toEqual([]);
 });
 

@@ -4,14 +4,32 @@
 // Models: MI-GAN (Picsart, MIT) for filling via onnxruntime-web; ESRGAN thick (UpscalerJS, MIT) via TensorFlow.js.
 // WebGPU (the graphics card) when there is one, else the processor, on all cores when the page is cross-origin
 // isolated (the server sends the headers for that).
-import { image, fillTiles, extendGrow, backProject, mirrorPad } from '../core/aiops.js';
+import { image, fillTiles, extendGrow, backProject, mirrorPad, steady } from '../core/aiops.js';
 
 let job = 0; // the message id being worked on, for status messages
 const say = text => self.postMessage({ id: job, type: 'status', text });
 const MB = n => (n / 1048576).toFixed(1);
 
-// download with progress (the model files are big; the browser caches them afterwards)
+// The models are kept in the browser's Cache Storage (not just its HTTP cache, which drops big files and is skipped
+// on a hard refresh), so they are downloaded once. Bump the name when a model file changes.
+const CACHE = 'plotter-cutter-models-1';
+async function modelCache() {
+  try { return self.caches ? await self.caches.open(CACHE) : null; } catch { return null; } // not on http://<ip> (insecure)
+}
+// fetch for model files: from the cache when there, else from the server, then into the cache
+async function cachedFetch(url, init) {
+  const c = await modelCache(), key = new URL(url, self.location.href).href;
+  const hit = c && await c.match(key);
+  if (hit) return hit;
+  const r = await fetch(url, init);
+  if (r.ok && c) await c.put(key, r.clone()).catch(() => {});
+  return r;
+}
+// download with progress (the model files are big), kept in the cache afterwards
 async function download(url, label) {
+  const c = await modelCache(), key = new URL(url, self.location.href).href;
+  const hit = c && await c.match(key);
+  if (hit) { say(`Loading the ${label} (already downloaded)…`); return new Uint8Array(await hit.arrayBuffer()); }
   const r = await fetch(url);
   if (!r.ok) throw new Error(`Couldn’t download the ${label} (${r.status}).`);
   const total = +r.headers.get('content-length') || 0, reader = r.body.getReader(), parts = [];
@@ -24,6 +42,7 @@ async function download(url, label) {
   }
   const out = new Uint8Array(got);
   let o = 0; for (const p of parts) { out.set(p, o); o += p.length; }
+  if (c) await c.put(key, new Response(out, { headers: { 'Content-Type': 'application/octet-stream' } })).catch(() => {});
   return out;
 }
 
@@ -35,6 +54,8 @@ function loadMigan(base) {
     // the WebGPU build runs on the 'asyncify' WebAssembly; point at both files (bundlers move the library)
     ort.env.wasm.wasmPaths = { mjs: base + 'ort/ort-wasm-simd-threaded.asyncify.mjs', wasm: base + 'ort/ort-wasm-simd-threaded.asyncify.wasm' };
     ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.max(1, Math.min(8, (navigator.hardwareConcurrency || 4) - 1)) : 1;
+    // the runtime's WebAssembly (about 25 MB) from the model cache too
+    ort.env.wasm.wasmBinary = (await download(base + 'ort/ort-wasm-simd-threaded.asyncify.wasm', 'AI runtime')).buffer;
     const model = await download(base + 'models/migan.onnx', 'AI fill model');
     say('Starting the AI fill model…');
     let last;
@@ -88,7 +109,8 @@ async function esrgan(base, scale) {
   const t = await loadTf();
   if (!t.models.has(scale)) {
     t.models.set(scale, t.tf.loadLayersModel(base + `models/esrgan-thick/x${scale}/model.json`, {
-      onProgress: f => say(`Downloading the AI upscale model ×${scale}: ${Math.round(f * 100)} % of about 28 MB…`)
+      onProgress: f => say(`Downloading the AI upscale model ×${scale}: ${Math.round(f * 100)} % of about 28 MB…`),
+      fetchFunc: cachedFetch
     }).catch(e => { t.models.delete(scale); throw e; }));
   }
   return { tf: t.tf, model: await t.models.get(scale) };
@@ -127,8 +149,9 @@ self.onmessage = async ({ data }) => {
       await loadMigan(base);
       let tiles = 0;
       const onTile = () => say(`AI is filling: ${++tiles} ${tiles === 1 ? 'tile' : 'tiles'} done (${fillBackend}).`);
-      if (op === 'fill') { await fillTiles(args.img, args.known, runMigan, { onTile }); result = { img: args.img, known: args.known }; }
-      else result = { img: await extendGrow(args.src, args.W, args.H, args.x0, args.y0, runMigan, { onTile }) };
+      const run = steady(runMigan); // three runs per tile, the middle value per pixel: no stray bits
+      if (op === 'fill') { await fillTiles(args.img, args.known, run, { onTile }); result = { img: args.img, known: args.known }; }
+      else result = { img: await extendGrow(args.src, args.W, args.H, args.x0, args.y0, run, { onTile }) };
     } else if (op === 'upscale') result = { img: await upscale(base, args.img, args.scale) };
     else throw new Error(`Unknown job ${op}`);
     const buffers = [result.img.rgb.buffer, ...(result.known ? [result.known.buffer] : [])];
