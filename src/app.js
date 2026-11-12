@@ -14,6 +14,7 @@ import { ensureLibs, pdfSource } from './lib/pdf.js';
 import { initPresets } from './presets.js';
 import { buildNameCardsPdf, parseNames } from './lib/namecards.js';
 import { initLibrary, LIB_KEYS } from './winlib.js';
+// the image editor (and the AI it uses) loads on first use
 import { makeZip, readZipPlts } from './core/zip.js';
 
 function sheetSizeMm() {
@@ -40,7 +41,7 @@ const ui = {
   dropNote: $('#dropNote'), sheetInfo: $('#sheetInfo'), dpiRow: $('#dpiRow'), tplFile: $('#tplFile'), tplReset: $('#tplReset'),
   exAll: $('#exAll'), exPrint: $('#exPrint'), exCut: $('#exCut'), exPlt: $('#exPlt'), showArt: $('#showArt'), lgKiss: $('#lgKiss'), lgDie: $('#lgDie')
 };
-const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'cPerfDie', 'cTieCut', 'cTie', 'cTiePlace', 'cTieInset', 'cAlign', 'cShiftX', 'cShiftY', 'winSrc', 'winW', 'winH', 'winFont', 'winSize', 'winColor', 'winBoth', 'winOffX', 'winOffY', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
+const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'icBleedHow', 'cPerfDie', 'cTieCut', 'cTie', 'cTiePlace', 'cTieInset', 'cAlign', 'cShiftX', 'cShiftY', 'winSrc', 'winW', 'winH', 'winFont', 'winSize', 'winColor', 'winBoth', 'winOffX', 'winOffY', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
 const designs = [];
 let template = null, layout = null, gen = 0, nextId = 1, sheetCache = null, timer = null;
 
@@ -1070,7 +1071,21 @@ async function imagesToCardPdf(src) {
     page.setTrimBox(B * PT, B * PT, W * PT, H * PT);
     const gapX = (pw - iw) / 2, gapY = (ph - ih) / 2; // > 0: the image doesn't reach the page edge there
     let emb, x = gapX, y = gapY, w = iw, h = ih;
-    if (fit !== 'stretch' && extend && (gapX > 0.01 || gapY > 0.01)) {
+    if (fit !== 'stretch' && extend && (gapX > 0.01 || gapY > 0.01) && document.getElementById('icBleedHow').value === 'ai') {
+      // AI: the missing bleed continues the picture (MI-GAN, in the browser); cached per image and placement
+      const ppm = im.w / iw, cw = Math.max(1, Math.round(pw * ppm)), ch = Math.max(1, Math.round(ph * ppm));
+      const ox = Math.round(gapX * ppm), oy = Math.round(gapY * ppm), key = `${im.name}|${im.w}x${im.h}|${cw}x${ch}|${ox},${oy}`;
+      if (!aiBleedCache.has(key)) {
+        const ai = await import('./lib/ai.js'), bmp = await createImageBitmap(im.blob), cv = document.createElement('canvas');
+        cv.width = im.w; cv.height = im.h; cv.getContext('2d').drawImage(bmp, 0, 0); bmp.close && bmp.close();
+        let tiles = 0;
+        setCardMsg('AI is filling the missing bleed…');
+        const out = ai.toCanvas(await ai.aiExtend(ai.fromCanvas(cv), cw, ch, ox, oy, () => setCardMsg(`AI is filling the missing bleed… ${++tiles} ${tiles === 1 ? 'tile' : 'tiles'} done.`)));
+        aiBleedCache.set(key, new Uint8Array(await (await new Promise(r => out.toBlob(r, 'image/png'))).arrayBuffer()));
+        setCardMsg('');
+      }
+      emb = await pdf.embedPng(aiBleedCache.get(key)); x = 0; y = 0; w = pw; h = ph;
+    } else if (fit !== 'stretch' && extend && (gapX > 0.01 || gapY > 0.01)) {
       // repeat the outermost pixels into the missing bleed (only ever lands outside the trim if the image covers it)
       const bmp = await createImageBitmap(im.blob), ppm = im.w / iw;
       const cw = Math.max(1, Math.round(pw * ppm)), ch = Math.max(1, Math.round(ph * ppm));
@@ -1095,7 +1110,7 @@ async function imagesToCardPdf(src) {
     }
     const side = b => b < -TOL ? `short by ${r2(-b)} mm per side` : b <= TOL ? 'none' : `${r2(b)} mm`;
     let t = `${im.name}: ${r1(iw)} × ${r1(ih)} mm${p.dpi ? ` at ${num(Math.round(p.dpi))} dpi${im.dpi ? ' (from the file)' : ''}` : ''}, cut ${num(W)} × ${num(H)} mm. Bleed top and bottom: ${side(p.by)}, left and right: ${side(p.bx)}`;
-    if (p.bx > TOL && p.by <= TOL || p.by > TOL && p.bx <= TOL || (p.bx <= TOL && p.by <= TOL)) t += extend && B > TOL && p.bx >= -TOL && p.by >= -TOL ? ' (missing bleed filled by repeating the edge pixels)' : '';
+    if (p.bx > TOL && p.by <= TOL || p.by > TOL && p.bx <= TOL || (p.bx <= TOL && p.by <= TOL)) t += extend && B > TOL && p.bx >= -TOL && p.by >= -TOL ? (document.getElementById('icBleedHow').value === 'ai' ? ' (missing bleed filled by AI)' : ' (missing bleed filled by repeating the edge pixels)') : '';
     t += '.';
     if (p.bx < -TOL || p.by < -TOL) t += ' The image is smaller than the card: check the card size and the dpi, otherwise a white edge ends up inside the card.';
     if (p.dpi && (p.bx > 6 || p.by > 6)) t += ' Much bigger than the card: check the card size and the dpi.';
@@ -1106,6 +1121,7 @@ async function imagesToCardPdf(src) {
   return { bytes: await pdf.save(), bleed: B };
 }
 let icTimer = null;
+const aiBleedCache = new Map(); // AI-filled card pages (PNG), by image and placement
 function rebuildCardImages() {
   clearTimeout(icTimer);
   icTimer = setTimeout(async () => {
@@ -1128,6 +1144,7 @@ function syncImgRows() {
 for (const id of ['icW', 'icH', 'icDpi']) document.getElementById(id).addEventListener('input', rebuildCardImages);
 document.getElementById('icFit').addEventListener('change', () => { syncImgRows(); rebuildCardImages(); });
 document.getElementById('icExtend').addEventListener('change', rebuildCardImages);
+document.getElementById('icBleedHow').addEventListener('change', rebuildCardImages);
 document.getElementById('icSwap').addEventListener('click', () => { const s = cards.imgSrc; if (s && s.imgs.length > 1) { s.imgs.reverse(); rebuildCardImages(); } });
 document.getElementById('mSize').addEventListener('change', () => { if (appMode === 'morgana' && cards.imgSrc) rebuildCardImages(); });
 document.getElementById('cBleed').addEventListener('input', () => { if (cards.imgSrc && document.getElementById('icFit').value === 'stretch') rebuildCardImages(); });
@@ -2458,15 +2475,30 @@ function gangList() {
   for (const it of gang.items) {
     const li = document.createElement('li');
     li.className = 'design';
-    li.innerHTML = `<div class="thumb"><img alt="" style="max-width:100%;max-height:100%"></div><div><div class="dname"></div><div class="fields"><label>Copies<input type="number" min="0" step="1" class="gq"></label></div></div><button type="button" class="remove">×</button>`;
+    li.innerHTML = `<div class="thumb"><img alt="" style="max-width:100%;max-height:100%"></div><div><div class="dname"></div><div class="fields"><label>Copies<input type="number" min="0" step="1" class="gq"></label></div><div class="actions"><button type="button" class="link ged" hidden>Edit picture (fit, rotate, AI)</button></div><div class="status gst"></div></div><button type="button" class="remove">×</button>`;
     li.querySelector('img').src = it.preview;
     li.querySelector('.dname').textContent = it.name; li.querySelector('.dname').title = it.name;
     const q = li.querySelector('.gq'); q.value = it.copies;
     q.addEventListener('input', () => { const v = parseInt(q.value, 10); it.copies = isFinite(v) && v >= 0 ? v : 0; schedule(); });
     const rm = li.querySelector('.remove'); rm.setAttribute('aria-label', `Remove ${it.name}`);
     rm.addEventListener('click', () => { gang.items.splice(gang.items.indexOf(it), 1); gangList(); schedule(); });
+    if (it.kind === 'img') {
+      const ed = li.querySelector('.ged'); ed.hidden = false;
+      if (it.edit) li.querySelector('.gst').textContent = 'Edited for the format (the original is kept: edit again to change it).';
+      ed.addEventListener('click', () => gangEdit(it).catch(e => setCardMsg(`Couldn’t open the editor: ${e.message || e}`, true)));
+    }
     ul.appendChild(li);
   }
+}
+// Edit a picture for the chosen format: the result replaces it on the sheet (crop marks and all); the original
+// and the settings are kept, so it can be edited again.
+async function gangEdit(it) {
+  const o = readOpts(), [fw, fh] = gangFormat(o), { openEditor } = await import('./editor.js');
+  if (!it.orig) it.orig = { bytes: it.bytes, mime: it.mime, w: it.w, h: it.h, preview: it.preview };
+  await openEditor({
+    name: it.name, bytes: it.orig.bytes, state: it.edit || null, format: { w: fw, h: fh, bleed: gangOpts(o).cBleed },
+    onApply: r => { Object.assign(it, { bytes: r.bytes, mime: 'png', w: r.w, h: r.h, preview: r.preview, edit: r.state }); gangList(); schedule(); }
+  });
 }
 function gangCompute(o) {
   const go = gangOpts(o), [fw, fh] = gangFormat(o);
@@ -2487,6 +2519,9 @@ function gangSlots() {
   for (const it of gang.items) for (let k = 0; k < it.copies; k++) seq.push(it);
   return seq;
 }
+// The box a picture is placed in: its slot's trim plus the full bleed. (The slot's clip can be narrower when the
+// gap between copies is less than two bleeds; the picture is clipped to that, but always placed on the trim.)
+const gangBox = slot => { const b = gangOpts(readOpts()).cBleed, [x, y, w, h] = slot.trim; return [x - b, y - b, w + 2 * b, h + 2 * b]; };
 // placement of an item (natural w × h) in a box on the sheet (mm, y down): rotation to match orientation, scale, centre
 function gangPlace(it, box, fill) {
   const [bx, by, bw, bh] = box, rot = (it.w > it.h) !== (bw > bh) && Math.abs(it.w - it.h) > 1e-6;
@@ -2505,7 +2540,7 @@ function renderGangPreview() {
       const it = seq[base + i], [cx, cy, cw2, ch2] = slot.clip;
       p.push(`<rect x="${num(slot.trim[0])}" y="${num(slot.trim[1])}" width="${num(slot.trim[2])}" height="${num(slot.trim[3])}" fill="none" stroke="${CUT_RED}" stroke-width="1.1" vector-effect="non-scaling-stroke"/>`);
       if (!it || !ui.showArt.checked) return;
-      const pl = gangPlace(it, slot.clip, fill);
+      const pl = gangPlace(it, gangBox(slot), fill);
       // image drawn in its own (rotated) frame
       const M = pl.rot ? [0, -pl.s, pl.s, 0, pl.x, pl.y + pl.ch * pl.s] : [pl.s, 0, 0, pl.s, pl.x, pl.y];
       p.push(`<clipPath id="gc${i}"><rect x="${num(cx)}" y="${num(cy)}" width="${num(cw2)}" height="${num(ch2)}"/></clipPath><g clip-path="url(#gc${i})"><image href="${it.preview}" x="0" y="0" width="${it.w}" height="${it.h}" preserveAspectRatio="none" transform="matrix(${M.map(num).join(',')})"/></g>`);
@@ -2561,7 +2596,7 @@ async function buildGangPdf() {
       if (!it) return;
       const e = emb.get(it);
       if (!names.has(e)) names.set(e, page.node.newXObject('Gang', e.ref));
-      const pl = gangPlace(it, slot.clip, fill), rc = slot.clip;
+      const pl = gangPlace(it, gangBox(slot), fill), rc = slot.clip;
       // source units -> natural size (image: unit square; PDF page: points from its media box)
       const S0 = it.kind === 'img' ? [it.w, 0, 0, it.h, 0, 0] : [1, 0, 0, 1, -it.mbx, -it.mby];
       // natural (y up) -> sheet points (y up), rotated a quarter turn when the orientation differs

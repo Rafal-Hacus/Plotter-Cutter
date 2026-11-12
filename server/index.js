@@ -46,7 +46,7 @@ function sessionSecret(cfg) {
 }
 
 const APP_CSP = [
-  "default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'", "font-src 'self'",
+  "default-src 'self'", "script-src 'self' 'wasm-unsafe-eval'", "style-src 'self' 'unsafe-inline'", "font-src 'self'",
   "img-src 'self' data: blob:", "connect-src 'self' data: blob:", "worker-src 'self' blob:",
   "object-src 'none'", "frame-src 'none'", "frame-ancestors 'none'", "base-uri 'none'", "form-action 'self'"
 ].join('; ');
