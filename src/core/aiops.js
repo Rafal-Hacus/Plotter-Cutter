@@ -4,12 +4,10 @@
 // Fill (MI-GAN): runTile(rgb, mask, w, h) -> Promise<Uint8Array rgb> fills the unknown pixels of one tile.
 //   - fillTiles: tiles of up to T px at full resolution; a tile's result is only kept M px away from tile sides
 //     inside the image (the model is weakest at its own borders), and kept pixels become context for later tiles.
-//   - extendGrow: outpainting. The known rectangle grows outwards `step` px at a time; at each step the new band
-//     is the hole, and beyond it the picture's edge pixels, stretched outwards and blurred hard, are extra context.
-//     So the model fills a gap between two known areas (what it was trained for) instead of running off its edge,
-//     and the context passes on only colour and light: no shapes or letters to copy (a mirror image did that:
-//     text near the edge came back as ghost letters, a sun as a yellow bar). Only the model's fill is kept,
-//     never the context, and the original pixels are never touched.
+//   - extendGrow: outpainting. The known rectangle grows outwards `step` px at a time, the model filling each new
+//     band next to the real picture. (Stand-in context beyond the band was tried: a mirror image brought back
+//     ghost letters, a stretched and blurred edge made the fill blurry and streaky.) The original pixels are
+//     never touched.
 // Upscale: backProject makes the AI result agree with the original: scaled back down (box average), it gives the
 //   original again, so the AI can add sharpness but cannot change what is in the picture.
 
@@ -24,42 +22,6 @@ export function mirrorPad(img, p) {
     for (let x = 0; x < W; x++) {
       const sx = sym(x - p, img.w), s = (sy * img.w + sx) * 3, d = (y * W + x) * 3;
       out[d] = img.rgb[s]; out[d + 1] = img.rgb[s + 1]; out[d + 2] = img.rgb[s + 2];
-    }
-  }
-  return image(W, H, out);
-}
-// The core padded by p px for outpainting. Inside `keep` (the core plus the band to fill: [x0, y0, x1, y1] in the
-// padded image) the edge pixels are simply repeated outwards (the band is masked anyway); outside it, the context
-// is the picture's edge row or column blurred along the edge (radius r, twice: about a Gaussian), stretched outwards:
-// colour and light only. Same result as blurring the whole edge-repeated image, at a fraction of the cost.
-export function contextPad(core, p, r, keep) {
-  const { w, h } = core, W = w + 2 * p, H = h + 2 * p, out = new Uint8Array(W * H * 3);
-  const blur1 = (get, n) => { // double box blur of a line of n RGB pixels, ends clamped
-    let a = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) for (let c = 0; c < 3; c++) a[i * 3 + c] = get(i, c);
-    for (let k = 0; k < 2; k++) {
-      const b = new Float32Array(n * 3), m = 2 * r + 1;
-      for (let c = 0; c < 3; c++) {
-        const at = i => a[Math.min(n - 1, Math.max(0, i)) * 3 + c];
-        let sum = 0;
-        for (let i = -r; i <= r; i++) sum += at(i);
-        for (let i = 0; i < n; i++) { b[i * 3 + c] = sum / m; sum += at(i + r + 1) - at(i - r); }
-      }
-      a = b;
-    }
-    return a;
-  };
-  const px = (x, y, c) => core.rgb[(y * w + x) * 3 + c];
-  const top = blur1((i, c) => px(i, 0, c), w), bottom = blur1((i, c) => px(i, h - 1, c), w);
-  const left = blur1((i, c) => px(0, i, c), h), right = blur1((i, c) => px(w - 1, i, c), h);
-  const [kx0, ky0, kx1, ky1] = keep;
-  for (let y = 0; y < H; y++) {
-    const cy = y - p, sy = cy < 0 ? 0 : cy >= h ? h - 1 : cy;
-    for (let x = 0; x < W; x++) {
-      const cx = x - p, sx = cx < 0 ? 0 : cx >= w ? w - 1 : cx, d = (y * W + x) * 3;
-      if (x >= kx0 && x < kx1 && y >= ky0 && y < ky1) { const s = (sy * w + sx) * 3; out[d] = core.rgb[s]; out[d + 1] = core.rgb[s + 1]; out[d + 2] = core.rgb[s + 2]; continue; }
-      const src = cy < 0 ? top : cy >= h ? bottom : cx < 0 ? left : right, i = (cy < 0 || cy >= h ? sx : sy) * 3;
-      out[d] = Math.round(src[i]); out[d + 1] = Math.round(src[i + 1]); out[d + 2] = Math.round(src[i + 2]);
     }
   }
   return image(W, H, out);
@@ -102,6 +64,29 @@ export function boxBlur(img, r) {
   return img;
 }
 
+// The hole's pixels next to the picture, set to the nearest picture colour (a few px deep). The model's pipeline lets
+// the hole's own pixels show through in the first pixels of its fill: black there made a dark line along the edge.
+export function nearFill(tile, mask, depth = 6) {
+  const { w, h, rgb } = tile, k = Uint8Array.from(mask);
+  for (let it = 0; it < depth; it++) {
+    const add = [];
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (k[i]) continue;
+      let n = 0, s0 = 0, s1 = 0, s2 = 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const X = x + dx, Y = y + dy;
+        if (X < 0 || Y < 0 || X >= w || Y >= h || !k[Y * w + X]) continue;
+        const q = (Y * w + X) * 3; s0 += rgb[q]; s1 += rgb[q + 1]; s2 += rgb[q + 2]; n++;
+      }
+      if (n) add.push(i, Math.round(s0 / n), Math.round(s1 / n), Math.round(s2 / n));
+    }
+    if (!add.length) break;
+    for (let a = 0; a < add.length; a += 4) { const i = add[a]; rgb[i * 3] = add[a + 1]; rgb[i * 3 + 1] = add[a + 2]; rgb[i * 3 + 2] = add[a + 3]; k[i] = 1; }
+  }
+  return rgb;
+}
+
 const starts = (L, T, step) => { const s = new Set([0, Math.max(0, L - T)]); for (let v = 0; v < L - T; v += step) s.add(v); return [...s].sort((a, b) => a - b); };
 
 // Fills the unknown pixels of img in place. known is updated as pixels get filled.
@@ -120,7 +105,7 @@ export async function fillTiles(img, known, runTile, { T = 512, M = 32, onTile }
       let holes = 0;
       for (let r = 0; r < th; r++) for (let c = 0; c < tw; c++) { const k = known[(y + r) * W + x + c]; mask[r * tw + c] = k; if (!k) holes++; }
       if (!holes) continue;
-      const out = await runTile(crop(img, x, y, tw, th).rgb, mask, tw, th);
+      const out = await runTile(nearFill(crop(img, x, y, tw, th), mask), mask, tw, th);
       if (onTile) onTile();
       const y0 = y === 0 ? 0 : M, x0 = x === 0 ? 0 : M, y1 = y + th >= H ? th : th - M, x1 = x + tw >= W ? tw : tw - M;
       for (let r = y0; r < y1; r++) for (let c = x0; c < x1; c++) {
@@ -133,8 +118,10 @@ export async function fillTiles(img, known, runTile, { T = 512, M = 32, onTile }
   }
 }
 
-// src placed at (x0, y0) in a W x H canvas (the rest unknown); returns the filled canvas.
-export async function extendGrow(src, W, H, x0, y0, runTile, { step = 48, T = 512, M = 32, onTile } = {}) {
+// src placed at (x0, y0) in a W x H canvas (the rest unknown); returns the filled canvas. The known rectangle grows
+// outwards `step` px at a time; each step the model sees the real picture next to the band it fills (no stand-in
+// context: a blurred or stretched one made the fill blurry and streaky), so it continues textures at full sharpness.
+export async function extendGrow(src, W, H, x0, y0, runTile, { step = 64, T = 512, M = 32, onTile } = {}) {
   const C = image(W, H);
   // the part of src that lies on the canvas
   const cx0 = Math.max(0, x0), cy0 = Math.max(0, y0), cx1 = Math.min(W, x0 + src.w), cy1 = Math.min(H, y0 + src.h);
@@ -143,16 +130,11 @@ export async function extendGrow(src, W, H, x0, y0, runTile, { step = 48, T = 51
   let l = cx0, t = cy0, r = cx1, b = cy1;
   while (l > 0 || t > 0 || r < W || b < H) {
     const dl = Math.min(step, l), dt = Math.min(step, t), dr = Math.min(step, W - r), db = Math.min(step, H - b);
-    const core = crop(C, l, t, r - l, b - t), s = Math.max(dl, dt, dr, db);
-    const R = contextPad(core, 2 * s, Math.max(4, Math.round(s / 2)), [2 * s - dl, 2 * s - dt, 2 * s + core.w + dr, 2 * s + core.h + db]);
-    const known = new Uint8Array(R.w * R.h).fill(1);
-    // the hole: the band around the core where the canvas continues
-    for (let y = 2 * s - dt; y < 2 * s + core.h + db; y++) for (let x = 2 * s - dl; x < 2 * s + core.w + dr; x++) {
-      if (y >= 2 * s && y < 2 * s + core.h && x >= 2 * s && x < 2 * s + core.w) continue;
-      known[y * R.w + x] = 0;
-    }
+    // the known rectangle plus the band around it; the model only needs a tile's worth of picture next to the band
+    const R = crop(C, l - dl, t - dt, r - l + dl + dr, b - t + dt + db), known = new Uint8Array(R.w * R.h);
+    for (let y = dt; y < dt + b - t; y++) known.fill(1, y * R.w + dl, y * R.w + dl + r - l);
     await fillTiles(R, known, runTile, { T, M, onTile });
-    paste(C, crop(R, 2 * s - dl, 2 * s - dt, core.w + dl + dr, core.h + dt + db), l - dl, t - dt);
+    paste(C, R, l - dl, t - dt);
     l -= dl; t -= dt; r += dr; b += db;
   }
   return C;
