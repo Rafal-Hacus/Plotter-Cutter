@@ -39,7 +39,7 @@ function loadMigan(base) {
     say('Starting the AI fill model…');
     let last;
     for (const ep of navigator.gpu ? ['webgpu', 'wasm'] : ['wasm']) {
-      try { const session = await ort.InferenceSession.create(model, { executionProviders: [ep] }); fillBackend = ep === 'webgpu' ? 'graphics card' : `processor, ${ort.env.wasm.numThreads} ${ort.env.wasm.numThreads === 1 ? 'thread' : 'threads'}`; return { ort, session }; }
+      try { const session = await ort.InferenceSession.create(model, { executionProviders: [ep] }); fillBackend = ep === 'webgpu' ? 'graphics card' : `processor, ${ort.env.wasm.numThreads} ${ort.env.wasm.numThreads === 1 ? 'thread' : 'threads'}${self.isSecureContext ? '' : '; open the app over https for the graphics card and all cores'}`; return { ort, session }; }
       catch (e) { last = e; }
     }
     throw new Error(`Couldn’t start the fill model: ${last && last.message}`);

@@ -140,3 +140,21 @@ test('guillotine: images at a preset size (A5), and A3 offered as a final size',
   await expect(page.locator('#icPreset')).toHaveValue('custom');
   noProblems(problems);
 });
+
+test('card images: stretch to the card inside a safe margin first, then the AI fills margin and bleed last', async ({ page }) => {
+  test.setTimeout(300_000);
+  const problems = await openApp(page);
+  await mode(page, 'cards');
+  await page.evaluate(() => { document.getElementById('icW').value = 40; document.getElementById('icH').value = 25; });
+  await setField(page, 'icFit', 'stretch');
+  await setField(page, 'icSafe', 3);
+  await setField(page, 'cBleed', 2);
+  await setField(page, 'icBleedHow', 'ai');
+  // a square picture: stretched to 34 x 19 mm (40 x 25 less 3 mm on every side), out of proportion
+  await page.setInputFiles('#cardFile', [{ name: 'square.png', mimeType: 'image/png', buffer: makePng(300, 300, 300, 0) }]);
+  await expect(page.locator('#icInfo')).toContainText('square.png: stretched to 34 × 19 mm (inside a 3 mm safe margin)', { timeout: 240_000 });
+  await expect(page.locator('#icInfo')).toContainText('Bleed filled by AI.');
+  await expect(page.locator('#cardInfo')).toContainText('40 × 25 mm card + 2 mm bleed', { timeout: 240_000 });
+  await expect(page.locator('#rowIcSafe')).toBeVisible();
+  noProblems(problems.filter(p => !/WebGPU|webgpu|GPU adapter|adapters/i.test(p)));
+});

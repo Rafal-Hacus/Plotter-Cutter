@@ -41,7 +41,7 @@ const ui = {
   dropNote: $('#dropNote'), sheetInfo: $('#sheetInfo'), dpiRow: $('#dpiRow'), tplFile: $('#tplFile'), tplReset: $('#tplReset'),
   exAll: $('#exAll'), exPrint: $('#exPrint'), exCut: $('#exCut'), exPlt: $('#exPlt'), showArt: $('#showArt'), lgKiss: $('#lgKiss'), lgDie: $('#lgDie')
 };
-const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icPreset', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'icBleedHow', 'cPerfDie', 'cTieCut', 'cTie', 'cTiePlace', 'cTieInset', 'cAlign', 'cShiftX', 'cShiftY', 'winSrc', 'winW', 'winH', 'winFont', 'winSize', 'winColor', 'winBoth', 'winOffX', 'winOffY', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
+const OPT_IDS = ['kiss', 'die', 'gap', 'kissColor', 'dieColor', 'kissLayer', 'dieLayer', 'lineW', 'overcut', 'bladeOffset', 'pltForce', 'kissForce', 'dieForce', 'cutSpeed', 'upSpeed', 'cBleed', 'cGap', 'cCutStyle', 'mSize', 'cRadius', 'cFlip', 'cOffX', 'cOffY', 'cFoldOn', 'cFoldPos', 'gSpace', 'gAutoGap', 'deckSets', 'deckOrder', 'icPreset', 'icW', 'icH', 'icFit', 'icDpi', 'icExtend', 'icBleedHow', 'icSafe', 'cPerfDie', 'cTieCut', 'cTie', 'cTiePlace', 'cTieInset', 'cAlign', 'cShiftX', 'cShiftY', 'winSrc', 'winW', 'winH', 'winFont', 'winSize', 'winColor', 'winBoth', 'winOffX', 'winOffY', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW', 'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages', 'gMarksBack', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap', 'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle', 'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap', 'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap', 'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'];
 const designs = [];
 let template = null, layout = null, gen = 0, nextId = 1, sheetCache = null, timer = null;
 
@@ -1050,19 +1050,22 @@ async function imagesToCardPdf(src) {
   await ensureLibs();
   const { PDFDocument } = window.PDFLib, v = id => parseFloat(document.getElementById(id).value);
   const fit = document.getElementById('icFit').value, dpiSet = Math.min(2400, Math.max(30, v('icDpi') || 300));
-  const extend = document.getElementById('icExtend').checked, setB = Math.max(0, v('cBleed') || 0);
+  const extend = document.getElementById('icExtend').checked, setB = Math.max(0, v('cBleed') || 0), how = document.getElementById('icBleedHow').value;
   const r1 = x => num(Math.round(x * 10) / 10), r2 = x => num(Math.round(x * 100) / 100), TOL = 0.15;
   // placed image size (mm) per image
   const plan = src.imgs.map(im => {
     const [W, H] = imageTrim(im);
     let iw, ih, dpi = null;
-    if (fit === 'stretch') { iw = W + 2 * setB; ih = H + 2 * setB; }
-    else if (fit === 'fill') { const k = Math.max(W / im.w, H / im.h); iw = im.w * k; ih = im.h * k; }
+    // the area the picture goes in: the cut, less the safe margin (the bleed and the margin are filled last)
+    const S = Math.max(0, Math.min(v('icSafe') || 0, W / 2 - 1, H / 2 - 1)), cw = W - 2 * S, ch = H - 2 * S;
+    if (fit === 'stretch') { iw = cw; ih = ch; }
+    else if (fit === 'fill') { const k = Math.max(cw / im.w, ch / im.h); iw = im.w * k; ih = im.h * k; }
     else { dpi = im.dpi || dpiSet; iw = im.w / dpi * 25.4; ih = im.h / dpi * 25.4; }
     return { im, W, H, iw, ih, dpi, bx: (iw - W) / 2, by: (ih - H) / 2 };
   });
   // one bleed for every page (front and back must match): the most any image brings, at most 6 mm
   const B = fit === 'stretch' ? setB : Math.min(6, Math.max(0, ...plan.map(p => Math.max(p.bx, p.by))));
+  // (stretch: the bleed comes from the Bleed setting and is filled around the stretched picture)
   const pdf = await PDFDocument.create(), notes = [];
   const [W0, H0] = [plan[0].W, plan[0].H];
   for (const p of plan) {
@@ -1071,45 +1074,50 @@ async function imagesToCardPdf(src) {
     page.setTrimBox(B * PT, B * PT, W * PT, H * PT);
     const gapX = (pw - iw) / 2, gapY = (ph - ih) / 2; // > 0: the image doesn't reach the page edge there
     let emb, x = gapX, y = gapY, w = iw, h = ih;
-    if (fit !== 'stretch' && extend && (gapX > 0.01 || gapY > 0.01) && document.getElementById('icBleedHow').value === 'ai') {
-      // AI: the missing bleed continues the picture (MI-GAN, in the browser); cached per image and placement
-      const ppm = im.w / iw, cw = Math.max(1, Math.round(pw * ppm)), ch = Math.max(1, Math.round(ph * ppm));
-      const ox = Math.round(gapX * ppm), oy = Math.round(gapY * ppm), key = `${im.name}|${im.w}x${im.h}|${cw}x${ch}|${ox},${oy}`;
-      if (!aiBleedCache.has(key)) {
-        const ai = await import('./lib/ai.js'), bmp = await createImageBitmap(im.blob), cv = document.createElement('canvas');
-        cv.width = im.w; cv.height = im.h; cv.getContext('2d').drawImage(bmp, 0, 0); bmp.close && bmp.close();
-        setCardMsg('AI is filling the missing bleed…');
-        const out = ai.toCanvas(await ai.aiExtend(ai.fromCanvas(cv), cw, ch, ox, oy, text => setCardMsg(`Missing bleed: ${text}`)));
-        aiBleedCache.set(key, new Uint8Array(await (await new Promise(r => out.toBlob(r, 'image/png'))).arrayBuffer()));
-        setCardMsg('');
+    if (extend && (gapX > 0.01 || gapY > 0.01)) {
+      // the picture at its placed size (stretched if need be), then the rest of the page filled around it: last
+      const ppm = Math.max(im.w / iw, im.h / ih), sw = Math.max(1, Math.round(iw * ppm)), sh = Math.max(1, Math.round(ih * ppm));
+      const cw = Math.max(1, Math.round(pw * ppm)), ch = Math.max(1, Math.round(ph * ppm)), ox = Math.round(gapX * ppm), oy = Math.round(gapY * ppm);
+      const placed = async () => {
+        const bmp = await createImageBitmap(im.blob), cv = document.createElement('canvas'); cv.width = sw; cv.height = sh;
+        const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, sw, sh); bmp.close && bmp.close();
+        return cv;
+      };
+      let bytes;
+      if (how === 'ai') { // MI-GAN in the browser; cached per picture and placement
+        const key = `${im.name}|${im.w}x${im.h}|${sw}x${sh}|${cw}x${ch}|${ox},${oy}`;
+        if (!aiBleedCache.has(key)) {
+          const ai = await import('./lib/ai.js');
+          setCardMsg('AI is filling the missing bleed…');
+          const out = ai.toCanvas(await ai.aiExtend(ai.fromCanvas(await placed()), cw, ch, ox, oy, text => setCardMsg(`Missing bleed: ${text}`)));
+          aiBleedCache.set(key, new Uint8Array(await (await new Promise(r => out.toBlob(r, 'image/png'))).arrayBuffer()));
+          setCardMsg('');
+        }
+        bytes = aiBleedCache.get(key);
+      } else { // repeat the outermost pixels into the missing bleed
+        const src = await placed(), cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+        const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+        const ex = ox + sw, ey = oy + sh;
+        g.drawImage(src, ox, oy);
+        if (ox > 0) { g.drawImage(src, 0, 0, 1, sh, 0, oy, ox, sh); g.drawImage(src, sw - 1, 0, 1, sh, ex, oy, cw - ex, sh); }
+        if (oy > 0) { g.drawImage(src, 0, 0, sw, 1, ox, 0, sw, oy); g.drawImage(src, 0, sh - 1, sw, 1, ox, ey, sw, ch - ey); }
+        if (ox > 0 && oy > 0) for (const [sx, sy, dx, dy, dw, dh] of [[0, 0, 0, 0, ox, oy], [sw - 1, 0, ex, 0, cw - ex, oy], [0, sh - 1, 0, ey, ox, ch - ey], [sw - 1, sh - 1, ex, ey, cw - ex, ch - ey]]) g.drawImage(src, sx, sy, 1, 1, dx, dy, dw, dh);
+        bytes = new Uint8Array(await (await new Promise(r => cv.toBlob(r, 'image/png'))).arrayBuffer());
+        cv.width = cv.height = 1;
       }
-      emb = await pdf.embedPng(aiBleedCache.get(key)); x = 0; y = 0; w = pw; h = ph;
-    } else if (fit !== 'stretch' && extend && (gapX > 0.01 || gapY > 0.01)) {
-      // repeat the outermost pixels into the missing bleed (only ever lands outside the trim if the image covers it)
-      const bmp = await createImageBitmap(im.blob), ppm = im.w / iw;
-      const cw = Math.max(1, Math.round(pw * ppm)), ch = Math.max(1, Math.round(ph * ppm));
-      const cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
-      const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
-      const ox = gapX * ppm, oy = gapY * ppm, ex = ox + im.w, ey = oy + im.h;
-      g.drawImage(bmp, ox, oy, im.w, im.h);
-      if (ox > 0) { g.drawImage(bmp, 0, 0, 1, im.h, 0, oy, ox, im.h); g.drawImage(bmp, im.w - 1, 0, 1, im.h, ex, oy, cw - ex, im.h); }
-      if (oy > 0) { g.drawImage(bmp, 0, 0, im.w, 1, ox, 0, im.w, oy); g.drawImage(bmp, 0, im.h - 1, im.w, 1, ox, ey, im.w, ch - ey); }
-      if (ox > 0 && oy > 0) for (const [sx, sy, dx, dy, dw, dh] of [[0, 0, 0, 0, ox, oy], [im.w - 1, 0, ex, 0, cw - ex, oy], [0, im.h - 1, 0, ey, ox, ch - ey], [im.w - 1, im.h - 1, ex, ey, cw - ex, ch - ey]]) g.drawImage(bmp, sx, sy, 1, 1, dx, dy, dw, dh);
-      bmp.close && bmp.close();
-      const bytes = new Uint8Array(await (await new Promise(r => cv.toBlob(r, 'image/png'))).arrayBuffer());
-      cv.width = cv.height = 1;
       emb = await pdf.embedPng(bytes); x = 0; y = 0; w = pw; h = ph; // the canvas is exactly the page
     } else emb = im.kind === 'png' ? await pdf.embedPng(im.bytes) : await pdf.embedJpg(im.bytes);
     // PDF y runs up: an image placed y mm from the top sits at ph - y - h from the bottom
     page.drawImage(emb, { x: x * PT, y: (ph - y - h) * PT, width: w * PT, height: h * PT });
+    const fillNote = !extend ? ' White around it.' : how === 'ai' ? ' Bleed filled by AI.' : ' Bleed filled by repeating the edge pixels.';
     if (fit === 'stretch') {
-      const ar = im.w / im.h, cr = pw / ph;
-      if (Math.abs(ar / cr - 1) > 0.02) notes.push(`${im.name} is stretched ${num(Math.round(Math.abs(ar / cr - 1) * 100))} % out of proportion.`);
+      const ar = im.w / im.h, cr = iw / ih;
+      notes.push(`${im.name}: stretched to ${r1(iw)} × ${r1(ih)} mm${iw < W - 0.01 ? ` (inside a ${r2((W - iw) / 2)} mm safe margin)` : ''}${Math.abs(ar / cr - 1) > 0.02 ? `, ${num(Math.round(Math.abs(ar / cr - 1) * 100))} % out of proportion` : ''}.${fillNote}`);
       continue;
     }
     const side = b => b < -TOL ? `short by ${r2(-b)} mm per side` : b <= TOL ? 'none' : `${r2(b)} mm`;
     let t = `${im.name}: ${r1(iw)} × ${r1(ih)} mm${p.dpi ? ` at ${num(Math.round(p.dpi))} dpi${im.dpi ? ' (from the file)' : ''}` : ''}, cut ${num(W)} × ${num(H)} mm. Bleed top and bottom: ${side(p.by)}, left and right: ${side(p.bx)}`;
-    if (p.bx > TOL && p.by <= TOL || p.by > TOL && p.bx <= TOL || (p.bx <= TOL && p.by <= TOL)) t += extend && B > TOL && p.bx >= -TOL && p.by >= -TOL ? (document.getElementById('icBleedHow').value === 'ai' ? ' (missing bleed filled by AI)' : ' (missing bleed filled by repeating the edge pixels)') : '';
+    if (p.bx > TOL && p.by <= TOL || p.by > TOL && p.bx <= TOL || (p.bx <= TOL && p.by <= TOL)) t += extend && B > TOL && p.bx >= -TOL && p.by >= -TOL ? (how === 'ai' ? ' (missing bleed filled by AI)' : ' (missing bleed filled by repeating the edge pixels)') : '';
     t += '.';
     if (p.bx < -TOL || p.by < -TOL) t += ' The image is smaller than the card: check the card size and the dpi, otherwise a white edge ends up inside the card.';
     if (p.dpi && (p.bx > 6 || p.by > 6)) t += ' Much bigger than the card: check the card size and the dpi.';
@@ -1135,13 +1143,14 @@ function syncImgRows() {
   document.getElementById('imgCardRows').hidden = !on;
   const fit = document.getElementById('icFit').value;
   document.getElementById('rowIcDpi').hidden = fit !== 'actual';
-  document.getElementById('rowIcExtend').hidden = fit === 'stretch';
+  document.getElementById('rowIcExtend').hidden = false; // the bleed is filled last, also around a stretched picture
+  document.getElementById('rowIcSafe').hidden = fit === 'actual';
   document.getElementById('rowIcSize').hidden = appMode === 'morgana';
   document.getElementById('rowIcPreset').hidden = appMode === 'morgana';
   document.getElementById('icSwap').hidden = !on || cards.imgSrc.imgs.length !== 2;
   syncBleedRow();
 }
-for (const id of ['icW', 'icH', 'icDpi']) document.getElementById(id).addEventListener('input', rebuildCardImages);
+for (const id of ['icW', 'icH', 'icDpi', 'icSafe']) document.getElementById(id).addEventListener('input', rebuildCardImages);
 // a size preset fills in the card size (the image's orientation decides which way round); typing a size sets Custom
 document.getElementById('icPreset').addEventListener('change', () => {
   const m = /^(\d+)x(\d+)$/.exec(document.getElementById('icPreset').value);
@@ -3136,3 +3145,12 @@ ui.list.innerHTML = '<li class="empty">No stickers yet.</li>';
 renderPreview();
 run();
 initPresets({ snapshot: snapshotSettings, apply: applySettings });
+// Browsers give the in-browser AI the graphics card and all processor cores only on secure, cross-origin isolated
+// pages (https or localhost, with the COOP/COEP headers the server sends). Otherwise it is stuck on one core: say so.
+if (!(window.isSecureContext && window.crossOriginIsolated)) {
+  const el = document.getElementById('secureNote');
+  el.textContent = window.isSecureContext
+    ? 'The page is missing the cross-origin isolation headers (a proxy in front of the app may drop them), so the AI runs on one processor core. Pass Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy through.'
+    : 'This page is on plain HTTP, so the browser blocks the graphics card and multi-core for the AI (it runs on one processor core, slowly). Open the app over https to use them.';
+  el.hidden = false;
+}

@@ -19,6 +19,11 @@ ARM boards like a Raspberry Pi or many NAS boxes) on every push to the default b
 4. Open `http://<server>:8080`. The first visit shows **Set up the login**: enter the setup code from the
    container log (**Containers → …plotter-cutter… → Logs**), then choose a user name and password. The login is
    stored (hashed) in the data volume.
+5. **Use HTTPS for the AI**: browsers only let a page use the graphics card and more than one processor core when
+   it is opened over HTTPS (or as `localhost`). Over `http://<server-ip>:8080` the AI works, but on one core. Put
+   the app behind your HTTPS reverse proxy or tunnel, set `COOKIE_SECURE=true` and `TRUST_PROXY=true`, and make
+   sure the proxy passes the app's `Cross-Origin-Opener-Policy` and `Cross-Origin-Embedder-Policy` headers through.
+   The app shows a note when either is missing.
 
 Instead of the setup page you can fix the login in the stack's **Environment variables**: `AUTH_USERNAME` and
 `AUTH_PASSWORD` (8+ characters, avoid the `$` sign) or `AUTH_PASSWORD_HASH`; these always win. To make a hash, open
@@ -101,7 +106,8 @@ In **Print sheets**, every picture has **Edit picture (fit, rotate, AI)**. The e
 with its bleed (red line = cut, shaded edge = bleed):
 
 - **Fit inside / Fill / Stretch**, rotate by 90°, straighten, resize (slider or scroll), move (drag), and stretch
-  the height separately.
+  the height separately. **Safe margin** (green dashed line) keeps Fit and Stretch that far inside the cut.
+- Stretch first, the way you want it; filling the bleed and the margin always comes last, on **Make the page**.
 - **Empty parts of the page**: **AI** continues the picture into the bleed and wherever the picture doesn't reach
   (e.g. a square ChatGPT image on an A5 flyer), or **white**. The picture itself is never changed.
 - **AI upscale** (×2 or ×4) when the print resolution is low. Scaled back down, the result matches the original,
@@ -222,7 +228,8 @@ CI (GitHub Actions, started by hand for now: Actions → CI → Run workflow) ru
 
 Business cards, vouchers, guillotine, card deck and Morgana CardXtra accept PNG/JPG/WebP images as well as PDFs
 (first image = front, second = back). **Size** offers A3, A4, A5, A6, DL, 10 × 15 cm and the business card sizes. Scaling: 100 % (size from the image's dpi), fit to the card keeping
-proportions, or stretch. With 100 % and fit, whatever reaches past the card size is used as bleed per side, so a
+proportions, or stretch to the card (optionally inside a **safe margin**). The picture is placed first and the
+bleed (and margin) is filled last, by AI or by repeating the edge. With 100 % and fit, whatever reaches past the card size is used as bleed per side, so a
 file with bleed only on the top and bottom works; sides without bleed can be filled by repeating the edge pixels.
 In Morgana mode the cut size always comes from the CardXtra setting, and the CardXtra template values are the
 calibrated originals.

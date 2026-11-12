@@ -26,25 +26,29 @@ export async function openEditor(opts) {
   const dlg = $('imgEditor'), cv = $('edCanvas'), g = cv.getContext('2d');
   let src = await decode(opts.bytes);
   const st = opts.state ? { ...opts.state } : null;
-  const S = st || { portrait: opts.format.h >= opts.format.w, quarter: 0, angle: 0, ax: 0, ay: 0, cx: 0, cy: 0, empty: 'ai', upscaled: 1 };
+  const S = st || { portrait: opts.format.h >= opts.format.w, quarter: 0, angle: 0, ax: 0, ay: 0, cx: 0, cy: 0, empty: 'ai', upscaled: 1, safe: opts.safe || 0 };
+  if (S.safe == null) S.safe = 0;
   // how much the source has been AI-upscaled in this session; ax / ay are always mm per ORIGINAL pixel
   let upscaled = 1;
   let result = null; // the finished page, waiting for "Use it"
   const page = () => {
     const f = opts.format, long = Math.max(f.w, f.h), short = Math.min(f.w, f.h), [w, h] = S.portrait ? [short, long] : [long, short];
-    return { w, h, b: f.bleed, W: w + 2 * f.bleed, H: h + 2 * f.bleed };
+    const m = Math.max(0, Math.min(S.safe || 0, w / 2 - 1, h / 2 - 1)); // safe margin inside the cut
+    return { w, h, b: f.bleed, W: w + 2 * f.bleed, H: h + 2 * f.bleed, m, cw: w - 2 * m, ch: h - 2 * m };
   };
   const ow = () => src.width / upscaled, oh = () => src.height / upscaled; // the original picture's pixels
   const rotated = () => (S.quarter % 2 ? [oh(), ow()] : [ow(), oh()]);
   const fitScale = mode => {
     const p = page(), [rw, rh] = rotated();
-    return mode === 'fill' ? Math.max(p.W / rw, p.H / rh) : Math.min(p.w / rw, p.h / rh);
+    // fill: cover the whole page (real picture in the bleed); fit: inside the cut, less the safe margin
+    return mode === 'fill' ? Math.max(p.W / rw, p.H / rh) : Math.min(p.cw / rw, p.ch / rh);
   };
   function layout(mode) {
     const p = page();
     S.cx = p.W / 2; S.cy = p.H / 2; S.angle = mode === 'keep' ? S.angle : 0;
-    if (mode === 'stretch') { // cover the page exactly, proportions not kept
-      const [W, H] = S.quarter % 2 ? [p.H, p.W] : [p.W, p.H];
+    if (mode === 'stretch') { // exactly the area inside the cut (less the safe margin), proportions not kept;
+      // the bleed (and the margin) is filled afterwards, last
+      const [W, H] = S.quarter % 2 ? [p.ch, p.cw] : [p.cw, p.ch];
       S.ax = W / ow(); S.ay = H / oh();
     } else { const k = fitScale(mode); S.ax = S.ay = k; }
     S.mode = mode;
@@ -84,6 +88,7 @@ export async function openEditor(opts) {
     const b = p.b * k;
     g.fillRect(ox, oy, p.W * k, b); g.fillRect(ox, oy + p.H * k - b, p.W * k, b); g.fillRect(ox, oy + b, b, p.H * k - 2 * b); g.fillRect(ox + p.W * k - b, oy + b, b, p.H * k - 2 * b);
     g.strokeStyle = '#E0262B'; g.lineWidth = 1.5 * view.dpr; g.strokeRect(ox + b, oy + b, p.w * k, p.h * k);
+    if (p.m > 0) { g.save(); g.setLineDash([5 * view.dpr, 4 * view.dpr]); g.strokeStyle = 'rgba(14,110,86,.9)'; g.strokeRect(ox + b + p.m * k, oy + b + p.m * k, p.cw * k, p.ch * k); g.restore(); }
     g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1 * view.dpr; g.strokeRect(ox, oy, p.W * k, p.H * k);
     info();
   }
@@ -99,8 +104,9 @@ export async function openEditor(opts) {
     $('edStretchH').value = String(Math.round(S.ay / S.ax * 100));
     $('edEmpty').value = S.empty;
     $('edOrient').value = S.portrait ? 'portrait' : 'landscape';
+    if (document.activeElement !== $('edSafe')) $('edSafe').value = String(S.safe || 0);
     $('edUse').hidden = !result; $('edBack').hidden = !result; $('edApply').hidden = !!result;
-    for (const id of ['edRotL', 'edRotR', 'edFit', 'edFill', 'edStretch', 'edZoom', 'edAngle', 'edStretchH', 'edEmpty', 'edOrient']) $(id).disabled = !!result;
+    for (const id of ['edRotL', 'edRotR', 'edFit', 'edFill', 'edStretch', 'edZoom', 'edAngle', 'edStretchH', 'edEmpty', 'edOrient', 'edSafe']) $(id).disabled = !!result;
   }
   const status = t => { $('edStatus').textContent = t; };
 
@@ -146,6 +152,7 @@ export async function openEditor(opts) {
   on('edZoom', 'input', () => { const z = (parseFloat($('edZoom').value) || 100) / 100, r = S.ay / S.ax, f = fitScale('fit'); S.ax = f * z; S.ay = f * z * r; S.mode = 'custom'; redraw(); });
   on('edStretchH', 'input', () => { const r = (parseFloat($('edStretchH').value) || 100) / 100; S.ay = S.ax * r; S.mode = 'custom'; redraw(); });
   on('edEmpty', 'change', () => { S.empty = $('edEmpty').value; redraw(); });
+  on('edSafe', 'input', () => { S.safe = Math.max(0, parseFloat($('edSafe').value) || 0); if (S.mode === 'fit' || S.mode === 'stretch') layout(S.mode); redraw(); });
   let drag = null;
   on('edCanvas', 'pointerdown', e => { if (result) return; drag = { x: e.clientX, y: e.clientY, cx: S.cx, cy: S.cy }; cv.setPointerCapture(e.pointerId); });
   on('edCanvas', 'pointermove', e => { if (!drag) return; const k = view.k / view.dpr; S.cx = drag.cx + (e.clientX - drag.x) / k; S.cy = drag.cy + (e.clientY - drag.y) / k; S.mode = 'custom'; redraw(); });
