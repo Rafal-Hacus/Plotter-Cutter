@@ -73,6 +73,10 @@ describe('signing in', () => {
     expect(r.status).toBe(200);
     expect(await r.text()).toContain('<title>app</title>');
     expect(r.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
+    // cross-origin isolated (lets the in-browser AI use all processor cores), and WebAssembly allowed
+    expect(r.headers.get('cross-origin-embedder-policy')).toBe('require-corp');
+    expect(r.headers.get('cross-origin-opener-policy')).toBe('same-origin');
+    expect(r.headers.get('content-security-policy')).toContain("'wasm-unsafe-eval'");
     expect((await authed('/assets/app-123.js')).headers.get('cache-control')).toContain('immutable');
   });
   it('a tampered cookie is refused', async () => {

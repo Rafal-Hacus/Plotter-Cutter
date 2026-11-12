@@ -21,7 +21,8 @@ src/core/             pure code, no app state, unit tested
 src/presets.js        the Saved settings panel (talks to the server's /api)
 src/winlib.js         the winietki background library panel
 src/editor.js         the picture editor (fit / rotate / stretch / AI fill / AI upscale), used by Print sheets
-src/lib/ai.js         runs the models in the browser: MI-GAN (onnxruntime-web), ESRGAN (TensorFlow.js)
+src/lib/ai.js         the page's side of the AI: hands jobs to the worker, canvas <-> pixels
+src/lib/ai.worker.js  runs the models in a background thread: MI-GAN (onnxruntime-web), ESRGAN (TensorFlow.js)
 src/lib/namecards.js  winietki from a list of names: one PDF page per name (fonts embedded with fontkit)
 server/               Node server, no runtime dependencies
   index.js            routes, security headers, first-run setup, login/logout, saved-settings API, config
