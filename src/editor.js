@@ -1,6 +1,7 @@
 // Image editor: fit a picture to a print format (trim + bleed) by rotating, scaling, stretching and moving it,
 // fill the rest of the page with AI (or white), upscale with AI, and hand back the finished page image. Used from
-// Print sheets, so the edited picture goes straight onto the sheet with its crop marks (no export / re-upload).
+// Print sheets, the card modes and the winietki background, so the edited picture goes straight onto the sheet with
+// its crop marks (no export / re-upload).
 //
 // Geometry, all in mm on the page (origin: top-left corner of the bleed box, y down):
 //   page = format + bleed on every side; the picture's centre (cx, cy), its rotation (quarter turns + a small
@@ -21,13 +22,15 @@ async function decode(bytes) {
 }
 
 // opts: { name, bytes (the original picture), state (from an earlier edit, or null), format: { w, h, bleed } (mm),
-//         onApply({ bytes (PNG), w, h, preview (data URL), state }) }
+//         portrait (start in portrait; default: the format's own), lockOrientation (the format's way round only),
+//         safe (mm), onApply({ bytes (PNG), w, h, preview (data URL), state }) }
 export async function openEditor(opts) {
   const dlg = $('imgEditor'), cv = $('edCanvas'), g = cv.getContext('2d');
   let src = await decode(opts.bytes);
   const st = opts.state ? { ...opts.state } : null;
-  const S = st || { portrait: opts.format.h >= opts.format.w, quarter: 0, angle: 0, ax: 0, ay: 0, cx: 0, cy: 0, empty: 'ai', upscaled: 1, safe: opts.safe || 0 };
+  const S = st || { portrait: opts.portrait != null ? !!opts.portrait : opts.format.h >= opts.format.w, quarter: 0, angle: 0, ax: 0, ay: 0, cx: 0, cy: 0, empty: 'ai', upscaled: 1, safe: opts.safe || 0 };
   if (S.safe == null) S.safe = 0;
+  if (opts.lockOrientation) S.portrait = opts.format.h >= opts.format.w;
   // how much the source has been AI-upscaled in this session; ax / ay are always mm per ORIGINAL pixel
   let upscaled = 1;
   let result = null; // the finished page, waiting for "Use it"
@@ -107,6 +110,7 @@ export async function openEditor(opts) {
     if (document.activeElement !== $('edSafe')) $('edSafe').value = String(S.safe || 0);
     $('edUse').hidden = !result; $('edBack').hidden = !result; $('edApply').hidden = !!result;
     for (const id of ['edRotL', 'edRotR', 'edFit', 'edFill', 'edStretch', 'edZoom', 'edAngle', 'edStretchH', 'edEmpty', 'edOrient', 'edSafe']) $(id).disabled = !!result;
+    if (opts.lockOrientation) $('edOrient').disabled = true;
   }
   const status = t => { $('edStatus').textContent = t; };
 

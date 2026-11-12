@@ -87,3 +87,48 @@ test('edit picture: safe margin — Stretch and Fit use the area inside it', asy
   expect(after.split('/')[1]).toBe(String(Math.round(140 / 90 * 100)));
   noProblems(problems);
 });
+
+test('edit picture in the card modes: guillotine A6, stretch in the editor, the card is made from the edited page', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'guillotine');
+  await page.setInputFiles('#cardFile', fixture('square-party.png'));
+  await setField(page, 'icPreset', '105x148');
+  await expect(page.locator('#icList .icname')).toHaveText('square-party.png');
+  await page.click('#icList .icedit');
+  await expect(page.locator('#edInfo')).toContainText('148 × 105 mm + 2 mm bleed'); // the picture is square: landscape
+  await setField(page, 'edOrient', 'portrait');
+  await expect(page.locator('#edInfo')).toContainText('105 × 148 mm + 2 mm bleed');
+  await page.click('#edStretch');
+  await setField(page, 'edEmpty', 'white');
+  await page.click('#edApply');
+  await page.click('#edUse');
+  await expect(page.locator('#imgEditor')).toBeHidden();
+  await expect(page.locator('#icInfo')).toContainText('square-party.png: edited in the editor (105 × 148 mm + 2 mm bleed).');
+  await expect(page.locator('#icList .icname')).toHaveText('square-party.png (edited)');
+  // edit again: starts from the settings of the edit
+  await page.click('#icList .icedit');
+  await expect(page.locator('#edOrient')).toHaveValue('portrait');
+  await expect(page.locator('#edStretchH')).not.toHaveValue('100');
+  await page.click('#edCancel');
+  // undo: back to the original picture and the scaling settings
+  await page.click('#icList .icundo');
+  await expect(page.locator('#icInfo')).not.toContainText('edited');
+  noProblems(problems);
+});
+
+test('edit picture: the winietki background, locked to the card the way round it is', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'winietka');
+  await setField(page, 'winSrc', 'names');
+  await page.fill('#winNames', 'Zofia\nOla');
+  await page.setInputFiles('#winBg', fixture('square-party.png'));
+  await page.click('#winBgEdit');
+  await expect(page.locator('#edOrient')).toBeDisabled();
+  await page.click('#edStretch');
+  await setField(page, 'edEmpty', 'white');
+  await page.click('#edApply');
+  await page.click('#edUse');
+  await expect(page.locator('#winBgInfo')).toContainText('square-party.png (edited)');
+  await expect(page.locator('#count')).toContainText('cards on 1 sheet');
+  noProblems(problems);
+});
