@@ -229,6 +229,16 @@ CI (GitHub Actions, started by hand for now: Actions → CI → Run workflow) ru
   otherwise corners are compensated twice.
 - Each PLT starts with a short V cut along the printed start arrow (outside the marks) to set the blade direction.
 
+## Roll (signs, labels, banners)
+
+**Roll** packs print-and-cut PDFs of any size across a roll of the width you set, as short as possible, with SignCut
+registration marks. Each PDF page is a piece: its trim box is the cut size and up to the set bleed around it is
+printed. Copies come from the file name (`…_3szt.pdf`, `… 4 pcs.pdf`) and can be changed per file, as can the corner
+radius. **Cut** per file: the trim size with rounded corners, or **the outermost line in the file** (for example the
+outline of a road sign; offered when the file has a closed line about the size of the trim). Pieces are turned when
+that fits more; a long job can be split into sheets of at most a set length, each with its own marks. Exports: the
+print PDF (one page per sheet), the PLT for the Skycut (zip, one per sheet) and the cut SVG.
+
 ## Cards from images
 
 Business cards, vouchers, guillotine, card deck and Morgana CardXtra accept PNG/JPG/WebP images as well as PDFs
