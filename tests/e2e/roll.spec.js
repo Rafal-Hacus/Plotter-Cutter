@@ -44,15 +44,27 @@ test('roll: PDFs packed on the roll width with marks; copies from the file name;
   noProblems(problems);
 });
 
-test('roll: split into sheets, each with its own marks and PLT', async ({ page }) => {
+test('roll: cut in sections, each with its own marks and PLT, printed as one long page or a page each', async ({ page }) => {
   const problems = await openApp(page);
   await mode(page, 'roll');
   await setField(page, 'rollW', 200); await setField(page, 'rollMax', 250); await setField(page, 'rollTurn', false);
   await page.setInputFiles('#rollFile', [fixture('sign_100x150mm_3szt.pdf')]);
-  await expect(page.locator('#msg')).toContainText('3 sheets');
+  await expect(page.locator('#msg')).toContainText('Cut in 3 sections of at most 250 mm');
   const plt = unzip(await download(page, 'exRollPlt'));
-  expect(Object.keys(plt).sort()).toEqual(['roll-200mm-3pcs-sheet1.plt', 'roll-200mm-3pcs-sheet2.plt', 'roll-200mm-3pcs-sheet3.plt']);
-  const pdf = await PDFDocument.load(await download(page, 'exRollPdf'));
+  expect(Object.keys(plt).sort()).toEqual(['roll-200mm-3pcs-section1.plt', 'roll-200mm-3pcs-section2.plt', 'roll-200mm-3pcs-section3.plt']);
+  // every section's PLT has its own frame: one sign each, the size of one section
+  for (const t of Object.values(plt)) { expect(loops(t)).toBe(1); expect(String(t)).toContain('FSIZE'); }
+  const fsize = String(plt['roll-200mm-3pcs-section1.plt']).match(/FSIZE(\d+),(\d+)/);
+  const secH = +fsize[1] / 40 + 11; // the marks' frame is 5.5 mm in from each end
+  // one long page: the three sections one after the other, 10 mm of blank roll between them
+  let pdf = await PDFDocument.load(await download(page, 'exRollPdf'));
+  expect(pdf.getPageCount()).toBe(1);
+  expect(Math.round(pdf.getPage(0).getSize().height / PT)).toBe(Math.round(3 * secH + 2 * 10));
+  // or a page each
+  await setField(page, 'rollOnePage', false);
+  await expect(page.locator('#msg')).toContainText('One print page per section.');
+  pdf = await PDFDocument.load(await download(page, 'exRollPdf'));
   expect(pdf.getPageCount()).toBe(3);
+  expect(Math.round(pdf.getPage(0).getSize().height / PT)).toBe(Math.round(secH));
   noProblems(problems);
 });

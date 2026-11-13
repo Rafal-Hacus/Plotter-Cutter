@@ -236,8 +236,11 @@ registration marks. Each PDF page is a piece: its trim box is the cut size and u
 printed. Copies come from the file name (`…_3szt.pdf`, `… 4 pcs.pdf`) and can be changed per file, as can the corner
 radius. **Cut** per file: the trim size with rounded corners, or **the outermost line in the file** (for example the
 outline of a road sign; offered when the file has a closed line about the size of the trim). Pieces are turned when
-that fits more; a long job can be split into sheets of at most a set length, each with its own marks. Exports: the
-print PDF (one page per sheet), the PLT for the Skycut (zip, one per sheet) and the cut SVG.
+that fits more. The plotter loses accuracy over a long cut, so **Cut in sections of at most** splits the job into
+sections, each with its own registration marks, PLT and SVG: the marks are read again for every section. The
+sections are printed one after another on one long page (10 mm of blank roll between them, section 1 at the top,
+each labelled "Section n / N" under its bottom marks), or a page each. Exports: the print PDF, the PLT for the Skycut
+(zip, one per section) and the cut SVG.
 
 ## Cards from images
 

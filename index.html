@@ -206,10 +206,11 @@
       <div class="row"><label for="rollRadius">Corner radius for new files</label><span class="mm"><input id="rollRadius" type="number" min="0" step="0.5" value="0">mm</span></div>
       <div class="row"><label for="rollOuter">New files with an outline: cut along it</label><input id="rollOuter" type="checkbox"></div>
       <div class="row"><label for="rollTurn">Turn pieces to fit more</label><input id="rollTurn" type="checkbox" checked></div>
-      <div class="row"><label for="rollMax">Split into sheets longer than</label><span class="mm"><input id="rollMax" type="number" min="0" step="100" value="0">mm</span></div>
-      <p class="hint">0: one sheet, as long as needed. Each sheet gets its own marks, PLT and SVG.</p>
+      <div class="row"><label for="rollMax">Cut in sections of at most</label><span class="mm"><input id="rollMax" type="number" min="0" step="100" value="0">mm</span></div>
+      <p class="hint">The plotter loses accuracy over a long cut: each section gets its own registration marks and its own PLT and SVG, so the marks are read again for every section. 0: one section, as long as needed.</p>
+      <div class="row"><label for="rollOnePage">Print the sections as one long page</label><input id="rollOnePage" type="checkbox" checked></div>
       <div class="row"><label for="rollForce">Cut</label><select id="rollForce"><option value="kiss">Kiss cut (force, colour and layer of the kiss cut)</option><option value="die">Through (die cut force, colour and layer)</option></select></div>
-      <div class="row" id="rowRollSheet" hidden><label for="rollSheet">Show</label><select id="rollSheet"></select></div>
+      <div class="row" id="rowRollSheet" hidden><label for="rollSheet">Show section</label><select id="rollSheet"></select></div>
     </section>
 
     <section aria-labelledby="h-vinyl" id="secVinyl" hidden>

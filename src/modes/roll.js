@@ -2,7 +2,7 @@
 // as possible, with SignCut registration marks. Every PDF page is a piece: its trim box is the cut size, the bleed
 // around it is printed. The cut is the trim with rounded corners, or the outermost line drawn in the file (e.g. the
 // outline of a road sign). Gives the print PDF, the cut PLT and the cut SVG, one sheet per page when the roll is
-// split into sheets.
+// split into sections, each with its own marks and cut file (on one long print, or a page each).
 import { lemurMarks } from '../core/marks.js';
 import { PT, mul, roundRect } from '../core/matrix.js';
 import { outermostLoop, pagePaths } from '../core/pdfpaths.js';
@@ -118,11 +118,16 @@ function compute(o) {
     W: o.rollW, H: s.length + 2 * o.rollMargin,
     places: s.places.map(p => ({ ...p, it: byId_.get(p.id).it, x: p.x + o.rollMargin, y: p.y + o.rollMargin }))
   }));
+  // one long print: the sections one after the other along the roll, SECTION_GAP apart (oy: where each starts)
+  roll.long = o.rollOnePage && roll.sheets.length > 1;
+  let y = 0;
+  for (const sec of roll.sheets) { sec.oy = roll.long ? y : 0; y += sec.H + SECTION_GAP; }
   roll.tooBig = [...new Set(r.tooBig.map(id => byId_.get(id).it.name))];
   roll.view = Math.min(roll.view, Math.max(0, roll.sheets.length - 1));
   fillSheetPicker(byId('rollSheet'), roll.sheets.length);
+  for (const op of byId('rollSheet').options) op.textContent = op.textContent.replace('Sheet', 'Section');
   byId('rollSheet').value = String(roll.view);
-  byId('rowRollSheet').hidden = roll.sheets.length < 2;
+  byId('rowRollSheet').hidden = roll.sheets.length < 2 || roll.long;
 }
 // page space of a piece's PDF (points, y up) -> sheet mm (y down), for a piece placed at p (its bleed box)
 function pieceMatrix(p, B) {
@@ -141,29 +146,43 @@ function markRects(W, H) {
   return [[5, 5.5, 1, 10], [5.5, 5, 10, 1], [W - 6, 5.5, 1, 10], [W - 15.5, 5, 10, 1], [5, H - 15.5, 1, 10], [5.5, H - 6, 10, 1], [W - 6, H - 15.5, 1, 10], [W - 15.5, H - 6, 10, 1]];
 }
 const startArrow = (W, H) => [[W - 21.68, H - 5], [W - 24.17, H - 7.5], [W - 26.69, H - 5]];
+// blank roll between two sections of one long print, so their marks stay clearly apart
+const SECTION_GAP = 10;
+// "2 / 3" printed under each section of a split job, between the bottom marks, so the right PLT goes with it
+const sectionLabel = (n, N) => `Section ${n + 1} / ${N}`;
 // the marks' centre lines, as writePlt takes them
 const frame = (W, H) => ({ top: 5.5, left: 5.5, right: W - 5.5, bottom: H - 5.5 });
 
 /* ---------- preview ---------- */
-function renderRollPreview() {
-  const o = readOpts(), B = o.rollBleed, s = roll.sheets[roll.view];
-  const W = s ? s.W : o.rollW, H = s ? s.H : Math.max(300, o.rollW / 2);
-  state.previewFrame = { x: -10, y: -10, w: W + 20, h: H + 20 };
-  const f = state.previewFrame, p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${f.x} ${f.y} ${f.w} ${f.h}" role="img" aria-label="Roll preview"><rect x="0" y="0" width="${num(W)}" height="${num(H)}" fill="#fff"/>`];
+// one section drawn at its place: art, cut lines, marks, its label (SVG, mm)
+function sectionSvg(sec, n, N, B, o) {
+  const { W, H } = sec, p = [`<g transform="translate(0 ${num(sec.oy)})"><rect x="0" y="0" width="${num(W)}" height="${num(H)}" fill="#fff"/>`];
   p.push(`<rect x="${num(o.rollMargin)}" y="${num(o.rollMargin)}" width="${num(W - 2 * o.rollMargin)}" height="${num(H - 2 * o.rollMargin)}" fill="none" stroke="#9fb0a9" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>`);
-  if (s) {
-    s.places.forEach((pl, i) => {
-      const it = pl.it;
-      if (ui.showArt.checked) {
-        // the page picture (pixels from the media box's top left, scaled to points) -> page space -> sheet
-        const M = mul(pieceMatrix(pl, B), [1, 0, 0, -1, it.mb.x, it.mb.y + it.mb.h]);
-        p.push(`<clipPath id="rc${i}"><rect x="${num(pl.x)}" y="${num(pl.y)}" width="${num(pl.w)}" height="${num(pl.h)}"/></clipPath><g clip-path="url(#rc${i})"><image href="${it.preview}" x="0" y="0" width="${num(it.mb.w)}" height="${num(it.mb.h)}" preserveAspectRatio="none" transform="matrix(${M.map(num).join(',')})"/></g>`);
-      }
-      p.push(pathEl(cutLoop(pl, B), true, `fill:none;stroke:${CUT_RED};stroke-width:1.1;vector-effect:non-scaling-stroke`));
-    });
-  }
+  sec.places.forEach((pl, i) => {
+    const it = pl.it;
+    if (ui.showArt.checked) {
+      // the page picture (pixels from the media box's top left, scaled to points) -> page space -> sheet
+      const M = mul(pieceMatrix(pl, B), [1, 0, 0, -1, it.mb.x, it.mb.y + it.mb.h]);
+      p.push(`<clipPath id="rc${n}_${i}"><rect x="${num(pl.x)}" y="${num(pl.y)}" width="${num(pl.w)}" height="${num(pl.h)}"/></clipPath><g clip-path="url(#rc${n}_${i})"><image href="${it.preview}" x="0" y="0" width="${num(it.mb.w)}" height="${num(it.mb.h)}" preserveAspectRatio="none" transform="matrix(${M.map(num).join(',')})"/></g>`);
+    }
+    p.push(pathEl(cutLoop(pl, B), true, `fill:none;stroke:${CUT_RED};stroke-width:1.1;vector-effect:non-scaling-stroke`));
+  });
   for (const r of markRects(W, H)) p.push(`<rect x="${num(r[0])}" y="${num(r[1])}" width="${num(r[2])}" height="${num(r[3])}" fill="#000"/>`);
   p.push(`<polyline points="${startArrow(W, H).map(q => q.map(num).join(',')).join(' ')}" fill="none" stroke="#000" stroke-width="0.35"/>`);
+  if (N > 1) p.push(`<text x="${num(W / 2)}" y="${num(H - 6)}" font-size="3" text-anchor="middle" fill="#666" font-family="sans-serif">${sectionLabel(n, N)}</text>`);
+  p.push('</g>');
+  return p.join('');
+}
+function renderRollPreview() {
+  const o = readOpts(), B = o.rollBleed, N = roll.sheets.length;
+  const shown = !N ? [] : roll.long ? roll.sheets.map((sec, n) => [sec, n]) : [[roll.sheets[roll.view], roll.view]];
+  const W = N ? roll.sheets[0].W : o.rollW, H = shown.length ? Math.max(...shown.map(([sec]) => sec.oy + sec.H)) : Math.max(300, o.rollW / 2);
+  state.previewFrame = { x: -10, y: -10, w: W + 20, h: H + 20 };
+  const f = state.previewFrame, p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${f.x} ${f.y} ${f.w} ${f.h}" role="img" aria-label="Roll preview">`];
+  if (!N) p.push(sectionSvg({ W, H, oy: 0, places: [] }, 0, 1, B, o));
+  for (const [sec, n] of shown) p.push(sectionSvg(sec, n, N, B, o));
+  // the blank roll between the sections of one long print
+  if (roll.long) for (const sec of roll.sheets.slice(1)) p.push(`<rect x="0" y="${num(sec.oy - SECTION_GAP)}" width="${num(W)}" height="${SECTION_GAP}" fill="#fff" opacity="0.6"/>`);
   p.push('</svg>');
   ui.stage.innerHTML = p.join('');
   applyView();
@@ -173,9 +192,10 @@ function renderRollStats(busyText) {
   ui.dropNote.hidden = roll.items.length > 0;
   for (const id of ['exRollPdf', 'exRollPlt', 'exRollSvg']) byId(id).disabled = !ok || !!busyText;
   if (busyText) { ui.count.textContent = busyText; return; }
-  ui.count.textContent = !roll.items.length ? 'No files yet' : `${plural(total, 'piece')}, ${roll.sheets.map(s => `${mm1(s.H)} mm`).join(' + ') || 'nothing'} of roll`;
+  const N = roll.sheets.length, used = roll.long ? roll.sheets[N - 1].oy + roll.sheets[N - 1].H : roll.sheets.reduce((a, sec) => a + sec.H, 0);
+  ui.count.textContent = !roll.items.length ? 'No files yet' : `${plural(total, 'piece')}, ${N ? `${mm1(used)} mm of roll` : 'nothing placed'}${N > 1 ? ` in ${N} sections` : ''}`;
   const notes = [];
-  if (roll.sheets.length > 1) notes.push(`${roll.sheets.length} sheets (the roll is split at ${mm1(readOpts().rollMax)} mm), each with its own marks.`);
+  if (N > 1) notes.push(`Cut in ${N} sections of at most ${mm1(readOpts().rollMax)} mm (${roll.sheets.map(sec => mm1(sec.H)).join(' + ')} mm), each with its own marks and its own PLT, so the plotter reads the marks again for every section. ${roll.long ? 'Printed as one long page, section 1 at the top, each labelled under its bottom marks.' : 'One print page per section.'}`);
   if (roll.tooBig.length) notes.push(`Too big for the roll: ${roll.tooBig.join(', ')}.`);
   setMsg(notes.join(' '), roll.tooBig.length > 0);
 }
@@ -183,27 +203,35 @@ function renderRollStats(busyText) {
 /* ---------- files ---------- */
 async function buildPdf() {
   await ensureLibs();
-  const { PDFDocument, rgb } = window.PDFLib;
+  const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
   const o = readOpts(), B = o.rollBleed, out = await PDFDocument.create(), docs = new Map(), emb = new Map(), black = rgb(0, 0, 0);
   for (const it of roll.items) {
     if (!it.copies) continue;
     if (!docs.has(it.bytes)) docs.set(it.bytes, await PDFDocument.load(it.bytes, { ignoreEncryption: true }));
     emb.set(it, (await out.embedPdf(docs.get(it.bytes), [it.page]))[0]);
   }
-  for (let n = 0; n < roll.sheets.length; n++) {
-    const s = roll.sheets[n], Wpt = s.W * PT, Hpt = s.H * PT;
-    setMsg(`Sheet ${n + 1} of ${roll.sheets.length}…`); await tick();
-    const page = out.addPage([Wpt, Hpt]), names = new Map();
+  const N = roll.sheets.length, font = N > 1 ? await out.embedFont(StandardFonts.Helvetica) : null;
+  const pages = roll.long ? [[roll.sheets, roll.sheets[N - 1].oy + roll.sheets[N - 1].H]] : roll.sheets.map(sec => [[sec], sec.H]);
+  for (const [secs, Hmm] of pages) {
+    const Wpt = secs[0].W * PT, Hpt = Hmm * PT, page = out.addPage([Wpt, Hpt]), names = new Map();
     page.drawRectangle({ x: 0, y: 0, width: Wpt, height: Hpt, color: rgb(1, 1, 1) });
-    for (const pl of s.places) {
-      const e = emb.get(pl.it);
-      if (!names.has(e)) names.set(e, page.node.newXObject('Roll', e.ref));
-      // the embedded page starts at its media box's lower left corner; then page space -> sheet mm -> PDF points
-      const M = mul([PT, 0, 0, -PT, 0, Hpt], mul(pieceMatrix(pl, B), [1, 0, 0, 1, pl.it.mb.x, pl.it.mb.y]));
-      drawClipped(page, names.get(e), [pl.x, pl.y, pl.w, pl.h], M, Hpt);
+    for (const sec of secs) {
+      const n = roll.sheets.indexOf(sec), oy = sec.oy, Y = [1, 0, 0, 1, 0, oy]; // section -> page (mm)
+      setMsg(`Section ${n + 1} of ${N}…`); await tick();
+      for (const pl of sec.places) {
+        const e = emb.get(pl.it);
+        if (!names.has(e)) names.set(e, page.node.newXObject('Roll', e.ref));
+        // the embedded page starts at its media box's lower left corner; then page space -> section mm -> page -> points
+        const M = mul([PT, 0, 0, -PT, 0, Hpt], mul(Y, mul(pieceMatrix(pl, B), [1, 0, 0, 1, pl.it.mb.x, pl.it.mb.y])));
+        drawClipped(page, names.get(e), [pl.x, pl.y + oy, pl.w, pl.h], M, Hpt);
+      }
+      for (const r of markRects(sec.W, sec.H)) page.drawRectangle({ x: r[0] * PT, y: Hpt - (r[1] + oy + r[3]) * PT, width: r[2] * PT, height: r[3] * PT, color: black });
+      page.drawSvgPath(svgPathPt(startArrow(sec.W, sec.H).map(([x, y]) => [x, y + oy]), false), { x: 0, y: Hpt, borderColor: black, borderWidth: 0.35 * PT });
+      if (font) {
+        const t = sectionLabel(n, N), size = 3 * PT;
+        page.drawText(t, { x: sec.W / 2 * PT - font.widthOfTextAtSize(t, size) / 2, y: Hpt - (oy + sec.H - 6) * PT, size, font, color: rgb(0.4, 0.4, 0.4) });
+      }
     }
-    for (const r of markRects(s.W, s.H)) page.drawRectangle({ x: r[0] * PT, y: Hpt - (r[1] + r[3]) * PT, width: r[2] * PT, height: r[3] * PT, color: black });
-    page.drawSvgPath(svgPathPt(startArrow(s.W, s.H), false), { x: 0, y: Hpt, borderColor: black, borderWidth: 0.35 * PT });
   }
   out.setTitle(`Roll, ${roll.sheets.reduce((a, s) => a + s.places.length, 0)} pieces`);
   setMsg('');
@@ -221,7 +249,7 @@ function buildSvg(s) {
     + `  </g>\n${lemurMarks(s.W, s.H)}</svg>\n`;
 }
 const base = () => `roll-${mm1(readOpts().rollW)}mm-${roll.sheets.reduce((a, s) => a + s.places.length, 0)}pcs`;
-const sheetName = (i, ext) => `${base()}${roll.sheets.length > 1 ? `-sheet${i + 1}` : ''}.${ext}`;
+const sheetName = (i, ext) => `${base()}${roll.sheets.length > 1 ? `-section${i + 1}` : ''}.${ext}`;
 function onClick(id, make) {
   const btn = byId(id);
   btn.addEventListener('click', async () => {
