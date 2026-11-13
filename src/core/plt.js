@@ -39,6 +39,33 @@ export function dragKnife(tip, R, dir) {
   }
   return { pts: thin(out), dir: d };
 }
+// Header tokens for the cutting speed and the up-speed (cm/s) and the force (g), kept within the plotter's limits.
+// SignCut puts these right after the header.
+export function speedTokens(o, force) {
+  const within = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(v)));
+  return [`VS${within(o.cutSpeed, 1, 13)}`, `US${within(o.upSpeed, 1, 13)}`, `FS${within(force, 1, 160)}`];
+}
+// One stroke as pen-up / pen-down tokens. q: whole-unit positions; dup: put the pen down at the first point
+// before moving on (SignCut's 'U a D a' start). Positions equal to the one before are left out.
+export function strokeTokens(q, dup = true) {
+  const tok = [`U${q[0][0]},${q[0][1]}`];
+  if (dup) tok.push(`D${q[0][0]},${q[0][1]}`);
+  for (let i = 1; i < q.length; i++) if (q[i][0] !== q[i - 1][0] || q[i][1] !== q[i - 1][1]) tok.push(`D${q[i][0]},${q[i][1]}`);
+  return tok;
+}
+// The path the blade tip follows around a closed outline `r`: once round, back to the start, then `overcut`
+// further along it, so the cut closes cleanly.
+export function closedTip(r, overcut) {
+  const tip = r.concat([r[0]]);
+  let rem = overcut;
+  for (let i = 1; rem > 0 && i <= r.length; i++) {
+    const a = r[i - 1], b = r[i % r.length], seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (!seg) continue;
+    if (seg >= rem) { const k = rem / seg; tip.push([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]); rem = 0; }
+    else { tip.push(b); rem -= seg; }
+  }
+  return tip;
+}
 export const isMove = tk => /^[UD]-?\d/.test(tk);
 // Old, dense files: per pen-down stroke, simplify (0.05 mm) and drop moves shorter than ~0.075 mm.
 // The stroke's start and end stay exactly where they were.
@@ -117,59 +144,44 @@ export function writePlt(frame, opts, sheetLoops, openLines = [], ...laterLines)
     }
     if (pts.length > 2) loops.push(pts);
   }
-  // nearest-neighbour order, each outline started at its vertex closest to the knife
   const markless = !!opts.markless;
   const out = [markless ? 'IN' : `IN FSIZE${FX},${FY} CMD:32,0,0,400,400;CMD:18,1;CMD:103,0;CMD:35,1,1,0;TB26,${FX},${FY} CMD:35,1;`];
+  if (opts.pltForce) out.push(...speedTokens(opts, force));
   // blade offset: the tip trails the holder axis, so the axis path is shifted ahead and swivels around corners
-  const po = opts;
-  if (po.pltForce) {
-    const ci = (v, a, b) => Math.min(b, Math.max(a, Math.round(v)));
-    // SignCut puts these right after the header: VS cutting speed, US up-speed (cm/s), FS force (g)
-    out.push(`VS${ci(po.cutSpeed, 1, 13)}`, `US${ci(po.upSpeed, 1, 13)}`, `FS${ci(force, 1, 160)}`);
-  }
   let bdir = [1, 0], maxX = 0;
   const emit = (tip, dup) => {
     const c = dragKnife(tip, bo, bdir);
     bdir = c.dir;
     const q = c.pts.map(p => [Math.round(p[0]), Math.round(p[1])]);
     for (const p of q) maxX = Math.max(maxX, p[0]);
-    out.push(`U${q[0][0]},${q[0][1]}`);
-    if (dup) out.push(`D${q[0][0]},${q[0][1]}`);
-    for (let i = 1; i < q.length; i++) if (q[i][0] !== q[i - 1][0] || q[i][1] !== q[i - 1][1]) out.push(`D${q[i][0]},${q[i][1]}`);
+    out.push(...strokeTokens(q, dup));
   };
   let cx = 0, cy = 0;
+  // the start arrow by the bottom-right mark
   if (!markless) { emit([[-19, 647], [80, 747], [-19, 847]], false); cx = -19; cy = 847; }
   // open lines first (fold perforations, then grid lines group by group), nearest-neighbour inside a group
   for (const group of [openLines, ...laterLines]) {
-  const lines = group.map(l => l.map(([x, y]) => [Math.round((bottom - y) * 40), Math.round((right - x) * 40)]));
-  while (lines.length) {
-    let bi = 0, bd = Infinity, rev = false;
-    // an ordered group is cut exactly in the given order and direction
-    if (!group.ordered) lines.forEach((l, i) => {
-      const a = l[0], b = l[l.length - 1], da = (a[0] - cx) ** 2 + (a[1] - cy) ** 2, db = (b[0] - cx) ** 2 + (b[1] - cy) ** 2;
-      if (da < bd) { bd = da; bi = i; rev = false; }
-      if (db < bd) { bd = db; bi = i; rev = true; }
-    });
-    const l = lines.splice(bi, 1)[0], r = rev ? l.slice().reverse() : l;
-    emit(r, true);
-    cx = r[r.length - 1][0]; cy = r[r.length - 1][1];
-  }
-  }
-  const left2 = loops.slice();
-  while (left2.length) {
-    let bi = 0, bv = 0, bd = Infinity;
-    left2.forEach((l, i) => l.forEach((q, j) => { const d = (q[0] - cx) ** 2 + (q[1] - cy) ** 2; if (d < bd) { bd = d; bi = i; bv = j; } }));
-    const l = left2.splice(bi, 1)[0], r = l.slice(bv).concat(l.slice(0, bv));
-    // path the blade tip must follow: the outline, back to the start, then the overcut
-    const tip = r.concat([r[0]]);
-    let rem = oc;
-    for (let i = 1; rem > 0 && i <= r.length; i++) {
-      const a = r[i - 1], b = r[i % r.length], seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
-      if (!seg) continue;
-      if (seg >= rem) { const k = rem / seg; tip.push([a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k]); rem = 0; }
-      else { tip.push(b); rem -= seg; }
+    const lines = group.map(l => l.map(([x, y]) => [Math.round((bottom - y) * 40), Math.round((right - x) * 40)]));
+    while (lines.length) {
+      let bi = 0, bd = Infinity, rev = false;
+      // an ordered group is cut exactly in the given order and direction
+      if (!group.ordered) lines.forEach((l, i) => {
+        const a = l[0], b = l[l.length - 1], da = (a[0] - cx) ** 2 + (a[1] - cy) ** 2, db = (b[0] - cx) ** 2 + (b[1] - cy) ** 2;
+        if (da < bd) { bd = da; bi = i; rev = false; }
+        if (db < bd) { bd = db; bi = i; rev = true; }
+      });
+      const l = lines.splice(bi, 1)[0], r = rev ? l.slice().reverse() : l;
+      emit(r, true);
+      cx = r[r.length - 1][0]; cy = r[r.length - 1][1];
     }
-    emit(tip, true);
+  }
+  // then the outlines, nearest first, each started at its vertex closest to the knife
+  const todo = loops.slice();
+  while (todo.length) {
+    let bi = 0, bv = 0, bd = Infinity;
+    todo.forEach((l, i) => l.forEach((q, j) => { const d = (q[0] - cx) ** 2 + (q[1] - cy) ** 2; if (d < bd) { bd = d; bi = i; bv = j; } }));
+    const l = todo.splice(bi, 1)[0], r = l.slice(bv).concat(l.slice(0, bv));
+    emit(closedTip(r, oc), true);
     cx = r[0][0]; cy = r[0][1];
   }
   // marks: park at the top mark; markless: feed out past the end of the job, like the vinyl cut

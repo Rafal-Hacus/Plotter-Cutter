@@ -1,11 +1,15 @@
 // SVG parsing and writing helpers (units, viewBox, ids, paths, flattening).
 
 export const XLINK = 'http://www.w3.org/1999/xlink';
+// every element that draws a shape
+export const SHAPES = 'path,rect,circle,ellipse,polygon,polyline,line';
 // created on use, so the module also loads where there is no DOM (unit tests)
 export const ser = { serializeToString: node => new XMLSerializer().serializeToString(node) };
 export const PX_PER = { '': 1, px: 1, mm: 96 / 25.4, cm: 96 / 2.54, in: 96, pt: 96 / 72, pc: 16 };
 export const MM_PER = { mm: 1, cm: 10, in: 25.4, pt: 25.4 / 72, pc: 25.4 / 6 };
 export const num = v => (Math.round(v * 1000) / 1000).toString();
+// a length to 0.1 mm, for messages
+export const mm1 = v => num(Math.round(v * 10) / 10);
 export const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 export function parseLen(v) {
   if (v == null) return null;
@@ -97,9 +101,24 @@ export function prefixDoc(root, cp) {
     if (e.localName === 'style') e.textContent = prefixCss(e.textContent, cp);
   }
 }
+// Path data as command letters and numbers. The two flags of an arc are single digits that may be written without
+// a separator ("a5 5 0 0110 0", as minifiers do), so inside an arc they are read one character at a time.
+function pathTokens(d) {
+  const s = String(d), tok = [], NUM = /[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/y;
+  let i = 0, arc = false, arg = 0;
+  while (i < s.length) {
+    const ch = s[i];
+    if (/[a-zA-Z]/.test(ch)) { tok.push(ch); arc = ch === 'a' || ch === 'A'; arg = 0; i++; continue; }
+    if (arc && (arg % 7 === 3 || arg % 7 === 4) && (ch === '0' || ch === '1')) { tok.push(ch); arg++; i++; continue; }
+    NUM.lastIndex = i;
+    const m = NUM.exec(s);
+    if (m) { tok.push(m[0]); arg++; i = NUM.lastIndex; } else i++;
+  }
+  return tok;
+}
 // Flatten an SVG path "d" into polylines: [{pts:[[x,y],...], closed}] in the path's own units.
 export function flattenPath(d) {
-  const tok = String(d).match(/[a-zA-Z]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?/g) || [];
+  const tok = pathTokens(d);
   const out = [];
   let i = 0, cmd = '', cx = 0, cy = 0, sx = 0, sy = 0, lcx = 0, lcy = 0, lqx = 0, lqy = 0, prev = '', cur = null;
   const isCmd = t => /^[a-zA-Z]$/.test(t);

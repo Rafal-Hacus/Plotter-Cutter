@@ -161,7 +161,9 @@ export async function createApp(cfg) {
   }
 
   async function handle(req, res) {
-    const url = new URL(req.url, 'http://x'), path = url.pathname;
+    let url;
+    try { url = new URL(req.url, 'http://x'); } catch { headers(res, APP_CSP); return send(res, 400, 'Bad request'); }
+    const path = url.pathname;
     headers(res, path === '/login' || path === '/setup' ? LOGIN_CSP : APP_CSP);
     if (path === '/healthz') return send(res, 200, 'ok');
 
@@ -171,7 +173,8 @@ export async function createApp(cfg) {
         if (path.startsWith('/api/')) return json(res, 401, { error: 'Set up the login first.' });
         return redirect(res, path === '/' || path === '/login' ? 'setup' : '/setup');
       }
-      const page = (msg, user = '') => send(res, 200, setupPage.replace('<!--ERROR-->', msg ? `<p class="err" role="alert">${esc(msg)}</p>` : '').replace('value=""', `value="${esc(user)}"`), 'text/html; charset=utf-8');
+      // (the replacements are functions, so '$&' and the like in what was typed are not read as patterns)
+      const page = (msg, user = '') => send(res, 200, setupPage.replace('<!--ERROR-->', () => (msg ? `<p class="err" role="alert">${esc(msg)}</p>` : '')).replace('value=""', () => `value="${esc(user)}"`), 'text/html; charset=utf-8');
       if (req.method === 'GET') return page('');
       if (req.method !== 'POST') return send(res, 405, 'Method not allowed');
       if (!sameOrigin(req)) return send(res, 403, 'Cross-site request refused.');

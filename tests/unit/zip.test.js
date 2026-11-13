@@ -10,6 +10,13 @@ describe('zip', () => {
     const got = await readZipPlts(await blob.arrayBuffer());
     expect(got).toEqual([{ name: 'a-kiss.plt', text: 'IN U0,0 D10,10 @;@;' }, { name: 'b-die.plt', text: 'IN U1,1 @;' }]);
   });
+  it('marks names with letters outside ASCII as UTF-8, and leaves plain names as they were', async () => {
+    const flagsOf = async name => new DataView(await makeZip([{ name, text: 'IN @;' }]).arrayBuffer()).getUint16(6, true);
+    expect(await flagsOf('kiss.plt')).toBe(0);
+    expect(await flagsOf('żółw-kiss.plt')).toBe(0x0800);
+    const got = await readZipPlts(await makeZip([{ name: 'żółw-kiss.plt', text: 'IN @;' }]).arrayBuffer());
+    expect(got[0].name).toBe('żółw-kiss.plt');
+  });
   it('rejects something that is not a zip', async () => {
     await expect(readZipPlts(new ArrayBuffer(100))).rejects.toThrow('Not a zip');
   });

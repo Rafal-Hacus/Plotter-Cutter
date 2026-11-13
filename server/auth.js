@@ -72,7 +72,11 @@ export function parseCookies(header) {
   const out = {};
   for (const part of String(header || '').split(';')) {
     const i = part.indexOf('=');
-    if (i > 0) { const k = part.slice(0, i).trim(); if (!(k in out)) out[k] = decodeURIComponent(part.slice(i + 1).trim()); }
+    if (i <= 0) continue;
+    const k = part.slice(0, i).trim();
+    if (k in out) continue;
+    // another site on the same host may have left a cookie that isn't valid percent-encoding: skip it
+    try { out[k] = decodeURIComponent(part.slice(i + 1).trim()); } catch { /* not ours */ }
   }
   return out;
 }
