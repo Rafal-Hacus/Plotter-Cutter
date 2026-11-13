@@ -14,7 +14,7 @@ export const OPT_IDS = [
   'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle',
   'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap',
   'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap',
-  'rollW', 'rollMargin', 'rollGap', 'rollBleed', 'rollRadius', 'rollOuter', 'rollTurn', 'rollMax', 'rollForce',
+  'rollW', 'rollMargin', 'rollGap', 'rollBleed', 'rollRadius', 'rollOuter', 'rollTurn', 'rollMax', 'rollOnePage', 'rollForce',
   'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'
 ];
 
@@ -66,7 +66,7 @@ export function readOpts() {
     penForce: num('penForce', 40, 1), penFill: on('penFill'), penStyle: text('penStyle'), penSpacing: num('penSpacing', 0.4, 0.1), penAngle: signed('penAngle'),
     // roll
     rollW: num('rollW', 1370, 100), rollMargin: num('rollMargin', 20, 17), rollGap: num('rollGap', 2, 0), rollBleed: num('rollBleed', 3, 0),
-    rollRadius: num('rollRadius', 0, 0), rollOuter: on('rollOuter'), rollTurn: on('rollTurn'), rollMax: num('rollMax', 0, 0), rollForce: text('rollForce'),
+    rollRadius: num('rollRadius', 0, 0), rollOuter: on('rollOuter'), rollTurn: on('rollTurn'), rollMax: num('rollMax', 0, 0), rollOnePage: on('rollOnePage'), rollForce: text('rollForce'),
     // squares, SVG to PLT
     sqW: num('sqW', 50, 5), sqH: num('sqH', 50, 5), sqSheetW: num('sqSheetW', 320, 20), sqSheetH: num('sqSheetH', 450, 20),
     sqMargin: num('sqMargin', 10, 0), sqGap: num('sqGap', 0, 0), spDpi: parseFloat(text('spDpi')) || 72
