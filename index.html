@@ -31,7 +31,7 @@
       <p class="hint" id="presetMsg" role="status"></p>
       <p class="hint">Saves the mode and every setting (cut lines, sheet, layout, cards, PLT…) on the server. Picking one applies it; the default loads when the app opens.</p>
     </section>
-    <nav class="modes" aria-label="Mode"><div class="mgroup" role="group" aria-label="Print &amp; cut"><span class="mlabel">Print &amp; cut</span><div class="mbtns"><button type="button" data-mode="stickers" aria-pressed="true">Stickers</button><button type="button" data-mode="cards" aria-pressed="false">Business cards</button><button type="button" data-mode="vouchers" aria-pressed="false">Vouchers</button><button type="button" data-mode="winietka" aria-pressed="false">Winietki</button></div></div><div class="mgroup" role="group" aria-label="Print for the guillotine"><span class="mlabel">Print for the guillotine</span><div class="mbtns"><button type="button" data-mode="guillotine" aria-pressed="false">Guillotine</button><button type="button" data-mode="deck" aria-pressed="false">Card deck</button><button type="button" data-mode="gang" aria-pressed="false">Print sheets</button><button type="button" data-mode="morgana" aria-pressed="false">Morgana CardXtra</button><button type="button" data-mode="duplex" aria-pressed="false">Duplex test</button></div></div><div class="mgroup" role="group" aria-label="Cut or draw only"><span class="mlabel">Cut or draw only</span><div class="mbtns"><button type="button" data-mode="vinyl" aria-pressed="false">Vinyl</button><button type="button" data-mode="pen" aria-pressed="false">Pen</button><button type="button" data-mode="squares" aria-pressed="false">Squares</button><button type="button" data-mode="svgplt" aria-pressed="false">SVG to PLT</button></div></div></nav>
+    <nav class="modes" aria-label="Mode"><div class="mgroup" role="group" aria-label="Print &amp; cut"><span class="mlabel">Print &amp; cut</span><div class="mbtns"><button type="button" data-mode="stickers" aria-pressed="true">Stickers</button><button type="button" data-mode="cards" aria-pressed="false">Business cards</button><button type="button" data-mode="vouchers" aria-pressed="false">Vouchers</button><button type="button" data-mode="winietka" aria-pressed="false">Winietki</button><button type="button" data-mode="roll" aria-pressed="false">Roll</button></div></div><div class="mgroup" role="group" aria-label="Print for the guillotine"><span class="mlabel">Print for the guillotine</span><div class="mbtns"><button type="button" data-mode="guillotine" aria-pressed="false">Guillotine</button><button type="button" data-mode="deck" aria-pressed="false">Card deck</button><button type="button" data-mode="gang" aria-pressed="false">Print sheets</button><button type="button" data-mode="morgana" aria-pressed="false">Morgana CardXtra</button><button type="button" data-mode="duplex" aria-pressed="false">Duplex test</button></div></div><div class="mgroup" role="group" aria-label="Cut or draw only"><span class="mlabel">Cut or draw only</span><div class="mbtns"><button type="button" data-mode="vinyl" aria-pressed="false">Vinyl</button><button type="button" data-mode="pen" aria-pressed="false">Pen</button><button type="button" data-mode="squares" aria-pressed="false">Squares</button><button type="button" data-mode="svgplt" aria-pressed="false">SVG to PLT</button></div></div></nav>
 
     <section aria-labelledby="h-stickers" id="secStickers">
       <h2 id="h-stickers">Stickers</h2>
@@ -194,6 +194,24 @@
       <div class="row"><label for="gangSheet">Preview</label><select id="gangSheet"><option value="0">Sheet 1</option></select></div>
     </section>
 
+    <section aria-labelledby="h-roll" id="secRoll" hidden>
+      <h2 id="h-roll">Roll</h2>
+      <p class="hint">Print-and-cut PDFs of any size (signs, labels, banners) packed across the roll, as short as possible, with registration marks. Each PDF page is a piece: its trim box is the cut size, the bleed around it is printed. Copies come from the file name (“…_3szt.pdf”).</p>
+      <div class="actions"><label class="btn primary">Add PDFs<input id="rollFile" type="file" accept=".pdf,application/pdf" multiple></label></div>
+      <ul class="designs" id="rollList"></ul>
+      <div class="row"><label for="rollW">Roll width</label><span class="mm"><input id="rollW" type="number" min="100" step="1" value="1370">mm</span></div>
+      <div class="row"><label for="rollMargin">Distance from the roll edges (clear of the marks)</label><span class="mm"><input id="rollMargin" type="number" min="17" step="1" value="20">mm</span></div>
+      <div class="row"><label for="rollGap">Space between pieces (bleed to bleed)</label><span class="mm"><input id="rollGap" type="number" min="0" step="0.5" value="2">mm</span></div>
+      <div class="row"><label for="rollBleed">Bleed printed around each piece</label><span class="mm"><input id="rollBleed" type="number" min="0" step="0.5" value="3">mm</span></div>
+      <div class="row"><label for="rollRadius">Corner radius for new files</label><span class="mm"><input id="rollRadius" type="number" min="0" step="0.5" value="0">mm</span></div>
+      <div class="row"><label for="rollOuter">New files with an outline: cut along it</label><input id="rollOuter" type="checkbox"></div>
+      <div class="row"><label for="rollTurn">Turn pieces to fit more</label><input id="rollTurn" type="checkbox" checked></div>
+      <div class="row"><label for="rollMax">Split into sheets longer than</label><span class="mm"><input id="rollMax" type="number" min="0" step="100" value="0">mm</span></div>
+      <p class="hint">0: one sheet, as long as needed. Each sheet gets its own marks, PLT and SVG.</p>
+      <div class="row"><label for="rollForce">Cut</label><select id="rollForce"><option value="kiss">Kiss cut (force, colour and layer of the kiss cut)</option><option value="die">Through (die cut force, colour and layer)</option></select></div>
+      <div class="row" id="rowRollSheet" hidden><label for="rollSheet">Show</label><select id="rollSheet"></select></div>
+    </section>
+
     <section aria-labelledby="h-vinyl" id="secVinyl" hidden>
       <h2 id="h-vinyl">Vinyl</h2>
       <p class="hint">Cuts the vector shapes from your SVGs exactly as drawn, with no registration marks and no print. Add the files above.</p>
@@ -232,6 +250,11 @@
       <div class="actions" id="gangExports" hidden>
         <button type="button" class="primary" id="exGang" disabled>Print PDF</button>
         <button type="button" id="exGangProof" disabled>Proof PDF (what gets cut off)</button>
+      </div>
+      <div class="actions" id="rollExports" hidden>
+        <button type="button" class="primary" id="exRollPdf" disabled>Print PDF</button>
+        <button type="button" id="exRollPlt" disabled>PLT for Skycut (zip)</button>
+        <button type="button" id="exRollSvg" disabled>Cut SVG</button>
       </div>
       <div class="actions" id="vinylExports" hidden>
         <button type="button" class="primary" id="exVinylPlt" disabled>PLT for Skycut (zip)</button>

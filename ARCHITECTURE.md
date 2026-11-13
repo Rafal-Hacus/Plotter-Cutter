@@ -22,6 +22,7 @@ src/modes/            one module (or folder) per mode; each registers itself in 
                       layout.js (grid, back side, cuts, plans), render.js, pdf.js, winietki.js, index.js (mode, exports)
   vinyl.js            vinyl and pen
   gang.js             print sheets
+  roll.js             roll: PDFs of any size packed across a roll with marks, cut along the trim or an outline in the file
   squares.js, svgplt.js, duplex.js
 src/export/           writing files, shared by the modes
   files.js            PLTs for sheets with registration marks
@@ -41,6 +42,8 @@ src/core/             pure code, no app state, unit tested
   matrix.js           2D affine matrices, rounded rectangles, PT (points per mm)
   zip.js              zip writer and reader
   image.js            embedded dpi, EXIF orientation, round-sticker detection
+  rollpack.js         packing rectangles across a roll (skyline), copies from a file name
+  pdfpaths.js         the vector paths of a PDF page (pdf.js operator list) and its outermost closed line
   grid.js             straight cuts through a grid of equal pieces, and the order they are cut in
   util.js             small helpers
 src/presets.js        the Saved settings panel (talks to the server's /api)

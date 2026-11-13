@@ -20,6 +20,7 @@ import './modes/stickers/export.js';
 import './modes/stickers/batch.js';
 import './modes/vinyl.js';
 import './modes/gang.js';
+import './modes/roll.js';
 import './modes/squares.js';
 import './modes/duplex.js';
 import './plt-modifier.js';

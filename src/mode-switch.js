@@ -14,6 +14,7 @@ const SHOWN_IN = {
   secCards: PRINT_MODES, cardExports: PRINT_MODES,
   secVinyl: ['vinyl', 'pen'], vinylExports: ['vinyl', 'pen'],
   secGang: ['gang'], gangExports: ['gang'],
+  secRoll: ['roll'], rollExports: ['roll'],
   secSquares: ['squares'], squaresExports: ['squares'],
   secSvgPlt: ['svgplt'], spExports: ['svgplt'],
   secDuplex: ['duplex'],
@@ -35,6 +36,7 @@ const DROP_NOTE = {
   morgana: 'Drop the PDF here (page 1 front, page 2 back).',
   deck: 'Drop the multi-page card PDF here (front, back, front, back…).',
   gang: 'Drop photos and PDFs here.',
+  roll: 'Drop the PDFs here (signs, labels, banners).',
   vinyl: 'Drop SVG files with the shapes to cut.',
   pen: 'Drop SVG files with the lines to draw.',
   svgplt: 'Drop the print-and-cut SVG here.'
@@ -57,7 +59,7 @@ export function setAppMode(m) {
   designs.forEach(updateRow);
   ui.msg.textContent = '';
   // the PDF libraries load in the background as soon as a mode that needs them opens
-  if (printMode || m === 'gang') ensureLibs().catch(e => setMsg(e.message, true));
+  if (printMode || m === 'gang' || m === 'roll') ensureLibs().catch(e => setMsg(e.message, true));
   renderStats(); renderPreview(); schedule();
 }
 for (const b of document.querySelectorAll('.modes button')) b.addEventListener('click', () => setAppMode(b.dataset.mode));
