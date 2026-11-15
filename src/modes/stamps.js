@@ -5,49 +5,24 @@
 import { packRoll } from '../core/rollpack.js';
 import { sanitize } from '../core/sanitize.js';
 import { bbox, buildStamp, strokeToShapes, union } from '../core/stamp.js';
-import { textOutlines } from '../core/stamptext.js';
+import { richOutlines } from '../core/stamptext.js';
+import { DEFAULT_FAMILY, addFontFiles, cssFamily, families, fontResolver, loadLibrary, onFontsChanged, ownFamilies, removeFamily } from '../stampfonts.js';
 import { SHAPES, expandUses, flattenPath, num, parseSvg } from '../core/svg.js';
 import { BED, buildXsFiles } from '../core/xs.js';
 import { makeZipDeflated } from '../core/zip.js';
+import { PT } from '../core/matrix.js';
 import { byId, plural, saveFile, setMsg, ui } from '../dom.js';
+import { ensureLibs } from '../lib/pdf.js';
 import { schedule } from '../pipeline.js';
 import { readOpts } from '../settings.js';
 import { state } from '../state.js';
 import { applyView } from '../viewport.js';
 import { registerMode } from './registry.js';
-import montserratBold from '@expo-google-fonts/montserrat/700Bold/Montserrat_700Bold.ttf?url';
-import montserratMedium from '@expo-google-fonts/montserrat/500Medium/Montserrat_500Medium.ttf?url';
-import playfair from '@expo-google-fonts/playfair-display/400Regular/PlayfairDisplay_400Regular.ttf?url';
-
 // Wagraf self-inking stamps: imprint sizes from the Wagraf catalogue
 export const STAMP_SIZES = { b1s: ['Wagraf B1s', 28, 12], b2: ['Wagraf B2', 39, 15], b3: ['Wagraf B3', 48, 19], b4: ['Wagraf B4', 59, 25] };
-const FONTS = {
-  arialBold: ['Arial-like, bold (Liberation Sans Bold)', () => new URL('pdfjs/standard_fonts/LiberationSans-Bold.ttf', document.baseURI).href],
-  arial: ['Arial-like (Liberation Sans)', () => new URL('pdfjs/standard_fonts/LiberationSans-Regular.ttf', document.baseURI).href],
-  montserratBold: ['Montserrat Bold', () => montserratBold],
-  montserrat: ['Montserrat Medium', () => montserratMedium],
-  serif: ['Playfair Display (serif)', () => playfair]
-};
 const LAYER_FILL = { red: '#ff8080', blue: '#5078ff' };
 const stamps = { items: [], placed: [], tooBig: [] };
 let nextId = 1;
-
-/* ---------- fonts ---------- */
-const fontCache = new Map();
-async function loadFont(key, custom) {
-  const fontkit = (await import('@pdf-lib/fontkit')).default;
-  if (key === 'custom') {
-    if (!custom) throw new Error('Load a font file, or pick one of the fonts.');
-    if (!custom.font) custom.font = fontkit.create(custom.bytes);
-    return custom.font;
-  }
-  if (!fontCache.has(key)) fontCache.set(key, (async () => {
-    const r = await fetch((FONTS[key] || FONTS.arialBold)[1]());
-    if (!r.ok) throw new Error('Could not load the font.');
-    return fontkit.create(new Uint8Array(await r.arrayBuffer()));
-  })().catch(e => { fontCache.delete(key); throw e; }));
-  return fontCache.get(key);
-}
 
 /* ---------- SVG artwork ---------- */
 // Every visible shape of the SVG as filled rings (fills, and strokes turned into shapes of their width), in the
@@ -111,11 +86,9 @@ function sizeOf(it) {
 }
 async function artOf(it) {
   if (it.kind === 'svg') return it.svg.rings;
-  const lines = it.text.split('\n').map(l => l.replace(/\s+$/, ''));
-  while (lines.length && !lines[lines.length - 1]) lines.pop();
-  while (lines.length && !lines[0]) lines.shift();
+  const lines = trimLines(it.lines);
   if (!lines.length) throw new Error('Type the text of the stamp.');
-  return textOutlines(await loadFont(it.font, it.customFont), lines, { align: it.align, spacing: it.spacing / 100 });
+  return richOutlines(lines, await fontResolver(it.font), { spacing: it.spacing / 100 });
 }
 function stampOpts(o, it) {
   return { marginX: o.stMarginX, marginY: o.stMarginY, textGrow: o.stShoulder, outerGrow: o.stEdge, shape: it.shape, radius: it.radius };
@@ -159,10 +132,13 @@ function list() {
     li.className = 'design stamp';
     li.innerHTML = `<div class="thumb"></div><div>
       <div class="dname"></div>
-      ${it.kind === 'text' ? `<label class="sttext">Text (one line per line of the stamp)<textarea rows="5" spellcheck="false"></textarea></label>
-      <div class="fields"><label>Font<select class="stfont">${Object.entries(FONTS).map(([k, [n]]) => `<option value="${k}">${n}</option>`).join('')}<option value="custom">Your font file…</option></select></label>
-        <label class="stfontfile" hidden>Font file<input type="file" accept=".ttf,.otf,font/ttf,font/otf"></label>
-        <label>Lines<select class="stalign"><option value="center">Centred</option><option value="left">Left</option><option value="right">Right</option></select></label>
+      ${it.kind === 'text' ? `<div class="steditbar" role="toolbar" aria-label="Text formatting">
+          <button type="button" data-cmd="bold" title="Bold (Ctrl+B)" aria-label="Bold"><b>B</b></button><button type="button" data-cmd="italic" title="Italic (Ctrl+I)" aria-label="Italic"><i>I</i></button><button type="button" data-cmd="underline" title="Underline (Ctrl+U)" aria-label="Underline"><u>U</u></button>
+          <span class="sep"></span><button type="button" data-size="0.89" title="Smaller line" aria-label="Smaller line">A−</button><button type="button" data-size="1.12" title="Bigger line" aria-label="Bigger line">A+</button>
+          <span class="sep"></span><button type="button" data-align="left" title="Align left" aria-label="Align left">⇤</button><button type="button" data-align="center" title="Centre" aria-label="Centre">≡</button><button type="button" data-align="right" title="Align right" aria-label="Align right">⇥</button>
+        </div>
+        <div class="steditor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Text of the stamp"></div>
+        <div class="fields"><label>Font<select class="stfont"></select></label>
         <label>Line spacing<input type="number" class="stspacing" min="80" max="250" step="5"> %</label></div>` : ''}
       <div class="fields"><label>Size<select class="stsize">${sizeOptions()}</select></label>
         <label class="stcustom">W<input type="number" class="stw" min="5" step="1"> × H<input type="number" class="sth" min="5" step="1"> mm</label>
@@ -174,15 +150,35 @@ function list() {
     dn.textContent = it.name; dn.title = it.name;
     const changed = () => { syncRow(it, li); schedule(); };
     if (it.kind === 'text') {
-      const ta = q('textarea'); ta.value = it.text;
-      ta.addEventListener('input', () => { it.text = ta.value; it.name = ta.value.split('\n').find(Boolean) || 'Stamp'; dn.textContent = it.name; schedule(); });
-      const f = q('.stfont'); f.value = it.font; f.addEventListener('change', () => { it.font = f.value; changed(); });
-      q('.stfontfile input').addEventListener('change', async e => {
-        const file = e.target.files[0]; if (!file) return;
-        it.customFont = { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) };
-        changed();
+      const ed = q('.steditor'), f = q('.stfont');
+      ed.innerHTML = it.html;
+      const showFont = () => cssFamily(it.font).then(ff => { ed.style.fontFamily = ff; }).catch(() => {});
+      showFont();
+      // the editor's font follows the stamp's font where the browser has it (only a guide: the stamp is drawn exactly)
+      const edited = () => { it.html = ed.innerHTML; it.lines = parseEditor(ed); it.name = trimLines(it.lines).map(l => l.runs.map(r => r.text).join('')).find(t => t.trim()) || 'Stamp'; dn.textContent = it.name; schedule(); };
+      ed.addEventListener('input', edited);
+      ed.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData.getData('text/plain') || '').replace(/\r\n?/g, '\n')); });
+      for (const b of li.querySelectorAll('.steditbar button')) {
+        b.addEventListener('mousedown', e => e.preventDefault()); // keep the selection in the editor
+        b.addEventListener('click', () => {
+          ed.focus();
+          if (b.dataset.cmd) document.execCommand(b.dataset.cmd);
+          else for (const blk of selectedLines(ed)) {
+            if (b.dataset.align) blk.style.textAlign = b.dataset.align;
+            if (b.dataset.size) { const v = Math.min(3, Math.max(0.4, (parseFloat(blk.dataset.size) || 1) * parseFloat(b.dataset.size))); blk.dataset.size = String(Math.round(v * 100) / 100); blk.style.fontSize = `${Math.round(v * 100)}%`; }
+          }
+          edited();
+        });
+      }
+      fillFontSelect(f, it.font);
+      f.addEventListener('change', async () => {
+        if (f.value === '+') {
+          const pick = byId('stFontFile');
+          pick.onchange = async () => { const r = await addFonts(pick.files); pick.value = ''; if (r && r.added.length) it.font = r.added[0].key; fillFontSelect(f, it.font); showFont(); changed(); };
+          pick.click(); f.value = it.font; return;
+        }
+        it.font = f.value; showFont(); changed();
       });
-      const al = q('.stalign'); al.value = it.align; al.addEventListener('change', () => { it.align = al.value; changed(); });
       const sp = q('.stspacing'); sp.value = it.spacing; sp.addEventListener('input', () => { it.spacing = Math.max(50, parseFloat(sp.value) || 115); schedule(); });
     }
     const sz = q('.stsize'); sz.value = it.size; sz.addEventListener('change', () => { it.size = sz.value; changed(); });
@@ -202,8 +198,6 @@ function list() {
 function syncRow(it, li) {
   li.querySelector('.stcustom').hidden = it.size !== 'custom';
   li.querySelector('.stradius').hidden = it.shape !== 'round';
-  const ff = li.querySelector('.stfontfile');
-  if (ff) ff.hidden = it.font !== 'custom';
 }
 function status(it) {
   if (!it.li || !it.li.isConnected) return;
@@ -219,11 +213,103 @@ function status(it) {
 }
 function newItem(kind, extra) {
   const o = readOpts();
-  return { id: nextId++, kind, copies: 1, size: o.stSize, w: 48, h: 19, shape: 'hull', radius: 2, font: 'arialBold', align: 'center', spacing: 115, text: '', name: 'Stamp', ...extra };
+  return { id: nextId++, kind, copies: 1, size: o.stSize, w: 48, h: 19, shape: 'hull', radius: 2, font: DEFAULT_FAMILY, spacing: 115, name: 'Stamp', ...extra };
 }
 function addText() {
-  stamps.items.push(newItem('text', { text: 'Firma Przykład\nul. Długa 1, 00-001 Warszawa\nNIP 123-456-78-90\ntel. 600 000 000', name: 'Firma Przykład' }));
+  // an example in bold (like the stamps made so far), each line centred
+  const html = ['Firma Przykład', 'ul. Długa 1, 00-001 Warszawa', 'NIP 123-456-78-90', 'tel. 600 000 000'].map(t => `<div style="text-align: center;" data-size="1"><b>${t}</b></div>`).join('');
+  const box = document.createElement('div'); box.innerHTML = html;
+  stamps.items.push(newItem('text', { html, lines: parseEditor(box), name: 'Firma Przykład' }));
   list(); schedule();
+}
+
+/* ---------- the text editor ---------- */
+// The editor's lines (one block each; Shift+Enter breaks a line inside a block too) as the layout takes them:
+// [{ align, size, runs: [{ text, bold, italic, underline }] }]
+export function parseEditor(ed) {
+  const lines = [];
+  let cur = null;
+  const newLine = (from, el) => {
+    const st = el && el.style;
+    cur = { align: (st && st.textAlign) || (from ? from.align : 'center'), size: parseFloat(el && el.dataset && el.dataset.size) || (from ? from.size : 1), runs: [] };
+    lines.push(cur);
+  };
+  const flags = (el, f) => {
+    const t = el.tagName, st = el.style || {}, g = { ...f };
+    if (t === 'B' || t === 'STRONG') g.bold = true;
+    if (t === 'I' || t === 'EM') g.italic = true;
+    if (t === 'U') g.underline = true;
+    if (st.fontWeight) g.bold = st.fontWeight === 'bold' || st.fontWeight === 'bolder' || parseInt(st.fontWeight, 10) >= 600;
+    if (st.fontStyle) g.italic = /italic|oblique/.test(st.fontStyle);
+    if (st.textDecoration || st.textDecorationLine) g.underline = /underline/.test(st.textDecoration || st.textDecorationLine);
+    return g;
+  };
+  const push = (text, f) => {
+    if (!text) return;
+    if (!cur) newLine(null, null);
+    const last = cur.runs[cur.runs.length - 1], g = { bold: !!f.bold, italic: !!f.italic, underline: !!f.underline };
+    if (last && last.bold === g.bold && last.italic === g.italic && last.underline === g.underline) last.text += text;
+    else cur.runs.push({ text, ...g });
+  };
+  // anything after this node inside its block (a trailing <br> ends the block, it isn't an empty line)
+  const more = n => { for (let x = n.nextSibling; x; x = x.nextSibling) if (x.nodeType === 1 || (x.nodeType === 3 && x.nodeValue)) return true; return n.parentNode !== ed && !/^(DIV|P|LI)$/.test(n.parentNode.tagName) && more(n.parentNode); };
+  const walk = (node, f) => {
+    for (const n of node.childNodes) {
+      if (n.nodeType === 3) push(n.nodeValue.replace(/\u00a0/g, ' ').replace(/[\r\n\t]+/g, ' '), f);
+      else if (n.nodeType === 1) {
+        if (n.tagName === 'BR') { if (more(n)) newLine(cur, null); continue; }
+        if (/^(DIV|P|LI|H[1-6])$/.test(n.tagName)) { newLine(cur, n); walk(n, flags(n, f)); cur = null; continue; }
+        walk(n, flags(n, f));
+      }
+    }
+  };
+  walk(ed, {});
+  return lines;
+}
+// without the empty lines at the top and the bottom
+function trimLines(lines) {
+  const empty = l => !l.runs.some(r => r.text.trim());
+  let a = 0, b = lines.length;
+  while (a < b && empty(lines[a])) a++;
+  while (b > a && empty(lines[b - 1])) b--;
+  return lines.slice(a, b);
+}
+// the line blocks the selection touches (top-level text is wrapped into a block first)
+function selectedLines(ed) {
+  for (const n of Array.from(ed.childNodes)) {
+    if (n.nodeType === 1 && /^(DIV|P)$/.test(n.tagName)) continue;
+    const d = document.createElement('div'); d.style.textAlign = 'center'; d.dataset.size = '1';
+    ed.insertBefore(d, n); d.appendChild(n);
+  }
+  const sel = window.getSelection(), r = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+  const blocks = Array.from(ed.children).filter(d => r && r.intersectsNode(d));
+  return blocks.length ? blocks : Array.from(ed.children).slice(-1);
+}
+
+/* ---------- fonts ---------- */
+function fillFontSelect(sel, value) {
+  const fams = families();
+  sel.innerHTML = Object.entries(fams).map(([k, f]) => `<option value="${k}">${f.name.replace(/[<&]/g, '')}${f.own ? ' (yours)' : ''}</option>`).join('') + '<option value="+">Add font files…</option>';
+  sel.value = fams[value] ? value : DEFAULT_FAMILY;
+}
+async function addFonts(files) {
+  if (!files || !files.length) return null;
+  setMsg('Reading the fonts…');
+  const r = await addFontFiles(files);
+  setMsg([r.added.length ? `Added: ${[...new Set(r.added.map(a => a.family))].join(', ')}${r.saved ? '' : ' (for this session: the server isn’t reachable)'}.` : '', r.failed.join(' ')].filter(Boolean).join(' '), r.failed.length > 0);
+  return r;
+}
+function fontList() {
+  const ul = byId('stFonts'), own = ownFamilies();
+  ul.innerHTML = own.length ? '' : '<li class="empty">None yet: add .ttf / .otf / .woff files (each style of a family is its own file).</li>';
+  for (const f of own) {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="fname"></span><button type="button" class="link">Remove</button>';
+    li.querySelector('.fname').textContent = `${f.name}: ${f.styles.join(', ')}${f.saved ? '' : ' (this session only)'}`;
+    li.querySelector('button').addEventListener('click', async () => { await removeFamily(f.key); schedule(); });
+    ul.appendChild(li);
+  }
+  for (const it of stamps.items) if (it.li && it.kind === 'text') fillFontSelect(it.li.querySelector('.stfont'), it.font);
 }
 async function addSvgs(files) {
   const failed = [];
@@ -264,6 +350,7 @@ function renderStats(busyText) {
   const n = stamps.placed.length;
   ui.dropNote.hidden = stamps.items.length > 0;
   byId('exStampsXs').disabled = !n || !!busyText;
+  byId('exStampsProof').disabled = !stamps.items.some(it => it.result) || !!busyText;
   if (busyText) { ui.count.textContent = busyText; return; }
   ui.count.textContent = !stamps.items.length ? 'No stamps yet' : `${plural(n, 'stamp')} on the bed`;
   const notes = [];
@@ -295,6 +382,53 @@ export async function buildStampsXs() {
   const files = await buildXsFiles(list_, { cover, name: 'Pieczątki' });
   return makeZipDeflated(files);
 }
+/* ---------- the proof for the client: every stamp at its real size ---------- */
+// One A4 page after another, every stamp once (as it prints: not mirrored, the letters in black), its size and the
+// number of copies, the outline of the rubber dashed, and a 50 mm line to check that it was printed at 100 %.
+export async function buildStampsProof() {
+  await ensureLibs();
+  const { PDFDocument, rgb } = window.PDFLib, fontkit = (await import('@pdf-lib/fontkit')).default;
+  const pdf = await PDFDocument.create();
+  pdf.registerFontkit(fontkit);
+  const fontBytes = async n => new Uint8Array(await (await fetch(new URL(`pdfjs/standard_fonts/${n}`, document.baseURI))).arrayBuffer());
+  const font = await pdf.embedFont(await fontBytes('LiberationSans-Regular.ttf'), { subset: true });
+  const bold = await pdf.embedFont(await fontBytes('LiberationSans-Bold.ttf'), { subset: true });
+  const PW = 210 * PT, PH = 297 * PT, M = 15, black = rgb(0, 0, 0), grey = rgb(0.45, 0.45, 0.45), light = rgb(0.6, 0.6, 0.6);
+  const items = stamps.items.filter(it => it.result);
+  let page = null, x = M, y = 0, rowH = 0;
+  const newPage = () => {
+    page = pdf.addPage([PW, PH]);
+    page.drawText('Projekt pieczątki – podgląd w rzeczywistym rozmiarze (1:1)', { x: M * PT, y: PH - (M + 5) * PT, size: 13, font: bold, color: black });
+    page.drawText('Wydrukuj w skali 100 % (bez dopasowania do strony). Ta linia ma 50 mm:', { x: M * PT, y: PH - (M + 11) * PT, size: 8.5, font, color: grey });
+    const ly = PH - (M + 15) * PT;
+    page.drawLine({ start: { x: M * PT, y: ly }, end: { x: (M + 50) * PT, y: ly }, thickness: 0.8, color: black });
+    for (let t = 0; t <= 50; t += 10) page.drawLine({ start: { x: (M + t) * PT, y: ly - 1.5 * PT }, end: { x: (M + t) * PT, y: ly + 1.5 * PT }, thickness: 0.6, color: black });
+    x = M; y = M + 26; rowH = 0;
+  };
+  newPage();
+  const path = rings => rings.map(r => `M${r.map(p => `${(p[0] * PT).toFixed(3)} ${(p[1] * PT).toFixed(3)}`).join(' L')} Z`).join(' ');
+  for (const it of items) {
+    const r = it.result, c = bbox([r.cut]), [W, H] = sizeOf(it), w = Math.max(c.w, 60), h = c.h + 14;
+    if (x + w > 210 - M) { x = M; y += rowH + 8; rowH = 0; }
+    if (y + h > 297 - M) newPage();
+    const name = it.size === 'custom' ? `${num(W)} × ${num(H)} mm` : `${STAMP_SIZES[it.size][0]}, ${num(W)} × ${num(H)} mm`;
+    page.drawText(name, { x: x * PT, y: PH - (y + 3.5) * PT, size: 9, font: bold, color: black });
+    page.drawText(`${it.copies} szt. · płytka ${num(Math.round(c.w * 10) / 10)} × ${num(Math.round(c.h * 10) / 10)} mm`, { x: x * PT, y: PH - (y + 7.5) * PT, size: 7.5, font, color: grey });
+    // the stamp: its own mm, placed with its cut's corner at (x, y + 10)
+    const ox = (x - c.x0) * PT, oy = PH - (y + 10 - c.y0) * PT;
+    page.drawSvgPath(path([r.cut]), { x: ox, y: oy, borderColor: light, borderWidth: 0.4, borderDashArray: [2, 2] });
+    page.drawSvgPath(path(r.art), { x: ox, y: oy, color: black });
+    x += w + 8; rowH = Math.max(rowH, h);
+  }
+  pdf.setTitle('Projekt pieczątki – podgląd 1:1');
+  return new Blob([await pdf.save()], { type: 'application/pdf' });
+}
+byId('exStampsProof').addEventListener('click', async () => {
+  const btn = byId('exStampsProof'); btn.disabled = true;
+  try { await saveFile(`pieczatki-podglad-1do1.pdf`, await buildStampsProof()); }
+  catch (e) { setMsg(`Couldn’t make the PDF: ${e.message || e}`, true); }
+  finally { btn.disabled = false; }
+});
 byId('exStampsXs').addEventListener('click', async () => {
   const btn = byId('exStampsXs'); btn.disabled = true;
   try { await saveFile(`pieczatki-${stamps.placed.length}szt.xs`, await buildStampsXs()); }
@@ -302,6 +436,9 @@ byId('exStampsXs').addEventListener('click', async () => {
   finally { btn.disabled = false; }
 });
 byId('stAddText').addEventListener('click', addText);
+byId('stFontAdd').addEventListener('change', async e => { await addFonts(e.target.files); e.target.value = ''; });
+onFontsChanged(fontList);
+loadLibrary();
 byId('stSvgFile').addEventListener('change', e => { const files = Array.from(e.target.files); e.target.value = ''; if (files.length) addSvgs(files); });
 
 list();

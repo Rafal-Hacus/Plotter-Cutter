@@ -191,6 +191,36 @@ describe('background library API', () => {
   });
 });
 
+describe('font library API', () => {
+  const TTF = Buffer.concat([Buffer.from([0, 1, 0, 0]), Buffer.alloc(60, 7)]);
+  const add = (over = {}) => authed('/api/fonts', { method: 'POST', body: JSON.stringify({ name: 'MyFont-Bold.ttf', family: 'My Font', style: 'bold', data: TTF.toString('base64'), ...over }) });
+  it('stores a font file with its family and style, serves it, replaces the same family and style, deletes it', async () => {
+    cookie = (await login('shop', PASSWORD)).headers.get('set-cookie').split(';')[0];
+    const r = await add();
+    expect(r.status).toBe(201);
+    const it = await r.json();
+    expect(it).toMatchObject({ name: 'MyFont-Bold.ttf', family: 'My Font', style: 'bold', kind: 'ttf', size: TTF.length });
+    const f = await authed(`/api/fonts/${it.id}/file`);
+    expect(f.headers.get('content-type')).toBe('font/ttf');
+    expect(Buffer.from(await f.arrayBuffer()).equals(TTF)).toBe(true);
+    // the same family and style again: replaced, not added
+    const again = await (await add({ name: 'MyFont-Bold-v2.ttf', family: 'my font' })).json();
+    expect(again.id).toBe(it.id);
+    await add({ style: 'italic', name: 'MyFont-Italic.ttf' });
+    expect((await (await authed('/api/fonts')).json()).fonts.map(x => `${x.family}/${x.style}`)).toEqual(['My Font/bold', 'My Font/italic']);
+    expect((await get('/api/fonts')).status).toBe(401);
+    expect((await authed(`/api/fonts/${it.id}`, { method: 'DELETE' })).status).toBe(200);
+    expect((await authed(`/api/fonts/${it.id}/file`)).status).toBe(404);
+    expect(existsSync(join(dir, 'fonts', `${it.id}.font`))).toBe(false);
+  });
+  it('accepts only real font files and known styles', async () => {
+    expect((await add({ data: Buffer.from('<svg onload=x()>  ').toString('base64') })).status).toBe(400);
+    expect((await add({ style: 'heavy' })).status).toBe(400);
+    expect((await add({ family: '' })).status).toBe(400);
+    expect((await (await add({ data: Buffer.concat([Buffer.from('OTTO'), Buffer.alloc(20)]).toString('base64'), style: 'regular' })).json()).kind).toBe('otf');
+  });
+});
+
 describe('lockout', () => {
   it('locks an address out after 5 wrong passwords', async () => {
     const s = await start();

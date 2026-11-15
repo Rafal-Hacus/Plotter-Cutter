@@ -1,7 +1,10 @@
-// Lines of text as outlines (filled rings, y down), from a font loaded with fontkit. Each line is centred (or set
-// left / right), one under the other; sizes are in em of the font (the stamp fits the result to its size anyway).
-// opts: { align: 'center' | 'left' | 'right', spacing (line distance in em, e.g. 1.15), sizes (relative size per
-//         line, default 1), steps (points per curve) }
+// Text as outlines (filled rings, y down, in em of the font): lines one under the other, each centred / left /
+// right, with its own size, made of runs in bold, italic and underlined. Fonts come from fontkit.
+// When a family has no bold or italic face, it is made up: bold by thickening the letters, italic by slanting them.
+import { offset, union } from './stamp.js';
+
+export const FAUX_BOLD = 0.03; // em added around each letter
+export const FAUX_SLANT = Math.tan(12 * Math.PI / 180);
 
 function flattenGlyph(cmds, ox, oy, k, steps, out) {
   let cur = null, last = [0, 0], start = [0, 0];
@@ -23,25 +26,55 @@ function flattenGlyph(cmds, ox, oy, k, steps, out) {
   }
   close();
 }
-export function textOutlines(font, lines, { align = 'center', spacing = 1.15, sizes = [], steps = 12 } = {}) {
-  const upm = font.unitsPerEm, rings = [], widths = [];
-  const laid = lines.map((text, i) => {
-    const s = sizes[i] || 1, run = text ? font.layout(text) : { glyphs: [], positions: [] };
-    const w = run.positions.reduce((a, p) => a + p.xAdvance, 0) / upm * s;
-    widths.push(w);
-    return { run, s };
-  });
-  const maxW = Math.max(0, ...widths);
-  let y = 0;
-  laid.forEach(({ run, s }, i) => {
-    y += (i ? spacing * s : (font.ascent / upm) * s); // baseline: the first line's ascent, then the line distance
-    let x = align === 'left' ? 0 : align === 'right' ? maxW - widths[i] : (maxW - widths[i]) / 2;
-    const k = s / upm;
-    run.glyphs.forEach((g, j) => {
-      const p = run.positions[j];
-      flattenGlyph(g.path.commands, x + p.xOffset * k, y - p.yOffset * k, k, steps, rings);
-      x += p.xAdvance * k;
+
+// lines: [{ align: 'center' | 'left' | 'right', size (relative, 1 = normal), runs: [{ text, bold, italic, underline }] }]
+// fontFor(bold, italic) -> { font, fauxBold, fauxItalic }: the face to use, and what has to be made up
+// opts: { spacing (line distance in em of the line's size), steps (points per curve) }
+export function richOutlines(lines, fontFor, { spacing = 1.15, steps = 12 } = {}) {
+  const base = fontFor(false, false).font, rings = [];
+  // measure each run, then each line
+  const laid = lines.map(line => {
+    const s = line.size || 1;
+    let w = 0;
+    const runs = (line.runs || []).filter(r => r.text).map(r => {
+      const f = fontFor(!!r.bold, !!r.italic), run = f.font.layout(r.text), k = s / f.font.unitsPerEm;
+      // a made-up bold is wider by its thickening on each letter
+      const adv = run.positions.reduce((a, p) => a + p.xAdvance, 0) * k + (f.fauxBold ? FAUX_BOLD * s * run.glyphs.length : 0);
+      const out = { r, f, run, k, x: w, w: adv };
+      w += adv;
+      return out;
     });
+    return { line, s, runs, w };
+  });
+  const maxW = Math.max(0, ...laid.map(l => l.w));
+  let y = 0, prev = 0;
+  laid.forEach((L, i) => {
+    // baseline: the first line's ascent; then the line distance, weighted towards this line's size
+    y += i ? spacing * (0.3 * prev + 0.7 * L.s) : (base.ascent / base.unitsPerEm) * L.s;
+    prev = L.s;
+    const x0 = L.line.align === 'left' ? 0 : L.line.align === 'right' ? maxW - L.w : (maxW - L.w) / 2;
+    for (const R of L.runs) {
+      let rr = [], x = x0 + R.x;
+      const fauxStep = R.f.fauxBold ? FAUX_BOLD * L.s : 0;
+      R.run.glyphs.forEach((g, j) => {
+        const p = R.run.positions[j];
+        flattenGlyph(g.path.commands, x + fauxStep + p.xOffset * R.k, y - p.yOffset * R.k, R.k, steps, rr);
+        x += p.xAdvance * R.k + fauxStep;
+      });
+      if (R.f.fauxBold && rr.length) rr = offset(union(rr), fauxStep, 'round');
+      if (R.r.underline) {
+        const font = R.f.font, pos = (font.underlinePosition || -0.1 * font.unitsPerEm) * R.k, th = Math.max(0.04 * L.s, (font.underlineThickness || 0.06 * font.unitsPerEm) * R.k);
+        const uy = y - pos - th / 2, ux0 = x0 + R.x, ux1 = ux0 + R.w;
+        rr.push([[ux0, uy], [ux1, uy], [ux1, uy + th], [ux0, uy + th]]);
+      }
+      if (R.f.fauxItalic) rr = rr.map(r => r.map(([px, py]) => [px + (y - py) * FAUX_SLANT, py]));
+      rings.push(...rr);
+    }
   });
   return rings;
+}
+
+// plain lines in one font (each line one run)
+export function textOutlines(font, lines, { align = 'center', spacing = 1.15, sizes = [], steps = 12 } = {}) {
+  return richOutlines(lines.map((text, i) => ({ align, size: sizes[i] || 1, runs: [{ text }] })), () => ({ font }), { spacing, steps });
 }

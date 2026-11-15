@@ -51,6 +51,7 @@ src/core/             pure code, no app state, unit tested
   grid.js             straight cuts through a grid of equal pieces, and the order they are cut in
   util.js             small helpers
 src/presets.js        the Saved settings panel (talks to the server's /api)
+src/stampfonts.js     the stamp fonts: built-in families, your font files (server font library), the editor's font
 src/winlib.js         the winietki background library panel
 src/editor.js         the picture editor (fit / rotate / stretch / AI fill / AI upscale), used by Print sheets, the card modes, the winietki background
 src/lib/ai.js         the page's side of the AI: hands jobs to the worker, canvas <-> pixels
@@ -61,6 +62,7 @@ server/               Node server, no runtime dependencies
   setup.html, login.html
   auth.js             scrypt passwords, signed session cookies, login lockout
   store.js            saved settings in /data/presets.json (atomic writes, validation)
+  fonts.js            font library for the stamps in /data/fonts (+ fonts.json), font files sniffed
   library.js          background library in /data/backgrounds (+ backgrounds.json), file types sniffed
   static.js           serves dist/
   hash-password.js    makes AUTH_PASSWORD_HASH

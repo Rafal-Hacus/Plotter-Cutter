@@ -218,6 +218,11 @@
       <p class="hint">Rubber stamps for the xTool P2: type the text or load an SVG, pick the size, and save an xTool Studio project with everything set: the text fitted to the size (proportions kept) and mirrored, the cut around it, the two engraving layers, the laser settings, each stamp a group.</p>
       <div class="actions"><button type="button" class="primary" id="stAddText">Add a stamp (text)</button><label class="btn">Add SVG files<input id="stSvgFile" type="file" accept=".svg,image/svg+xml" multiple></label></div>
       <ul class="designs" id="stList"></ul>
+      <details class="sub"><summary>Your fonts</summary>
+      <p class="hint">Font files you add (TrueType, OpenType, WOFF) are kept on the server and offered in every stamp’s font list. Add each style as its own file (Regular, Bold, Italic, Bold Italic): they join one family by the name inside the file. A family without a bold or italic file gets a made-up one.</p>
+      <div class="actions"><label class="btn">Add font files<input id="stFontAdd" type="file" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" multiple></label><input id="stFontFile" type="file" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" multiple hidden></div>
+      <ul class="stfonts" id="stFonts"></ul>
+      </details>
       <div class="row"><label for="stSize">Size of new stamps</label><select id="stSize"><option value="b1s">Wagraf B1s (28 × 12 mm)</option><option value="b2">Wagraf B2 (39 × 15 mm)</option><option value="b3" selected>Wagraf B3 (48 × 19 mm)</option><option value="b4">Wagraf B4 (59 × 25 mm)</option><option value="custom">Custom size</option></select></div>
       <details class="sub"><summary>Layout of a stamp</summary>
       <div class="row"><label for="stMarginX">Space from the text to the cut, sides</label><span class="mm"><input id="stMarginX" type="number" min="0" step="0.1" value="2.3">mm</span></div>
@@ -276,6 +281,7 @@
       </div>
       <div class="actions" id="stampsExports" hidden>
         <button type="button" class="primary" id="exStampsXs" disabled>xTool project (.xs)</button>
+        <button type="button" id="exStampsProof" disabled>Client proof PDF (real size)</button>
       </div>
       <div class="actions" id="vinylExports" hidden>
         <button type="button" class="primary" id="exVinylPlt" disabled>PLT for Skycut (zip)</button>

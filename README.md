@@ -232,15 +232,19 @@ CI (GitHub Actions, started by hand for now: Actions → CI → Run workflow) ru
 ## Pieczątki (rubber stamps, xTool P2 laser)
 
 **Pieczątki** makes rubber stamps as an xTool Studio project (`.xs`) that opens with everything set. Add a stamp by
-typing its lines (fonts: an Arial-like Liberation Sans, bold or regular, Montserrat, Playfair, or your own font
-file) or from an SVG (filled shapes and stroked lines; text in the SVG has to be converted to outlines). Sizes:
+typing it in the editor (bold, italic, underline, a size and alignment per line; fonts: Arial-like Liberation Sans,
+Times-like Tinos, Courier-like Cousine, Roboto, Open Sans, Montserrat, Playfair, Great Vibes, or **your own font
+files**, kept on the server under **Your fonts**; a family without bold or italic gets a made-up one) or from an SVG
+(filled shapes and stroked lines; text in the SVG has to be converted to outlines). **Client proof PDF** prints every
+stamp at its real size on A4 (as it stamps, with its size, copies and a 50 mm check line). Sizes:
 Wagraf B1s 28 × 12, B2 39 × 15, B3 48 × 19, B4 59 × 25 mm, or your own. Each stamp, built like the stamp made by
 hand in xTool Studio:
 
 - the text is fitted to the size with its proportions kept, 2.3 mm from the cut at the sides and 0.8 mm at the top
   and bottom, and mirrored;
-- **black** (cut, 80 % power, speed 20, 2 passes): around the text with straight edges and sharp corners (or a
-  rectangle / rounded rectangle of the size);
+- **black** (cut, 80 % power, speed 20, 2 passes): around the text with straight edges and sharp corners, straight
+  along the top and the bottom, and always exactly the stamp size (e.g. 48 × 19 mm for B3, also when the text is
+  limited by the height) (or a rectangle / rounded rectangle of the size);
 - **blue** (fill engraving, 30 %, speed 400, 300 lines/inch, 1 pass): the stamp less the letters;
 - **red** (fill engraving, 35 %, speed 300, 200 lines/inch, 5 passes): the stamp grown 0.8 mm past the cut less the
   letters grown 0.2 mm (a shoulder under them).
