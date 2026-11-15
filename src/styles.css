@@ -177,6 +177,14 @@ dialog.editor::backdrop{background:rgba(8,16,12,.55)}
 .securenote a{color:var(--accent);font-weight:650}
 /* pieczątki: the text of a stamp, and the small number fields side by side */
 .stamp .sttext{display:grid;gap:4px;margin:6px 0;font-size:12.5px;color:var(--muted)}
-.stamp textarea{width:100%;box-sizing:border-box;font:inherit;font-size:13px;resize:vertical}
+/* the stamp's text editor: a toolbar and the text, as the lines will be set (centred, bold, sizes) */
+.steditbar{display:flex;flex-wrap:wrap;gap:3px;margin:6px 0 4px}
+.steditbar button{min-width:30px;padding:3px 7px;font-size:13px;line-height:1.2}
+.steditbar .sep{width:6px}
+.steditor{min-height:78px;max-height:260px;overflow:auto;padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink,inherit);font-size:15px;line-height:1.25;outline:none;white-space:pre;overflow-x:auto}
+.steditor:focus{border-color:var(--accent,#1d6b50);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent,#1d6b50) 25%,transparent)}
+.steditor>div{min-height:1.1em}
+.stfonts{list-style:none;margin:6px 0;padding:0;display:grid;gap:4px;font-size:12.5px}
+.stfonts li{display:flex;gap:8px;align-items:baseline;justify-content:space-between}
 .stamp .fields input[type=number]{width:62px}
 .stamp .thumb svg{display:block}

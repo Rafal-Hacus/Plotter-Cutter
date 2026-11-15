@@ -1,9 +1,9 @@
 // Rubber stamps for the laser (xTool): the artwork (letters, or the filled shapes of an SVG) fitted to the stamp size,
 // the cut line around it, and the two engraving layers, following the layout of a stamp made by hand in xTool Studio:
-//   cut  (black, vector cut): the convex hull around the artwork (its letters' corners, so straight edges and sharp
-//        corners) grown by `marginX` at the sides and `marginY` at the top and bottom (or a rectangle / rounded
-//        rectangle of the size). The artwork is fitted to the size less those margins, so the cut touches the size
-//        where the artwork is widest and tallest;
+//   cut  (black, vector cut): the convex hull around the artwork's rows (each line of text as a box, so straight
+//        edges, sharp corners, and the top and bottom straight) grown by `marginX` at the sides and `marginY` at the
+//        top and bottom, then stretched to the stamp size: the rubber cut out is always exactly W x H (or a
+//        rectangle / rounded rectangle of the size). The artwork is fitted to the size less those margins;
 //   blue (fill engraving, the finishing pass): the cut shape with the artwork left out, so the letters stay raised;
 //   red  (fill engraving, the deep pass): the cut shape grown by `outerGrow` (0.8 mm: the edge is engraved past the
 //        cut) with the artwork grown by `textGrow` (0.2 mm: a shoulder under the letters) left out.
@@ -64,6 +64,16 @@ function simplifyConvex(ring, tol = 0.01) {
   }
   return r;
 }
+// The rows of the artwork: shapes whose heights overlap form one row (a line of text), each row one box
+export function rowBoxes(rings) {
+  const boxes = rings.map(r => bbox([r])).sort((a, b) => a.y0 - b.y0), rows = [];
+  for (const q of boxes) {
+    const row = rows[rows.length - 1];
+    if (row && q.y0 < row.y1 - 1e-9) { row.x0 = Math.min(row.x0, q.x0); row.x1 = Math.max(row.x1, q.x1); row.y1 = Math.max(row.y1, q.y1); }
+    else rows.push({ x0: q.x0, y0: q.y0, x1: q.x1, y1: q.y1 });
+  }
+  return rows;
+}
 // a convex ring grown by mx sideways and my up and down, corners kept sharp: grown evenly in a space squeezed
 // sideways by my / mx, then stretched back
 function growXY(ring, mx, my) {
@@ -99,11 +109,14 @@ export function buildStamp(art, W, H, opts = {}) {
   if (o.shape === 'rect') cut = roundedRect(0, 0, W, H, 0);
   else if (o.shape === 'round') cut = roundedRect(0, 0, W, H, o.radius);
   else {
-    // around the corners of each shape (each letter's box): straight edges, sharp corners
+    // around the rows of the artwork (each line of text as one box): straight edges, sharp corners, and the top
+    // and bottom straight along the first and the last line
     const corners = [];
-    for (const r of A) { const q = bbox([r]); corners.push([q.x0, q.y0], [q.x1, q.y0], [q.x1, q.y1], [q.x0, q.y1]); }
-    const hull = simplifyConvex(convexHull(corners));
-    cut = growXY(hull, mx, my);
+    for (const q of rowBoxes(A)) corners.push([q.x0, q.y0], [q.x1, q.y0], [q.x1, q.y1], [q.x0, q.y1]);
+    const grown = growXY(simplifyConvex(convexHull(corners)), mx, my), g = bbox([grown]);
+    // and as big as the stamp: the artwork is fitted to one side, the cut is stretched to the other as well, so
+    // the rubber that is cut out is exactly W x H
+    cut = grown.map(([x, y]) => [(x - g.x0) * W / g.w, (y - g.y0) * H / g.h]);
   }
   const blue = [cut, ...A];
   const red = [...offset([cut], o.outerGrow, 'miter'), ...offset(A, o.textGrow, 'round')];
