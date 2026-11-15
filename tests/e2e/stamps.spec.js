@@ -35,6 +35,10 @@ test('pieczątki: a text stamp (B3) and an SVG stamp, saved as an xTool project 
   await logo.locator('.stshape').selectOption('rect');
   await expect(logo.locator('.stst')).toContainText('59 × 25 mm: text 54.4 × 16.2 mm, cut 59 × 25 mm.');
   await expect(page.locator('#count')).toHaveText('3 stamps on the bed');
+  // its own distance from the text to the cut: 5 mm at the sides, the text gets narrower, the cut stays 59 x 25
+  await logo.locator('.stmx').fill('5');
+  await expect(logo.locator('.stst')).toContainText('59 × 25 mm: text 49 ×');
+  await expect(logo.locator('.stst')).toContainText('cut 59 × 25 mm.');
 
   const files = unzipDeflated(await download(page, 'exStampsXs'));
   expect(Object.keys(files)).toContain('.format');
