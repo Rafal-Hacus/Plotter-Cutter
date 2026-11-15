@@ -64,13 +64,26 @@ function simplifyConvex(ring, tol = 0.01) {
   }
   return r;
 }
-// The rows of the artwork: shapes whose heights overlap form one row (a line of text), each row one box
+// The rows of the artwork: shapes whose heights overlap form one row (a line of text), each row one box;
+// small rows (accents above a line) join their line
 export function rowBoxes(rings) {
   const boxes = rings.map(r => bbox([r])).sort((a, b) => a.y0 - b.y0), rows = [];
   for (const q of boxes) {
     const row = rows[rows.length - 1];
     if (row && q.y0 < row.y1 - 1e-9) { row.x0 = Math.min(row.x0, q.x0); row.x1 = Math.max(row.x1, q.x1); row.y1 = Math.max(row.y1, q.y1); }
     else rows.push({ x0: q.x0, y0: q.y0, x1: q.x1, y1: q.y1 });
+  }
+  // accents and dots over capitals (Ż, Ś, Ę) stand apart from their line: a row much lower than the others joins
+  // the nearest row (above or below), so the line keeps its full width and the cut stays straight along it
+  const tall = Math.max(0, ...rows.map(r => r.y1 - r.y0));
+  for (let i = 0; i < rows.length && rows.length > 1;) {
+    const r = rows[i];
+    if (r.y1 - r.y0 >= 0.45 * tall) { i++; continue; }
+    const up = rows[i - 1], down = rows[i + 1];
+    const into = !up ? down : !down ? up : (down.y0 - r.y1 <= r.y0 - up.y1 ? down : up);
+    into.x0 = Math.min(into.x0, r.x0); into.x1 = Math.max(into.x1, r.x1); into.y0 = Math.min(into.y0, r.y0); into.y1 = Math.max(into.y1, r.y1);
+    rows.splice(i, 1);
+    i = 0;
   }
   return rows;
 }

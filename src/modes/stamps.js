@@ -91,7 +91,9 @@ async function artOf(it) {
   return richOutlines(lines, await fontResolver(it.font), { spacing: it.spacing / 100 });
 }
 function stampOpts(o, it) {
-  return { marginX: o.stMarginX, marginY: o.stMarginY, textGrow: o.stShoulder, outerGrow: o.stEdge, shape: it.shape, radius: it.radius };
+  // the stamp's own distance from the text to the cut, else the one under Layout of a stamp
+  const own = v => (v === '' || v == null || !isFinite(v) ? null : Math.max(0, +v));
+  return { marginX: own(it.mx) ?? o.stMarginX, marginY: own(it.my) ?? o.stMarginY, textGrow: o.stShoulder, outerGrow: o.stEdge, shape: it.shape, radius: it.radius };
 }
 async function compute(o, stale) {
   for (const it of stamps.items) {
@@ -145,6 +147,8 @@ function list() {
         <label>Copies<input type="number" class="stq" min="0" step="1"></label></div>
       <div class="fields"><label>Cut<select class="stshape"><option value="hull">Around the text (straight edges)</option><option value="rect">Rectangle of the size</option><option value="round">Rounded rectangle of the size</option></select></label>
         <label class="stradius">Corner radius<input type="number" class="str" min="0" step="0.5"> mm</label></div>
+      <div class="fields"><label>Text to cut, sides<input type="number" class="stmx" min="0" step="0.1"> mm</label>
+        <label>top and bottom<input type="number" class="stmy" min="0" step="0.1"> mm</label></div>
       <div class="status stst"></div></div><button type="button" class="remove">×</button>`;
     const q = s => li.querySelector(s), dn = q('.dname');
     dn.textContent = it.name; dn.title = it.name;
@@ -187,6 +191,11 @@ function list() {
     h.addEventListener('input', () => { it.h = parseFloat(h.value) || 0; schedule(); });
     const cq = q('.stq'); cq.value = it.copies; cq.addEventListener('input', () => { const v = parseInt(cq.value, 10); it.copies = isFinite(v) && v >= 0 ? v : 0; schedule(); });
     const sh = q('.stshape'); sh.value = it.shape; sh.addEventListener('change', () => { it.shape = sh.value; changed(); });
+    // empty: the distances under Layout of a stamp (shown greyed as the placeholder)
+    for (const [cls, key, opt] of [['.stmx', 'mx', 'stMarginX'], ['.stmy', 'my', 'stMarginY']]) {
+      const inp = q(cls); inp.value = it[key] ?? ''; inp.placeholder = String(readOpts()[opt]);
+      inp.addEventListener('input', () => { it[key] = inp.value === '' ? null : parseFloat(inp.value); schedule(); });
+    }
     const rr = q('.str'); rr.value = it.radius; rr.addEventListener('input', () => { it.radius = Math.max(0, parseFloat(rr.value) || 0); schedule(); });
     const rm = q('.remove'); rm.setAttribute('aria-label', `Remove ${it.name}`);
     rm.addEventListener('click', () => { stamps.items.splice(stamps.items.indexOf(it), 1); list(); schedule(); });
@@ -438,6 +447,8 @@ byId('exStampsXs').addEventListener('click', async () => {
 byId('stAddText').addEventListener('click', addText);
 byId('stFontAdd').addEventListener('change', async e => { await addFonts(e.target.files); e.target.value = ''; });
 onFontsChanged(fontList);
+// the stamps without their own distance to the cut show the general one
+for (const [id, cls] of [['stMarginX', '.stmx'], ['stMarginY', '.stmy']]) byId(id).addEventListener('input', () => { for (const el of document.querySelectorAll(`#stList ${cls}`)) el.placeholder = byId(id).value; });
 loadLibrary();
 byId('stSvgFile').addEventListener('change', e => { const files = Array.from(e.target.files); e.target.value = ''; if (files.length) addSvgs(files); });
 

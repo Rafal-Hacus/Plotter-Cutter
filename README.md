@@ -241,7 +241,7 @@ Wagraf B1s 28 × 12, B2 39 × 15, B3 48 × 19, B4 59 × 25 mm, or your own. Each
 hand in xTool Studio:
 
 - the text is fitted to the size with its proportions kept, 2.3 mm from the cut at the sides and 0.8 mm at the top
-  and bottom, and mirrored;
+  and bottom (each stamp can have its own distances), and mirrored;
 - **black** (cut, 80 % power, speed 20, 2 passes): around the text with straight edges and sharp corners, straight
   along the top and the bottom, and always exactly the stamp size (e.g. 48 × 19 mm for B3, also when the text is
   limited by the height) (or a rectangle / rounded rectangle of the size);
