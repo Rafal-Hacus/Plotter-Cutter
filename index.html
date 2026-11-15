@@ -31,7 +31,7 @@
       <p class="hint" id="presetMsg" role="status"></p>
       <p class="hint">Saves the mode and every setting (cut lines, sheet, layout, cards, PLT…) on the server. Picking one applies it; the default loads when the app opens.</p>
     </section>
-    <nav class="modes" aria-label="Mode"><div class="mgroup" role="group" aria-label="Print &amp; cut"><span class="mlabel">Print &amp; cut</span><div class="mbtns"><button type="button" data-mode="stickers" aria-pressed="true">Stickers</button><button type="button" data-mode="cards" aria-pressed="false">Business cards</button><button type="button" data-mode="vouchers" aria-pressed="false">Vouchers</button><button type="button" data-mode="winietka" aria-pressed="false">Winietki</button><button type="button" data-mode="roll" aria-pressed="false">Roll</button></div></div><div class="mgroup" role="group" aria-label="Print for the guillotine"><span class="mlabel">Print for the guillotine</span><div class="mbtns"><button type="button" data-mode="guillotine" aria-pressed="false">Guillotine</button><button type="button" data-mode="deck" aria-pressed="false">Card deck</button><button type="button" data-mode="gang" aria-pressed="false">Print sheets</button><button type="button" data-mode="morgana" aria-pressed="false">Morgana CardXtra</button><button type="button" data-mode="duplex" aria-pressed="false">Duplex test</button></div></div><div class="mgroup" role="group" aria-label="Cut or draw only"><span class="mlabel">Cut or draw only</span><div class="mbtns"><button type="button" data-mode="vinyl" aria-pressed="false">Vinyl</button><button type="button" data-mode="pen" aria-pressed="false">Pen</button><button type="button" data-mode="squares" aria-pressed="false">Squares</button><button type="button" data-mode="svgplt" aria-pressed="false">SVG to PLT</button></div></div></nav>
+    <nav class="modes" aria-label="Mode"><div class="mgroup" role="group" aria-label="Print &amp; cut"><span class="mlabel">Print &amp; cut</span><div class="mbtns"><button type="button" data-mode="stickers" aria-pressed="true">Stickers</button><button type="button" data-mode="cards" aria-pressed="false">Business cards</button><button type="button" data-mode="vouchers" aria-pressed="false">Vouchers</button><button type="button" data-mode="winietka" aria-pressed="false">Winietki</button><button type="button" data-mode="roll" aria-pressed="false">Roll</button></div></div><div class="mgroup" role="group" aria-label="Print for the guillotine"><span class="mlabel">Print for the guillotine</span><div class="mbtns"><button type="button" data-mode="guillotine" aria-pressed="false">Guillotine</button><button type="button" data-mode="deck" aria-pressed="false">Card deck</button><button type="button" data-mode="gang" aria-pressed="false">Print sheets</button><button type="button" data-mode="morgana" aria-pressed="false">Morgana CardXtra</button><button type="button" data-mode="duplex" aria-pressed="false">Duplex test</button></div></div><div class="mgroup" role="group" aria-label="Cut or draw only"><span class="mlabel">Cut or draw only</span><div class="mbtns"><button type="button" data-mode="vinyl" aria-pressed="false">Vinyl</button><button type="button" data-mode="pen" aria-pressed="false">Pen</button><button type="button" data-mode="squares" aria-pressed="false">Squares</button><button type="button" data-mode="svgplt" aria-pressed="false">SVG to PLT</button></div></div><div class="mgroup" role="group" aria-label="Laser (xTool)"><span class="mlabel">Laser (xTool)</span><div class="mbtns"><button type="button" data-mode="stamps" aria-pressed="false">Pieczątki</button></div></div></nav>
 
     <section aria-labelledby="h-stickers" id="secStickers">
       <h2 id="h-stickers">Stickers</h2>
@@ -213,6 +213,23 @@
       <div class="row" id="rowRollSheet" hidden><label for="rollSheet">Show section</label><select id="rollSheet"></select></div>
     </section>
 
+    <section aria-labelledby="h-stamps" id="secStamps" hidden>
+      <h2 id="h-stamps">Pieczątki</h2>
+      <p class="hint">Rubber stamps for the xTool P2: type the text or load an SVG, pick the size, and save an xTool Studio project with everything set: the text fitted to the size (proportions kept) and mirrored, the cut around it, the two engraving layers, the laser settings, each stamp a group.</p>
+      <div class="actions"><button type="button" class="primary" id="stAddText">Add a stamp (text)</button><label class="btn">Add SVG files<input id="stSvgFile" type="file" accept=".svg,image/svg+xml" multiple></label></div>
+      <ul class="designs" id="stList"></ul>
+      <div class="row"><label for="stSize">Size of new stamps</label><select id="stSize"><option value="b1s">Wagraf B1s (28 × 12 mm)</option><option value="b2">Wagraf B2 (39 × 15 mm)</option><option value="b3" selected>Wagraf B3 (48 × 19 mm)</option><option value="b4">Wagraf B4 (59 × 25 mm)</option><option value="custom">Custom size</option></select></div>
+      <details class="sub"><summary>Layout of a stamp</summary>
+      <div class="row"><label for="stMarginX">Space from the text to the cut, sides</label><span class="mm"><input id="stMarginX" type="number" min="0" step="0.1" value="2.3">mm</span></div>
+      <div class="row"><label for="stMarginY">Space from the text to the cut, top and bottom</label><span class="mm"><input id="stMarginY" type="number" min="0" step="0.1" value="0.8">mm</span></div>
+      <div class="row"><label for="stShoulder">Shoulder under the letters (deep engraving)</label><span class="mm"><input id="stShoulder" type="number" min="0" step="0.05" value="0.2">mm</span></div>
+      <div class="row"><label for="stEdge">Deep engraving past the cut</label><span class="mm"><input id="stEdge" type="number" min="0" step="0.1" value="0.8">mm</span></div>
+      <p class="hint">As in the stamp made in xTool Studio. Layers and laser settings (P2): blue, fill engraving 30 % power, speed 400, 300 lines/inch, 1 pass; red, fill engraving 35 %, speed 300, 200 lines/inch, 5 passes; black, cut 80 %, speed 20, 2 passes.</p>
+      </details>
+      <div class="row"><label for="stGap">Space between stamps on the bed</label><span class="mm"><input id="stGap" type="number" min="0" step="0.5" value="3">mm</span></div>
+      <div class="row"><label for="stBedEdge">Distance from the bed edges</label><span class="mm"><input id="stBedEdge" type="number" min="0" step="1" value="10">mm</span></div>
+    </section>
+
     <section aria-labelledby="h-vinyl" id="secVinyl" hidden>
       <h2 id="h-vinyl">Vinyl</h2>
       <p class="hint">Cuts the vector shapes from your SVGs exactly as drawn, with no registration marks and no print. Add the files above.</p>
@@ -256,6 +273,9 @@
         <button type="button" class="primary" id="exRollPdf" disabled>Print PDF</button>
         <button type="button" id="exRollPlt" disabled>PLT for Skycut (zip)</button>
         <button type="button" id="exRollSvg" disabled>Cut SVG</button>
+      </div>
+      <div class="actions" id="stampsExports" hidden>
+        <button type="button" class="primary" id="exStampsXs" disabled>xTool project (.xs)</button>
       </div>
       <div class="actions" id="vinylExports" hidden>
         <button type="button" class="primary" id="exVinylPlt" disabled>PLT for Skycut (zip)</button>

@@ -25,6 +25,7 @@
     "@tensorflow/tfjs": "4.22.0",
     "@tensorflow/tfjs-backend-webgpu": "4.22.0",
     "@upscalerjs/esrgan-thick": "1.0.0",
+    "clipper-lib": "^6.4.2",
     "migan-onnx": "1.0.0",
     "onnxruntime-web": "1.31.1",
     "pdf-lib": "1.17.1",
