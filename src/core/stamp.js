@@ -1,0 +1,111 @@
+// Rubber stamps for the laser (xTool): the artwork (letters, or the filled shapes of an SVG) fitted to the stamp size,
+// the cut line around it, and the two engraving layers, following the layout of a stamp made by hand in xTool Studio:
+//   cut  (black, vector cut): the convex hull around the artwork (its letters' corners, so straight edges and sharp
+//        corners) grown by `marginX` at the sides and `marginY` at the top and bottom (or a rectangle / rounded
+//        rectangle of the size). The artwork is fitted to the size less those margins, so the cut touches the size
+//        where the artwork is widest and tallest;
+//   blue (fill engraving, the finishing pass): the cut shape with the artwork left out, so the letters stay raised;
+//   red  (fill engraving, the deep pass): the cut shape grown by `outerGrow` (0.8 mm: the edge is engraved past the
+//        cut) with the artwork grown by `textGrow` (0.2 mm: a shoulder under the letters) left out.
+// Both engraving layers are compound paths filled even-odd: the artwork is unioned first so every letter is one
+// clean outline (its counters are holes, engraved like the background).
+// Units: mm, y down; rings are arrays of [x, y], closed implicitly.
+import ClipperLib from 'clipper-lib';
+
+const S = 10000; // Clipper works on integers: 0.1 µm
+const toC = rings => rings.map(r => r.map(([x, y]) => ({ X: Math.round(x * S), Y: Math.round(y * S) })));
+const fromC = paths => paths.map(p => p.map(q => [q.X / S, q.Y / S])).filter(r => r.length > 2);
+
+// union (non-zero: overlapping letters and shapes merge, holes stay holes)
+export function union(rings, rule = 'nonzero') {
+  const c = new ClipperLib.Clipper(), sol = new ClipperLib.Paths(), ft = rule === 'evenodd' ? ClipperLib.PolyFillType.pftEvenOdd : ClipperLib.PolyFillType.pftNonZero;
+  c.AddPaths(toC(rings), ClipperLib.PolyType.ptSubject, true);
+  c.Execute(ClipperLib.ClipType.ctUnion, sol, ft, ft);
+  return fromC(sol);
+}
+// grow (d > 0) or shrink closed shapes; join: 'round' or 'miter'
+export function offset(rings, d, join = 'round') {
+  if (!d) return rings.map(r => r.slice());
+  const co = new ClipperLib.ClipperOffset(4, 0.002 * S), sol = new ClipperLib.Paths();
+  co.AddPaths(toC(rings), join === 'miter' ? ClipperLib.JoinType.jtMiter : ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);
+  co.Execute(sol, d * S);
+  return fromC(sol);
+}
+// open lines (SVG strokes) as filled shapes of width w
+export function strokeToShapes(lines, w, closed) {
+  const co = new ClipperLib.ClipperOffset(4, 0.002 * S), sol = new ClipperLib.Paths();
+  co.AddPaths(toC(lines), ClipperLib.JoinType.jtMiter, closed ? ClipperLib.EndType.etClosedLine : ClipperLib.EndType.etOpenButt);
+  co.Execute(sol, w / 2 * S);
+  return fromC(sol);
+}
+export function bbox(rings) {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const r of rings) for (const [x, y] of r) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0 };
+}
+export function convexHull(points) {
+  const P = points.slice().sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (P.length < 3) return P;
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+  for (const p of P) { while (lo.length >= 2 && cross(lo[lo.length - 2], lo[lo.length - 1], p) <= 0) lo.pop(); lo.push(p); }
+  for (let i = P.length - 1; i >= 0; i--) { const p = P[i]; while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
+  return lo.slice(0, -1).concat(up.slice(0, -1));
+}
+// drop points that lie (within tol) on the line between their neighbours: a hull of curved letters has many
+function simplifyConvex(ring, tol = 0.01) {
+  let r = ring.slice(), changed = true;
+  while (changed && r.length > 3) {
+    changed = false;
+    for (let i = 0; i < r.length && r.length > 3; i++) {
+      const a = r[(i + r.length - 1) % r.length], b = r[i], c = r[(i + 1) % r.length];
+      const L = Math.hypot(c[0] - a[0], c[1] - a[1]), dist = L ? Math.abs((c[0] - a[0]) * (a[1] - b[1]) - (a[0] - b[0]) * (c[1] - a[1])) / L : 0;
+      if (dist < tol) { r.splice(i, 1); changed = true; i--; }
+    }
+  }
+  return r;
+}
+// a convex ring grown by mx sideways and my up and down, corners kept sharp: grown evenly in a space squeezed
+// sideways by my / mx, then stretched back
+function growXY(ring, mx, my) {
+  if (!mx || !my) { const m = mx || my; return m ? offset([ring], m, 'miter')[0] : ring; }
+  const f = my / mx, g = offset([ring.map(([x, y]) => [x * f, y])], my, 'miter');
+  const r = g.reduce((best, q) => (!best || q.length > best.length ? q : best), null);
+  return simplifyConvex(r.map(([x, y]) => [x / f, y]));
+}
+function roundedRect(x, y, w, h, r) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  if (!r) return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+  const pts = [], corner = (cx, cy, a0) => { const n = Math.max(6, Math.ceil(r * 8)); for (let i = 0; i <= n; i++) { const a = a0 + Math.PI / 2 * i / n; pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } };
+  corner(x + w - r, y + r, -Math.PI / 2); corner(x + w - r, y + h - r, 0); corner(x + r, y + h - r, Math.PI / 2); corner(x + r, y + r, Math.PI);
+  return pts;
+}
+// as measured in the stamp made in xTool Studio: 38 x 19 mm, text 33.37 x 17.39 mm, red edge and letter shoulder
+export const STAMP_DEFAULTS = { marginX: 2.3, marginY: 0.8, textGrow: 0.2, outerGrow: 0.8 };
+
+// art: filled rings (any orientation, overlaps allowed), any units; W x H: the stamp size (mm).
+// opts: { marginX, marginY, textGrow, outerGrow, shape: 'hull' | 'rect' | 'round', radius, fit (true: scale the
+//         artwork, with its proportions kept, to fill W x H less the margins; false: keep its size, centred) }
+// Returns { art, cut, blue, red, scale, W, H } in stamp mm (origin: the top left corner of W x H).
+export function buildStamp(art, W, H, opts = {}) {
+  const o = { ...STAMP_DEFAULTS, shape: 'hull', radius: 2, fit: true, ...opts };
+  let A = union(art);
+  if (!A.length) throw new Error('Nothing to engrave: the stamp is empty.');
+  const b = bbox(A), mx = o.marginX, my = o.marginY;
+  const k = o.fit ? Math.min((W - 2 * mx) / b.w, (H - 2 * my) / b.h) : 1;
+  if (!(k > 0) || !isFinite(k)) throw new Error('The stamp is too small for its margin.');
+  const dx = W / 2 - (b.x0 + b.w / 2) * k, dy = H / 2 - (b.y0 + b.h / 2) * k;
+  A = A.map(r => r.map(([x, y]) => [x * k + dx, y * k + dy]));
+  let cut;
+  if (o.shape === 'rect') cut = roundedRect(0, 0, W, H, 0);
+  else if (o.shape === 'round') cut = roundedRect(0, 0, W, H, o.radius);
+  else {
+    // around the corners of each shape (each letter's box): straight edges, sharp corners
+    const corners = [];
+    for (const r of A) { const q = bbox([r]); corners.push([q.x0, q.y0], [q.x1, q.y0], [q.x1, q.y1], [q.x0, q.y1]); }
+    const hull = simplifyConvex(convexHull(corners));
+    cut = growXY(hull, mx, my);
+  }
+  const blue = [cut, ...A];
+  const red = [...offset([cut], o.outerGrow, 'miter'), ...offset(A, o.textGrow, 'round')];
+  return { art: A, cut, blue, red, scale: k, W, H };
+}

@@ -229,6 +229,25 @@ CI (GitHub Actions, started by hand for now: Actions → CI → Run workflow) ru
   otherwise corners are compensated twice.
 - Each PLT starts with a short V cut along the printed start arrow (outside the marks) to set the blade direction.
 
+## Pieczątki (rubber stamps, xTool P2 laser)
+
+**Pieczątki** makes rubber stamps as an xTool Studio project (`.xs`) that opens with everything set. Add a stamp by
+typing its lines (fonts: an Arial-like Liberation Sans, bold or regular, Montserrat, Playfair, or your own font
+file) or from an SVG (filled shapes and stroked lines; text in the SVG has to be converted to outlines). Sizes:
+Wagraf B1s 28 × 12, B2 39 × 15, B3 48 × 19, B4 59 × 25 mm, or your own. Each stamp, built like the stamp made by
+hand in xTool Studio:
+
+- the text is fitted to the size with its proportions kept, 2.3 mm from the cut at the sides and 0.8 mm at the top
+  and bottom, and mirrored;
+- **black** (cut, 80 % power, speed 20, 2 passes): around the text with straight edges and sharp corners (or a
+  rectangle / rounded rectangle of the size);
+- **blue** (fill engraving, 30 %, speed 400, 300 lines/inch, 1 pass): the stamp less the letters;
+- **red** (fill engraving, 35 %, speed 300, 200 lines/inch, 5 passes): the stamp grown 0.8 mm past the cut less the
+  letters grown 0.2 mm (a shoulder under them).
+
+All stamps (with copies) are laid out on the P2's 600 × 308 mm bed, each one a group, and saved as one project for
+the P2 (processing order blue, red, black, as in the original file).
+
 ## Roll (signs, labels, banners)
 
 **Roll** packs print-and-cut PDFs of any size across a roll of the width you set, as short as possible, with SignCut

@@ -15,6 +15,7 @@ const SHOWN_IN = {
   secVinyl: ['vinyl', 'pen'], vinylExports: ['vinyl', 'pen'],
   secGang: ['gang'], gangExports: ['gang'],
   secRoll: ['roll'], rollExports: ['roll'],
+  secStamps: ['stamps'], stampsExports: ['stamps'],
   secSquares: ['squares'], squaresExports: ['squares'],
   secSvgPlt: ['svgplt'], spExports: ['svgplt'],
   secDuplex: ['duplex'],
@@ -37,6 +38,7 @@ const DROP_NOTE = {
   deck: 'Drop the multi-page card PDF here (front, back, front, back…).',
   gang: 'Drop photos and PDFs here.',
   roll: 'Drop the PDFs here (signs, labels, banners).',
+  stamps: 'Add a stamp with text, or drop SVG files here.',
   vinyl: 'Drop SVG files with the shapes to cut.',
   pen: 'Drop SVG files with the lines to draw.',
   svgplt: 'Drop the print-and-cut SVG here.'
