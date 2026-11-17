@@ -110,7 +110,7 @@ const EM_MM = 10 * 25.4 / 72;
 function stampOpts(o, it) {
   // the stamp's own distance from the text to the cut, else the one under Layout of a stamp
   const own = v => (v === '' || v == null || !isFinite(v) ? null : Math.max(0, +v));
-  return { marginX: own(it.mx) ?? o.stMarginX, marginY: own(it.my) ?? o.stMarginY, textGrow: o.stShoulder, outerGrow: o.stEdge, shape: it.shape, radius: it.radius, fit: !(it.kind === 'text' && it.exact), scale: (it.scale || 100) / 100 };
+  return { marginX: own(it.mx) ?? o.stMarginX, marginY: own(it.my) ?? o.stMarginY, textGrow: o.stShoulder, shoulderScale: o.stShoulderScale, outerGrow: o.stEdge, shape: it.shape, radius: it.radius, fit: !(it.kind === 'text' && it.exact), scale: (it.scale || 100) / 100 };
 }
 // the stamp builder in a background thread (falls back to this thread if workers can't start)
 let worker = null, nextJob = 1;
@@ -269,7 +269,7 @@ function status(it) {
     st.textContent = `${num(W)} × ${num(H)} mm: text ${num(Math.round(a.w * 10) / 10)} × ${num(Math.round(a.h * 10) / 10)} mm, cut ${num(Math.round(c.w * 10) / 10)} × ${num(Math.round(c.h * 10) / 10)} mm.${it.svg && it.svg.texts ? ` ${it.svg.texts} text ${it.svg.texts === 1 ? 'element was' : 'elements were'} left out: convert text to outlines (paths) in the SVG.` : ''}`;
     // the distances from the text to the cut it used, and a warning when one was too big for the stamp
     const m = r.margins || { x: 0, y: 0 }, r2 = v => num(Math.round(v * 100) / 100);
-    st.textContent += ` Text to cut ${r2(m.x)} mm at the sides, ${r2(m.y)} mm top and bottom.`;
+    st.textContent += ` Text to cut ${r2(m.x)} mm at the sides, ${r2(m.y)} mm top and bottom; shoulder ${r2(r.shoulder ?? 0.2)} mm.`;
     if (m.cutX || m.cutY) {
       const o = stampOpts(readOpts(), it);
       st.textContent += ` The distance set (${[m.cutX ? `${r2(o.marginX)} mm` : '', m.cutY ? `${r2(o.marginY)} mm` : ''].filter(Boolean).join(' / ')}) is more than a quarter of the stamp, so it was made smaller: check “Text to cut” here and under Layout of a stamp.`;

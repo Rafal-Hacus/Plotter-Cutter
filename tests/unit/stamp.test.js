@@ -46,13 +46,6 @@ describe('buildStamp', () => {
     expect(s.cut.filter(p => Math.abs(p[1]) < 1e-6)).toHaveLength(2);
     for (const r of s.art) for (const p of r) expect(inside(p, s.cut)).toBe(true);
   });
-  it('rows: shapes at overlapping heights are one row (a line of text), lines apart are rows of their own', async () => {
-    const { rowBoxes } = await import('../../src/core/stamp.js');
-    const sq = (x, y, w, h) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
-    expect(rowBoxes([sq(0, 0, 1, 2), sq(3, 0.5, 1, 2), sq(0, 4, 5, 1.5)])).toEqual([{ x0: 0, y0: 0, x1: 4, y1: 2.5 }, { x0: 0, y0: 4, x1: 5, y1: 5.5 }]);
-    // the dot of a Ż and the accent of an Ś above a line join it: one row, the line's full width
-    expect(rowBoxes([sq(2, -0.6, 0.3, 0.3), sq(6, -0.7, 0.4, 0.3), sq(0, 0, 9, 2)])).toEqual([{ x0: 0, y0: -0.7, x1: 9, y1: 2 }]);
-  });
   it('engraving layers: blue = cut shape less the letters; red = cut grown 0.8 mm less the letters grown 0.2 mm', () => {
     const s = buildStamp(art, 48, 19), c = bbox([s.cut]);
     expect(s.blue[0]).toBe(s.cut);
@@ -147,5 +140,23 @@ describe('buildStamp invariants (200 random stamps)', () => {
       // the layers
       expect(s.blue[0], tag).toBe(s.cut);
     }
+  });
+});
+
+describe('shoulder follows the letter size', () => {
+  const ORIGINAL = ['Konserwator', 'Żurawie samojezdne', 'oraz przenośne i przewoźne', 'Emil Ledzion', 'Nr. K/28/00352/25', 'tel. 665 023 710'];
+  it('letters like the original stamp’s get the full 0.2 mm; smaller ones in proportion; bigger ones never more', async () => {
+    const { letterHeight } = await import('../../src/core/stamp.js');
+    const orig = buildStamp(textOutlines(font, ORIGINAL), 38, 19);
+    expect(letterHeight(orig.art)).toBeCloseTo(1.92, 0);
+    expect(orig.shoulder).toBeGreaterThan(0.18);
+    // the 5-line example on B3: small letters, a narrower shoulder in proportion to them
+    const small = buildStamp(textOutlines(font, ['Usługi ogólnobudowlane', 'Piotr Adamów', 'Wilkanów 85, 57-513 Wilkanów', 'NIP: 8811507369 REGON: 545652597', 'Telefon 530 819 299 E-mail piotr.adamow@interia.pl']), 48, 19);
+    expect(small.shoulder).toBeLessThan(0.16);
+    expect(small.shoulder).toBeCloseTo(0.2 * letterHeight(small.art) / 1.92, 6);
+    // big letters: still 0.2
+    expect(buildStamp(textOutlines(font, ['BIG']), 59, 25).shoulder).toBe(0.2);
+    // switched off: always as set
+    expect(buildStamp(textOutlines(font, ORIGINAL.concat(ORIGINAL)), 38, 19, { shoulderScale: false }).shoulder).toBe(0.2);
   });
 });

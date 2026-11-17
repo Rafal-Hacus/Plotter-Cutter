@@ -14,7 +14,7 @@ export const OPT_IDS = [
   'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle',
   'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap',
   'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap',
-  'stSize', 'stMarginX', 'stMarginY', 'stShoulder', 'stEdge', 'stGap', 'stBedEdge',
+  'stSize', 'stMarginX', 'stMarginY', 'stShoulder', 'stShoulderScale', 'stEdge', 'stGap', 'stBedEdge',
   'rollW', 'rollMargin', 'rollGap', 'rollBleed', 'rollRadius', 'rollOuter', 'rollTurn', 'rollMax', 'rollOnePage', 'rollForce',
   'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'
 ];
@@ -66,7 +66,7 @@ export function readOpts() {
     vWeed: text('vWeed'), vWeedMargin: num('vWeedMargin', 3, 0), vMirror: on('vMirror'),
     penForce: num('penForce', 40, 1), penFill: on('penFill'), penStyle: text('penStyle'), penSpacing: num('penSpacing', 0.4, 0.1), penAngle: signed('penAngle'),
     // pieczątki
-    stSize: text('stSize'), stMarginX: num('stMarginX', 2.3, 0), stMarginY: num('stMarginY', 0.8, 0), stShoulder: num('stShoulder', 0.2, 0),
+    stSize: text('stSize'), stMarginX: num('stMarginX', 2.3, 0), stMarginY: num('stMarginY', 0.8, 0), stShoulder: num('stShoulder', 0.2, 0), stShoulderScale: on('stShoulderScale'),
     stEdge: num('stEdge', 0.8, 0), stGap: num('stGap', 3, 0), stBedEdge: num('stBedEdge', 10, 0),
     // roll
     rollW: num('rollW', 1370, 100), rollMargin: num('rollMargin', 20, 17), rollGap: num('rollGap', 2, 0), rollBleed: num('rollBleed', 3, 0),
