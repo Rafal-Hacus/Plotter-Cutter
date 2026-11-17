@@ -232,7 +232,9 @@ CI (GitHub Actions, started by hand for now: Actions → CI → Run workflow) ru
 ## Pieczątki (rubber stamps, xTool P2 laser)
 
 **Pieczątki** makes rubber stamps as an xTool Studio project (`.xs`) that opens with everything set. Add a stamp by
-typing it in the editor (bold, italic, underline, a size and alignment per line; fonts: Arial-like Liberation Sans,
+typing it in the editor (bold, italic, underline, a size in pt and an alignment per line; the text either fits the
+stamp (the pt sizes set the proportions, the stamp shows the size the letters came out at) or is set as typed in pt;
+when a long line fills the width first, the lines spread over the height; fonts: Arial-like Liberation Sans,
 Times-like Tinos, Courier-like Cousine, Roboto, Open Sans, Montserrat, Playfair, Great Vibes, or **your own font
 files**, kept on the server under **Your fonts**; a family without bold or italic gets a made-up one) or from an SVG
 (filled shapes and stroked lines; text in the SVG has to be converted to outlines). **Client proof PDF** prints every
