@@ -72,8 +72,16 @@ export function chamferedRect(rings, W, H, mx, my) {
   const pts = [[a, 0], [W - b, 0], [W, b], [W, H - d], [W - d, H], [e, H], [0, H - e], [0, a]];
   return pts.filter((p, i) => { const q = pts[(i + 1) % pts.length]; return Math.abs(p[0] - q[0]) > 1e-9 || Math.abs(p[1] - q[1]) > 1e-9; });
 }
+// The letters' height (mm): of the shapes' heights the 75th percentile, which is the capitals and tall letters
+// (dots, accents and the holes in letters are lower); for shapes that aren't text, a fair measure of their detail
+export function letterHeight(rings) {
+  const h = rings.map(r => bbox([r])).filter(b => b.w * b.h > 0.02).map(b => b.h).sort((a, b) => a - b);
+  return h.length ? h[Math.floor((h.length - 1) * 0.75)] : REF_LETTER;
+}
+// the letters of the stamp made in xTool Studio: 1.92 mm (75th percentile), with a 0.2 mm shoulder
+export const REF_LETTER = 1.92;
 // as measured in the stamp made in xTool Studio: 38 x 19 mm, text 33.37 x 17.39 mm, red edge and letter shoulder
-export const STAMP_DEFAULTS = { marginX: 2.3, marginY: 0.8, textGrow: 0.2, outerGrow: 0.8 };
+export const STAMP_DEFAULTS = { marginX: 2.3, marginY: 0.8, textGrow: 0.2, outerGrow: 0.8, shoulderScale: true };
 
 // The distances from the text to the cut a W x H stamp uses: as set, but at most a quarter of the stamp each
 export const stampMargins = (W, H, marginX, marginY) => ({ mx: Math.min(Math.max(0, marginX), W * 0.25), my: Math.min(Math.max(0, marginY), H * 0.25) });
@@ -109,6 +117,9 @@ export function buildStamp(art, W, H, opts = {}) {
     cut = chamferedRect(A, W, H, mx, my);
   }
   const blue = [cut, ...A];
-  const red = [...offset([cut], o.outerGrow, 'miter'), ...offset(A, o.textGrow, 'round')];
-  return { art: A, cut, blue, red, scale: k, shrunk, W, H, margins: { x: mx, y: my, cutX: mx < o.marginX, cutY: my < o.marginY } };
+  // the shoulder (the rim left around the letters by the deep pass): set for letters the size of the original
+  // stamp's; smaller letters get a narrower one in proportion, so small text doesn't drown in its rim
+  const shoulder = o.shoulderScale ? Math.max(Math.min(0.05, o.textGrow), Math.min(o.textGrow, o.textGrow * letterHeight(A) / REF_LETTER)) : o.textGrow;
+  const red = [...offset([cut], o.outerGrow, 'miter'), ...offset(A, shoulder, 'round')];
+  return { art: A, cut, blue, red, scale: k, shrunk, shoulder, W, H, margins: { x: mx, y: my, cutX: mx < o.marginX, cutY: my < o.marginY } };
 }
