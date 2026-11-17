@@ -107,15 +107,20 @@ function roundedRect(x, y, w, h, r) {
 export const STAMP_DEFAULTS = { marginX: 2.3, marginY: 0.8, textGrow: 0.2, outerGrow: 0.8 };
 
 // art: filled rings (any orientation, overlaps allowed), any units; W x H: the stamp size (mm).
-// opts: { marginX, marginY, textGrow, outerGrow, shape: 'hull' | 'rect' | 'round', radius, fit (true: scale the
+// opts: { marginX, marginY, textGrow, outerGrow, shape: 'hull' | 'rect' | 'round', radius, scale (the text at this
+//         share of its fitted size, e.g. 0.9), fit (true: scale the
 //         artwork, with its proportions kept, to fill W x H less the margins; false: keep its size, centred) }
 // Returns { art, cut, blue, red, scale, W, H } in stamp mm (origin: the top left corner of W x H).
 export function buildStamp(art, W, H, opts = {}) {
   const o = { ...STAMP_DEFAULTS, shape: 'hull', radius: 2, fit: true, detail: 0.005, ...opts };
   if (!art.length) throw new Error('Nothing to engrave: the stamp is empty.');
-  const b = bbox(art), mx = o.marginX, my = o.marginY;
-  const k = o.fit ? Math.min((W - 2 * mx) / b.w, (H - 2 * my) / b.h) : 1;
-  if (!(k > 0) || !isFinite(k)) throw new Error('The stamp is too small for its margin.');
+  // the distances from the text to the cut leave at least a tenth of the stamp for the text (on a small stamp
+  // they shrink rather than leave no room at all)
+  const b = bbox(art), mx = Math.min(o.marginX, W * 0.45), my = Math.min(o.marginY, H * 0.45);
+  const fitK = Math.min(b.w > 0 ? (W - 2 * mx) / b.w : Infinity, b.h > 0 ? (H - 2 * my) / b.h : Infinity);
+  // scale: the text made smaller (or bigger) than it fits, e.g. 0.9 for 90 %
+  const k = (o.fit ? fitK : 1) * (o.scale > 0 ? o.scale : 1);
+  if (!(k > 0) || !isFinite(k)) throw new Error('The stamp has nothing to fit (an empty line?).');
   const dx = W / 2 - (b.x0 + b.w / 2) * k, dy = H / 2 - (b.y0 + b.h / 2) * k;
   // at its real size, without the points closer than `detail` to the line through their neighbours (far below what
   // the laser can show; letters' curves come in many tiny pieces, and every polygon step below scales with them)
