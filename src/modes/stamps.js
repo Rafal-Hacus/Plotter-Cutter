@@ -84,27 +84,62 @@ function sizeOf(it) {
   const s = STAMP_SIZES[it.size] || STAMP_SIZES.b3;
   return [s[1], s[2]];
 }
-async function artOf(it) {
+// the artwork; W, H, opts: the stamp's size and margins (to spread the lines over the height)
+async function artOf(it, W, H, opts) {
   if (it.kind === 'svg') return it.svg.rings;
   const lines = trimLines(it.lines);
   if (!lines.length) throw new Error('Type the text of the stamp.');
-  return richOutlines(lines, await fontResolver(it.font), { spacing: it.spacing / 100 });
+  // the layout is in em of 10 pt; set as typed (pt), it is turned into mm, else the stamp fits it to its size
+  const fontFor = await fontResolver(it.font), at = sp => richOutlines(lines, fontFor, { spacing: sp });
+  const mm = rings => (it.exact ? rings.map(r => r.map(([x, y]) => [x * EM_MM, y * EM_MM])) : rings);
+  const s0 = it.spacing / 100, art = at(s0);
+  if (!it.spread || lines.length < 2) return mm(art);
+  // Lines spread apart to fill the height (the height grows with the spacing, the width doesn't), at most to twice
+  // the font size. Fitted: a long line makes the text fill the width long before the height, so the lines spread
+  // until the text block has the shape of the space for it. Set in pt: until it is as high as the space for it.
+  const b0 = bbox(art), roomH = (H - 2 * opts.marginY);
+  const wantH = it.exact ? roomH / EM_MM : b0.w * roomH / (W - 2 * opts.marginX);
+  if (!(b0.w > 0) || b0.h >= wantH) return mm(art);
+  const b1 = bbox(at(s0 + 0.5)), perUnit = (b1.h - b0.h) / 0.5;
+  if (!(perUnit > 0)) return mm(art);
+  const s = Math.min(2, s0 + (wantH - b0.h) / perUnit);
+  return mm(s > s0 + 0.005 ? at(s) : art);
 }
+// 10 pt in mm: the em of the text layout
+const EM_MM = 10 * 25.4 / 72;
 function stampOpts(o, it) {
   // the stamp's own distance from the text to the cut, else the one under Layout of a stamp
   const own = v => (v === '' || v == null || !isFinite(v) ? null : Math.max(0, +v));
-  return { marginX: own(it.mx) ?? o.stMarginX, marginY: own(it.my) ?? o.stMarginY, textGrow: o.stShoulder, outerGrow: o.stEdge, shape: it.shape, radius: it.radius };
+  return { marginX: own(it.mx) ?? o.stMarginX, marginY: own(it.my) ?? o.stMarginY, textGrow: o.stShoulder, outerGrow: o.stEdge, shape: it.shape, radius: it.radius, fit: !(it.kind === 'text' && it.exact) };
+}
+// the stamp builder in a background thread (falls back to this thread if workers can't start)
+let worker = null, nextJob = 1;
+const jobs = new Map();
+function buildInWorker(art, W, H, opts) {
+  try {
+    if (!worker) {
+      worker = new Worker(new URL('../lib/stamp.worker.js', import.meta.url), { type: 'module' });
+      worker.onmessage = ({ data }) => { const j = jobs.get(data.id); jobs.delete(data.id); if (j) (data.error ? j.reject(new Error(data.error)) : j.resolve(data.result)); };
+      worker.onerror = e => { for (const j of jobs.values()) j.reject(new Error(e.message || 'The stamp builder stopped.')); jobs.clear(); worker.terminate(); worker = null; };
+    }
+  } catch { return Promise.resolve().then(() => buildStamp(art, W, H, opts)); }
+  return new Promise((resolve, reject) => { const id = nextJob++; jobs.set(id, { resolve, reject }); worker.postMessage({ id, art, W, H, opts }); });
 }
 async function compute(o, stale) {
   for (const it of stamps.items) {
     try {
-      const art = await artOf(it);
-      if (stale()) return false;
-      const [W, H] = sizeOf(it);
-      it.result = buildStamp(art, W, H, stampOpts(o, it));
-      it.error = '';
-    } catch (e) { it.result = null; it.error = e.message || String(e); }
-    status(it);
+      const [W, H] = sizeOf(it), opts = stampOpts(o, it);
+      // only the stamps whose text, font, size or layout changed are built again
+      const key = JSON.stringify([it.kind === 'svg' ? it.id : it.lines, it.font, it.spacing, it.spread, it.exact, W, H, opts]);
+      if (key !== it.key || (!it.result && !it.error)) {
+        const art = await artOf(it, W, H, opts);
+        if (stale()) return false;
+        it.result = await buildInWorker(art, W, H, opts);
+        if (stale()) return false;
+        it.key = key; it.error = '';
+        status(it);
+      }
+    } catch (e) { if (stale()) return false; it.result = null; it.error = e.message || String(e); it.key = null; status(it); }
   }
   // on the bed: each stamp by its full extent (the red edge reaches past the cut), never turned (the text reads
   // along the bed)
@@ -136,12 +171,14 @@ function list() {
       <div class="dname"></div>
       ${it.kind === 'text' ? `<div class="steditbar" role="toolbar" aria-label="Text formatting">
           <button type="button" data-cmd="bold" title="Bold (Ctrl+B)" aria-label="Bold"><b>B</b></button><button type="button" data-cmd="italic" title="Italic (Ctrl+I)" aria-label="Italic"><i>I</i></button><button type="button" data-cmd="underline" title="Underline (Ctrl+U)" aria-label="Underline"><u>U</u></button>
-          <span class="sep"></span><button type="button" data-size="0.89" title="Smaller line" aria-label="Smaller line">A−</button><button type="button" data-size="1.12" title="Bigger line" aria-label="Bigger line">A+</button>
+          <span class="sep"></span><button type="button" data-size="0.9" title="Smaller line" aria-label="Smaller line">A−</button><label class="stptl" title="Size of the line(s) with the cursor, in points"><input type="number" class="stpt" min="3" max="72" step="0.5" aria-label="Line size in pt">pt</label><button type="button" data-size="1.1" title="Bigger line" aria-label="Bigger line">A+</button>
           <span class="sep"></span><button type="button" data-align="left" title="Align left" aria-label="Align left">⇤</button><button type="button" data-align="center" title="Centre" aria-label="Centre">≡</button><button type="button" data-align="right" title="Align right" aria-label="Align right">⇥</button>
         </div>
         <div class="steditor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Text of the stamp"></div>
         <div class="fields"><label>Font<select class="stfont"></select></label>
-        <label>Line spacing<input type="number" class="stspacing" min="80" max="250" step="5"> %</label></div>` : ''}
+        <label>Line spacing<input type="number" class="stspacing" min="80" max="250" step="5"> %</label>
+        <label class="check"><input type="checkbox" class="stspread"> Spread the lines to fill the height</label></div>
+        <div class="fields"><label>Text size<select class="stexact"><option value="fit">Fit to the stamp (the pt sizes set the proportions)</option><option value="exact">As set, in pt</option></select></label></div>` : ''}
       <div class="fields"><label>Size<select class="stsize">${sizeOptions()}</select></label>
         <label class="stcustom">W<input type="number" class="stw" min="5" step="1"> × H<input type="number" class="sth" min="5" step="1"> mm</label>
         <label>Copies<input type="number" class="stq" min="0" step="1"></label></div>
@@ -169,11 +206,21 @@ function list() {
           if (b.dataset.cmd) document.execCommand(b.dataset.cmd);
           else for (const blk of selectedLines(ed)) {
             if (b.dataset.align) blk.style.textAlign = b.dataset.align;
-            if (b.dataset.size) { const v = Math.min(3, Math.max(0.4, (parseFloat(blk.dataset.size) || 1) * parseFloat(b.dataset.size))); blk.dataset.size = String(Math.round(v * 100) / 100); blk.style.fontSize = `${Math.round(v * 100)}%`; }
+            if (b.dataset.size) setPt(blk, linePt(blk) * parseFloat(b.dataset.size));
           }
-          edited();
+          edited(); showPt();
         });
       }
+      // the size field shows the size of the line with the cursor; typing a size sets the selected lines
+      const pt = q('.stpt'), showPt = () => { const blk = selectedLines(ed, true)[0]; if (blk && document.activeElement !== pt) pt.value = String(linePt(blk)); };
+      document.addEventListener('selectionchange', () => { if (ed.contains(document.getSelection().anchorNode)) showPt(); });
+      pt.addEventListener('mousedown', () => { ptLines = selectedLines(ed); });
+      pt.addEventListener('focus', () => { if (!ptLines) ptLines = selectedLines(ed); });
+      pt.addEventListener('input', () => { const v = parseFloat(pt.value); if (!(v > 0)) return; for (const blk of ptLines || selectedLines(ed)) setPt(blk, v); edited(); });
+      pt.addEventListener('blur', () => { ptLines = null; showPt(); });
+      let ptLines = null;
+      showPt();
+      const ex = q('.stexact'); ex.value = it.exact ? 'exact' : 'fit'; ex.addEventListener('change', () => { it.exact = ex.value === 'exact'; schedule(); });
       fillFontSelect(f, it.font);
       f.addEventListener('change', async () => {
         if (f.value === '+') {
@@ -183,6 +230,7 @@ function list() {
         }
         it.font = f.value; showFont(); changed();
       });
+      const spr = q('.stspread'); spr.checked = !!it.spread; spr.addEventListener('change', () => { it.spread = spr.checked; schedule(); });
       const sp = q('.stspacing'); sp.value = it.spacing; sp.addEventListener('input', () => { it.spacing = Math.max(50, parseFloat(sp.value) || 115); schedule(); });
     }
     const sz = q('.stsize'); sz.value = it.size; sz.addEventListener('change', () => { it.size = sz.value; changed(); });
@@ -216,17 +264,25 @@ function status(it) {
     const a = bbox(r.art), c = bbox([r.cut]);
     st.classList.remove('warn');
     st.textContent = `${num(W)} × ${num(H)} mm: text ${num(Math.round(a.w * 10) / 10)} × ${num(Math.round(a.h * 10) / 10)} mm, cut ${num(Math.round(c.w * 10) / 10)} × ${num(Math.round(c.h * 10) / 10)} mm.${it.svg && it.svg.texts ? ` ${it.svg.texts} text ${it.svg.texts === 1 ? 'element was' : 'elements were'} left out: convert text to outlines (paths) in the SVG.` : ''}`;
+    if (it.kind === 'text') {
+      // the letters' real size: as set, or as the fitting made them (pt of the em, like in a word processor)
+      const pts = trimLines(it.lines).map(l => l.size * 10 * (it.exact ? 1 : r.scale / EM_MM)), r1 = v => num(Math.round(v * 10) / 10);
+      const lo = Math.min(...pts), hi = Math.max(...pts);
+      st.textContent += ` Letters ${lo === hi ? r1(lo) : `${r1(lo)}–${r1(hi)}`} pt.`;
+      const o = stampOpts(readOpts(), it);
+      if (it.exact && (a.w > W - 2 * o.marginX + 0.01 || a.h > H - 2 * o.marginY + 0.01)) { st.textContent += ' The text is bigger than the stamp: make the letters smaller, or choose Fit to the stamp.'; st.classList.add('warn'); }
+    }
   }
   const th = it.li.querySelector('.thumb');
   th.innerHTML = r ? stampSvg(r, 'thumb') : '';
 }
 function newItem(kind, extra) {
   const o = readOpts();
-  return { id: nextId++, kind, copies: 1, size: o.stSize, w: 48, h: 19, shape: 'hull', radius: 2, font: DEFAULT_FAMILY, spacing: 115, name: 'Stamp', ...extra };
+  return { id: nextId++, kind, copies: 1, size: o.stSize, w: 48, h: 19, shape: 'hull', radius: 2, font: DEFAULT_FAMILY, spacing: 115, spread: true, name: 'Stamp', ...extra };
 }
 function addText() {
   // an example in bold (like the stamps made so far), each line centred
-  const html = ['Firma Przykład', 'ul. Długa 1, 00-001 Warszawa', 'NIP 123-456-78-90', 'tel. 600 000 000'].map(t => `<div style="text-align: center;" data-size="1"><b>${t}</b></div>`).join('');
+  const html = ['Firma Przykład', 'ul. Długa 1, 00-001 Warszawa', 'NIP 123-456-78-90', 'tel. 600 000 000'].map(t => `<div style="text-align: center;" data-pt="10"><b>${t}</b></div>`).join('');
   const box = document.createElement('div'); box.innerHTML = html;
   stamps.items.push(newItem('text', { html, lines: parseEditor(box), name: 'Firma Przykład' }));
   list(); schedule();
@@ -240,7 +296,7 @@ export function parseEditor(ed) {
   let cur = null;
   const newLine = (from, el) => {
     const st = el && el.style;
-    cur = { align: (st && st.textAlign) || (from ? from.align : 'center'), size: parseFloat(el && el.dataset && el.dataset.size) || (from ? from.size : 1), runs: [] };
+    cur = { align: (st && st.textAlign) || (from ? from.align : 'center'), size: el && el.dataset ? linePt(el) / 10 : (from ? from.size : 1), runs: [] };
     lines.push(cur);
   };
   const flags = (el, f) => {
@@ -275,6 +331,16 @@ export function parseEditor(ed) {
   walk(ed, {});
   return lines;
 }
+// a line's size in pt (10 unless set; older stamps stored a factor)
+function linePt(blk) {
+  const d = blk && blk.dataset ? blk.dataset : {};
+  return parseFloat(d.pt) || (parseFloat(d.size) || 1) * 10;
+}
+function setPt(blk, v) {
+  v = Math.round(Math.min(72, Math.max(3, v)) * 2) / 2;
+  blk.dataset.pt = String(v); delete blk.dataset.size;
+  blk.style.fontSize = `${Math.round(v * 10)}%`;
+}
 // without the empty lines at the top and the bottom
 function trimLines(lines) {
   const empty = l => !l.runs.some(r => r.text.trim());
@@ -284,10 +350,18 @@ function trimLines(lines) {
   return lines.slice(a, b);
 }
 // the line blocks the selection touches (top-level text is wrapped into a block first)
-function selectedLines(ed) {
+// look: only look (the size field following the cursor), don't wrap anything
+function selectedLines(ed, look) {
+  if (look) {
+    const sel = window.getSelection(), r = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+    if (!r || !ed.contains(r.startContainer)) return [];
+    let n = r.startContainer;
+    while (n && n.parentNode !== ed) n = n.parentNode;
+    return n && n.nodeType === 1 ? [n] : [];
+  }
   for (const n of Array.from(ed.childNodes)) {
     if (n.nodeType === 1 && /^(DIV|P)$/.test(n.tagName)) continue;
-    const d = document.createElement('div'); d.style.textAlign = 'center'; d.dataset.size = '1';
+    const d = document.createElement('div'); d.style.textAlign = 'center'; d.dataset.pt = '10';
     ed.insertBefore(d, n); d.appendChild(n);
   }
   const sel = window.getSelection(), r = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
@@ -309,6 +383,7 @@ async function addFonts(files) {
   return r;
 }
 function fontList() {
+  for (const it of stamps.items) it.key = null; // a family's files changed: set the text again
   const ul = byId('stFonts'), own = ownFamilies();
   ul.innerHTML = own.length ? '' : '<li class="empty">None yet: add .ttf / .otf / .woff files (each style of a family is its own file).</li>';
   for (const f of own) {

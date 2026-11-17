@@ -27,6 +27,13 @@ test('pieczątki: a text stamp (B3) and an SVG stamp, saved as an xTool project 
   await expect(text.locator('.stsize')).toHaveValue('b3');
   // fitted to 48 x 19 less 2.3 / 0.8 mm: the wider side touches, nothing stretched
   await expect(text.locator('.stst')).toContainText('48 × 19 mm: text 43.4 ×');
+  // the long line fills the width: the lines are spread to fill the height; without that the text is lower
+  const h = async () => +(await text.locator('.stst').textContent()).match(/text 43\.4 × ([\d.]+) mm/)[1];
+  const spread = await h();
+  await text.locator('.stspread').uncheck();
+  await expect.poll(h).toBeLessThan(spread);
+  await text.locator('.stspread').check();
+  await expect.poll(h).toBe(spread);
   await page.setInputFiles('#stSvgFile', fixture('stamp-logo.svg'));
   const logo = page.locator('#stList li').nth(1);
   await expect(logo.locator('.stst')).toContainText('1 text element was left out');
@@ -61,11 +68,14 @@ test('pieczątki: bold / italic / underline / line size in the editor, another f
   const li = page.locator('#stList li').first(), ed = li.locator('.steditor');
   const textSize = async () => (await li.locator('.stst').textContent()).match(/text ([\d.]+) × ([\d.]+) mm/).slice(1).map(Number);
   await expect(li.locator('.stst')).toContainText('text');
+  await li.locator('.stspread').uncheck(); // (spread lines always fill the height)
+  await expect.poll(textSize).not.toEqual([43.4, 17.4]);
   const before = await textSize();
   // the first line bigger: the text gets taller relative to its width (it is fitted to 48 x 19 again)
   await ed.locator('div').first().click();
-  await li.locator('button[data-size="1.12"]').click();
-  await expect(ed.locator('div').first()).toHaveAttribute('data-size', '1.12');
+  await li.locator('button[data-size="1.1"]').click();
+  await expect(ed.locator('div').first()).toHaveAttribute('data-pt', '11');
+  await expect(li.locator('.stpt')).toHaveValue('11');
   await expect.poll(textSize).not.toEqual(before);
   // the last line: not bold, italic, underlined
   await ed.locator('div').last().click();
@@ -82,6 +92,18 @@ test('pieczątki: bold / italic / underline / line size in the editor, another f
   await li.locator('.stfont').selectOption('tinos');
   await expect(li.locator('.stst')).toContainText('48 × 19 mm');
 
+  // sizes in pt: fitted, the stamp says how big the letters came out; set as typed, the text is that size
+  await expect(li.locator('.stst')).toContainText(/Letters [\d.]+–[\d.]+ pt\./);
+  for (let k = 0; k < 4; k++) {
+    await ed.locator('div').nth(k).click();
+    await li.locator('.stpt').fill('6');
+  }
+  await expect(ed.locator('div').nth(3)).toHaveAttribute('data-pt', '6');
+  await li.locator('.stexact').selectOption('exact');
+  await expect(li.locator('.stst')).toContainText('Letters 6 pt.');
+  await li.locator('.stpt').fill('30');
+  await expect(li.locator('.stst')).toContainText('The text is bigger than the stamp');
+  await li.locator('.stpt').fill('6');
   const pdf = await PDFDocument.load(await download(page, 'exStampsProof'));
   expect(pdf.getPageCount()).toBe(1);
   const { width, height } = pdf.getPage(0).getSize();

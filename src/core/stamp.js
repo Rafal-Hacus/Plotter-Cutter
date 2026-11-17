@@ -11,6 +11,7 @@
 // clean outline (its counters are holes, engraved like the background).
 // Units: mm, y down; rings are arrays of [x, y], closed implicitly.
 import ClipperLib from 'clipper-lib';
+import { simplifyLoop } from './geometry.js';
 
 const S = 10000; // Clipper works on integers: 0.1 µm
 const toC = rings => rings.map(r => r.map(([x, y]) => ({ X: Math.round(x * S), Y: Math.round(y * S) })));
@@ -26,14 +27,14 @@ export function union(rings, rule = 'nonzero') {
 // grow (d > 0) or shrink closed shapes; join: 'round' or 'miter'
 export function offset(rings, d, join = 'round') {
   if (!d) return rings.map(r => r.slice());
-  const co = new ClipperLib.ClipperOffset(4, 0.002 * S), sol = new ClipperLib.Paths();
+  const co = new ClipperLib.ClipperOffset(4, 0.005 * S), sol = new ClipperLib.Paths();
   co.AddPaths(toC(rings), join === 'miter' ? ClipperLib.JoinType.jtMiter : ClipperLib.JoinType.jtRound, ClipperLib.EndType.etClosedPolygon);
   co.Execute(sol, d * S);
   return fromC(sol);
 }
 // open lines (SVG strokes) as filled shapes of width w
 export function strokeToShapes(lines, w, closed) {
-  const co = new ClipperLib.ClipperOffset(4, 0.002 * S), sol = new ClipperLib.Paths();
+  const co = new ClipperLib.ClipperOffset(4, 0.005 * S), sol = new ClipperLib.Paths();
   co.AddPaths(toC(lines), ClipperLib.JoinType.jtMiter, closed ? ClipperLib.EndType.etClosedLine : ClipperLib.EndType.etOpenButt);
   co.Execute(sol, w / 2 * S);
   return fromC(sol);
@@ -110,14 +111,16 @@ export const STAMP_DEFAULTS = { marginX: 2.3, marginY: 0.8, textGrow: 0.2, outer
 //         artwork, with its proportions kept, to fill W x H less the margins; false: keep its size, centred) }
 // Returns { art, cut, blue, red, scale, W, H } in stamp mm (origin: the top left corner of W x H).
 export function buildStamp(art, W, H, opts = {}) {
-  const o = { ...STAMP_DEFAULTS, shape: 'hull', radius: 2, fit: true, ...opts };
-  let A = union(art);
-  if (!A.length) throw new Error('Nothing to engrave: the stamp is empty.');
-  const b = bbox(A), mx = o.marginX, my = o.marginY;
+  const o = { ...STAMP_DEFAULTS, shape: 'hull', radius: 2, fit: true, detail: 0.005, ...opts };
+  if (!art.length) throw new Error('Nothing to engrave: the stamp is empty.');
+  const b = bbox(art), mx = o.marginX, my = o.marginY;
   const k = o.fit ? Math.min((W - 2 * mx) / b.w, (H - 2 * my) / b.h) : 1;
   if (!(k > 0) || !isFinite(k)) throw new Error('The stamp is too small for its margin.');
   const dx = W / 2 - (b.x0 + b.w / 2) * k, dy = H / 2 - (b.y0 + b.h / 2) * k;
-  A = A.map(r => r.map(([x, y]) => [x * k + dx, y * k + dy]));
+  // at its real size, without the points closer than `detail` to the line through their neighbours (far below what
+  // the laser can show; letters' curves come in many tiny pieces, and every polygon step below scales with them)
+  let A = union(art.map(r => simplifyLoop(r.map(([x, y]) => [x * k + dx, y * k + dy]), o.detail)));
+  if (!A.length) throw new Error('Nothing to engrave: the stamp is empty.');
   let cut;
   if (o.shape === 'rect') cut = roundedRect(0, 0, W, H, 0);
   else if (o.shape === 'round') cut = roundedRect(0, 0, W, H, o.radius);
@@ -129,7 +132,10 @@ export function buildStamp(art, W, H, opts = {}) {
     const grown = growXY(simplifyConvex(convexHull(corners)), mx, my), g = bbox([grown]);
     // and as big as the stamp: the artwork is fitted to one side, the cut is stretched to the other as well, so
     // the rubber that is cut out is exactly W x H
-    cut = grown.map(([x, y]) => [(x - g.x0) * W / g.w, (y - g.y0) * H / g.h]);
+    // (never squeezed: text set larger than the stamp keeps its cut around it)
+    const fitTo = (n, size) => (n <= size + 0.01 ? size / n : 1); // (rounding can make it a hair too big)
+    const sx = fitTo(g.w, W), sy = fitTo(g.h, H), cx = g.x0 + g.w / 2, cy = g.y0 + g.h / 2;
+    cut = grown.map(([x, y]) => [W / 2 + (x - cx) * sx, H / 2 + (y - cy) * sy]);
   }
   const blue = [cut, ...A];
   const red = [...offset([cut], o.outerGrow, 'miter'), ...offset(A, o.textGrow, 'round')];

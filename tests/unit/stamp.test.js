@@ -24,7 +24,7 @@ describe('buildStamp', () => {
     const s = buildStamp(art, 48, 19);
     const a = bbox(s.art), c = bbox([s.cut]), raw = bbox(union(art));
     // not stretched: the same proportions as set
-    expect(a.w / a.h).toBeCloseTo(raw.w / raw.h, 6);
+    expect(a.w / a.h).toBeCloseTo(raw.w / raw.h, 3); // (points finer than 0.005 mm are dropped)
     // the limiting side touches the margins exactly, the other one stays inside them
     const tight = Math.min((48 - 4.6) / a.w, (19 - 1.6) / a.h);
     expect(tight).toBeCloseTo(1, 6);
