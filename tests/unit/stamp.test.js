@@ -74,8 +74,11 @@ describe('buildStamp', () => {
     expect(bbox([s.cut])).toMatchObject({ w: expect.closeTo(48, 3), h: expect.closeTo(19, 3) });
   });
   it('a small stamp with big distances to the cut: the distances shrink, the text still fits', () => {
-    const s = buildStamp(art, 20, 6, { marginX: 15, marginY: 4 }), a = bbox(s.art);
-    expect(a.w).toBeGreaterThan(0); expect(a.w).toBeLessThanOrEqual(20); expect(a.h).toBeLessThanOrEqual(6);
+    // (the stamp's own size typed as the distance by mistake: 70 x 26 with 48 / 19 mm)
+    const s = buildStamp(art, 70, 26, { marginX: 48, marginY: 19 }), a = bbox(s.art);
+    expect(s.margins).toMatchObject({ x: 17.5, y: 6.5, cutX: true, cutY: true });
+    expect(a.w).toBeGreaterThan(30); // the text keeps half the stamp, not a speck
+    expect(buildStamp(art, 70, 26).margins).toMatchObject({ x: 2.3, y: 0.8, cutX: false, cutY: false });
   });
   it('rejects an empty stamp', () => { expect(() => buildStamp([], 48, 19)).toThrow(/empty/); });
 });

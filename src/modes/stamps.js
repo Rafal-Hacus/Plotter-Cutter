@@ -267,6 +267,14 @@ function status(it) {
     const a = bbox(r.art), c = bbox([r.cut]);
     st.classList.remove('warn');
     st.textContent = `${num(W)} × ${num(H)} mm: text ${num(Math.round(a.w * 10) / 10)} × ${num(Math.round(a.h * 10) / 10)} mm, cut ${num(Math.round(c.w * 10) / 10)} × ${num(Math.round(c.h * 10) / 10)} mm.${it.svg && it.svg.texts ? ` ${it.svg.texts} text ${it.svg.texts === 1 ? 'element was' : 'elements were'} left out: convert text to outlines (paths) in the SVG.` : ''}`;
+    // the distances from the text to the cut it used, and a warning when one was too big for the stamp
+    const m = r.margins || { x: 0, y: 0 }, r2 = v => num(Math.round(v * 100) / 100);
+    st.textContent += ` Text to cut ${r2(m.x)} mm at the sides, ${r2(m.y)} mm top and bottom.`;
+    if (m.cutX || m.cutY) {
+      const o = stampOpts(readOpts(), it);
+      st.textContent += ` The distance set (${[m.cutX ? `${r2(o.marginX)} mm` : '', m.cutY ? `${r2(o.marginY)} mm` : ''].filter(Boolean).join(' / ')}) is more than a quarter of the stamp, so it was made smaller: check “Text to cut” here and under Layout of a stamp.`;
+      st.classList.add('warn');
+    }
     if (it.kind === 'text') {
       // the letters' real size: as set, or as the fitting made them (pt of the em, like in a word processor)
       const pts = trimLines(it.lines).map(l => l.size * 10 * (it.exact ? r.scale : r.scale / EM_MM)), r1 = v => num(Math.round(v * 10) / 10);
@@ -527,6 +535,13 @@ byId('stFontAdd').addEventListener('change', async e => { await addFonts(e.targe
 onFontsChanged(fontList);
 // the stamps without their own distance to the cut show the general one
 for (const [id, cls] of [['stMarginX', '.stmx'], ['stMarginY', '.stmy']]) byId(id).addEventListener('input', () => { for (const el of document.querySelectorAll(`#stList ${cls}`)) el.placeholder = byId(id).value; });
+// the values of the stamp made in xTool Studio
+const ST_DEFAULTS = { stMarginX: 2.3, stMarginY: 0.8, stShoulder: 0.2, stEdge: 0.8 };
+const setDefaults = ids => { for (const id of ids) { const e = byId(id); e.value = String(ST_DEFAULTS[id]); e.dispatchEvent(new Event('input')); } };
+byId('stLayoutReset').addEventListener('click', () => setDefaults(Object.keys(ST_DEFAULTS)));
+// a distance to the cut over 15 mm kept from an earlier visit is a mistake (no stamp is set like that): back to
+// the original values
+setTimeout(() => setDefaults(['stMarginX', 'stMarginY'].filter(id => parseFloat(byId(id).value) > 15)), 0);
 loadLibrary();
 byId('stSvgFile').addEventListener('change', e => { const files = Array.from(e.target.files); e.target.value = ''; if (files.length) addSvgs(files); });
 

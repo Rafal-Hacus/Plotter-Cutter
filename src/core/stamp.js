@@ -114,9 +114,9 @@ export const STAMP_DEFAULTS = { marginX: 2.3, marginY: 0.8, textGrow: 0.2, outer
 export function buildStamp(art, W, H, opts = {}) {
   const o = { ...STAMP_DEFAULTS, shape: 'hull', radius: 2, fit: true, detail: 0.005, ...opts };
   if (!art.length) throw new Error('Nothing to engrave: the stamp is empty.');
-  // the distances from the text to the cut leave at least a tenth of the stamp for the text (on a small stamp
-  // they shrink rather than leave no room at all)
-  const b = bbox(art), mx = Math.min(o.marginX, W * 0.45), my = Math.min(o.marginY, H * 0.45);
+  // the distances from the text to the cut take at most a quarter of the stamp on each side: a distance typed by
+  // mistake (the stamp's size, say) leaves the text half the stamp, not a speck; `margins` says what was used
+  const b = bbox(art), mx = Math.min(o.marginX, W * 0.25), my = Math.min(o.marginY, H * 0.25);
   const fitK = Math.min(b.w > 0 ? (W - 2 * mx) / b.w : Infinity, b.h > 0 ? (H - 2 * my) / b.h : Infinity);
   // scale: the text made smaller (or bigger) than it fits, e.g. 0.9 for 90 %
   const k = (o.fit ? fitK : 1) * (o.scale > 0 ? o.scale : 1);
@@ -144,5 +144,5 @@ export function buildStamp(art, W, H, opts = {}) {
   }
   const blue = [cut, ...A];
   const red = [...offset([cut], o.outerGrow, 'miter'), ...offset(A, o.textGrow, 'round')];
-  return { art: A, cut, blue, red, scale: k, W, H };
+  return { art: A, cut, blue, red, scale: k, W, H, margins: { x: mx, y: my, cutX: mx < o.marginX, cutY: my < o.marginY } };
 }
