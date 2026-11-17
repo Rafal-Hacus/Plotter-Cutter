@@ -110,7 +110,7 @@ const EM_MM = 10 * 25.4 / 72;
 function stampOpts(o, it) {
   // the stamp's own distance from the text to the cut, else the one under Layout of a stamp
   const own = v => (v === '' || v == null || !isFinite(v) ? null : Math.max(0, +v));
-  return { marginX: own(it.mx) ?? o.stMarginX, marginY: own(it.my) ?? o.stMarginY, textGrow: o.stShoulder, outerGrow: o.stEdge, shape: it.shape, radius: it.radius, fit: !(it.kind === 'text' && it.exact) };
+  return { marginX: own(it.mx) ?? o.stMarginX, marginY: own(it.my) ?? o.stMarginY, textGrow: o.stShoulder, outerGrow: o.stEdge, shape: it.shape, radius: it.radius, fit: !(it.kind === 'text' && it.exact), scale: (it.scale || 100) / 100 };
 }
 // the stamp builder in a background thread (falls back to this thread if workers can't start)
 let worker = null, nextJob = 1;
@@ -185,7 +185,8 @@ function list() {
       <div class="fields"><label>Cut<select class="stshape"><option value="hull">Around the text (straight edges)</option><option value="rect">Rectangle of the size</option><option value="round">Rounded rectangle of the size</option></select></label>
         <label class="stradius">Corner radius<input type="number" class="str" min="0" step="0.5"> mm</label></div>
       <div class="fields"><label>Text to cut, sides<input type="number" class="stmx" min="0" step="0.1"> mm</label>
-        <label>top and bottom<input type="number" class="stmy" min="0" step="0.1"> mm</label></div>
+        <label>top and bottom<input type="number" class="stmy" min="0" step="0.1"> mm</label>
+        <label title="The text at this share of the size it fits at (or of the size set in pt)">Text scale<input type="number" class="stscale" min="10" max="300" step="1"> %</label></div>
       <div class="status stst"></div></div><button type="button" class="remove">×</button>`;
     const q = s => li.querySelector(s), dn = q('.dname');
     dn.textContent = it.name; dn.title = it.name;
@@ -244,6 +245,8 @@ function list() {
       const inp = q(cls); inp.value = it[key] ?? ''; inp.placeholder = String(readOpts()[opt]);
       inp.addEventListener('input', () => { it[key] = inp.value === '' ? null : parseFloat(inp.value); schedule(); });
     }
+    const sc = q('.stscale'); sc.value = it.scale || 100;
+    sc.addEventListener('input', () => { const v = parseFloat(sc.value); it.scale = v >= 10 && v <= 300 ? v : 100; schedule(); });
     const rr = q('.str'); rr.value = it.radius; rr.addEventListener('input', () => { it.radius = Math.max(0, parseFloat(rr.value) || 0); schedule(); });
     const rm = q('.remove'); rm.setAttribute('aria-label', `Remove ${it.name}`);
     rm.addEventListener('click', () => { stamps.items.splice(stamps.items.indexOf(it), 1); list(); schedule(); });
@@ -266,7 +269,7 @@ function status(it) {
     st.textContent = `${num(W)} × ${num(H)} mm: text ${num(Math.round(a.w * 10) / 10)} × ${num(Math.round(a.h * 10) / 10)} mm, cut ${num(Math.round(c.w * 10) / 10)} × ${num(Math.round(c.h * 10) / 10)} mm.${it.svg && it.svg.texts ? ` ${it.svg.texts} text ${it.svg.texts === 1 ? 'element was' : 'elements were'} left out: convert text to outlines (paths) in the SVG.` : ''}`;
     if (it.kind === 'text') {
       // the letters' real size: as set, or as the fitting made them (pt of the em, like in a word processor)
-      const pts = trimLines(it.lines).map(l => l.size * 10 * (it.exact ? 1 : r.scale / EM_MM)), r1 = v => num(Math.round(v * 10) / 10);
+      const pts = trimLines(it.lines).map(l => l.size * 10 * (it.exact ? r.scale : r.scale / EM_MM)), r1 = v => num(Math.round(v * 10) / 10);
       const lo = Math.min(...pts), hi = Math.max(...pts);
       st.textContent += ` Letters ${lo === hi ? r1(lo) : `${r1(lo)}–${r1(hi)}`} pt.`;
       const o = stampOpts(readOpts(), it);

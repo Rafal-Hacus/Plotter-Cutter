@@ -68,6 +68,15 @@ describe('buildStamp', () => {
     const r = bbox([buildStamp(art, 59, 25, { shape: 'round', radius: 3 }).cut]);
     expect(r.w).toBeCloseTo(59, 6); expect(r.h).toBeCloseTo(25, 6);
   });
+  it('text scale: the text smaller than it fits, the cut still the stamp size', () => {
+    const full = bbox(buildStamp(art, 48, 19).art), s = buildStamp(art, 48, 19, { scale: 0.8 }), a = bbox(s.art);
+    expect(a.w).toBeCloseTo(full.w * 0.8, 2);
+    expect(bbox([s.cut])).toMatchObject({ w: expect.closeTo(48, 3), h: expect.closeTo(19, 3) });
+  });
+  it('a small stamp with big distances to the cut: the distances shrink, the text still fits', () => {
+    const s = buildStamp(art, 20, 6, { marginX: 15, marginY: 4 }), a = bbox(s.art);
+    expect(a.w).toBeGreaterThan(0); expect(a.w).toBeLessThanOrEqual(20); expect(a.h).toBeLessThanOrEqual(6);
+  });
   it('rejects an empty stamp', () => { expect(() => buildStamp([], 48, 19)).toThrow(/empty/); });
 });
 

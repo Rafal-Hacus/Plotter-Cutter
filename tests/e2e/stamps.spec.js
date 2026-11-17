@@ -42,6 +42,10 @@ test('pieczątki: a text stamp (B3) and an SVG stamp, saved as an xTool project 
   await logo.locator('.stshape').selectOption('rect');
   await expect(logo.locator('.stst')).toContainText('59 × 25 mm: text 54.4 × 16.2 mm, cut 59 × 25 mm.');
   await expect(page.locator('#count')).toHaveText('3 stamps on the bed');
+  // text scale 90 %: the text narrower by a tenth, the cut still the stamp's size
+  await logo.locator('.stscale').fill('90');
+  await expect(logo.locator('.stst')).toContainText('59 × 25 mm: text 49 × 14.6 mm, cut 59 × 25 mm.');
+  await logo.locator('.stscale').fill('100');
   // its own distance from the text to the cut: 5 mm at the sides, the text gets narrower, the cut stays 59 x 25
   await logo.locator('.stmx').fill('5');
   await expect(logo.locator('.stst')).toContainText('59 × 25 mm: text 49 ×');
@@ -133,4 +137,19 @@ test('pieczątki: your font files are kept on the server and offered in every st
   await expect(page.locator('#stFonts')).toContainText('Great Vibes: regular');
   await page.locator('#stFonts li', { hasText: 'Great Vibes' }).locator('button').click();
   await expect(page.locator('#stFonts')).not.toContainText('Great Vibes');
+});
+
+test('pieczątki: the xTool file is made on a plain http page too (no crypto.randomUUID, no crypto.subtle there)', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Crypto.prototype, 'randomUUID', { value: undefined, configurable: true });
+    Object.defineProperty(Crypto.prototype, 'subtle', { get: () => undefined, configurable: true });
+  });
+  const problems = await openApp(page);
+  expect(await page.evaluate(() => typeof crypto.randomUUID)).toBe('undefined');
+  await mode(page, 'stamps');
+  await page.click('#stAddText');
+  await expect(page.locator('#count')).toHaveText('1 stamp on the bed');
+  const files = unzipDeflated(await download(page, 'exStampsXs'));
+  expect(Object.keys(files)).toContain('vectors/svg/index.json');
+  noProblems(problems);
 });

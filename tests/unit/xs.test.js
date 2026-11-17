@@ -74,6 +74,12 @@ describe('xTool project (.xs)', () => {
     expect(ix.entryCount).toBe(Object.keys(v).length);
     expect(pathData([sq(0, 0, 1, 2)])).toBe('M0 0L1 0 1 2 0 2Z');
   });
+  it('works on http pages: its own SHA-256 and UUIDs (no crypto.subtle, no crypto.randomUUID there)', async () => {
+    const { sha256Hex } = await import('../../src/core/xs.js');
+    for (const t of ['', 'abc', 'M0 0L1 0Z'.repeat(1000), 'zażółć gęślą jaźń']) expect(sha256Hex(t)).toBe(createHash('sha256').update(t).digest('hex'));
+    const ids = J(/displays-0\.json$/).displays.map(d => d.id);
+    for (const id of ids) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
   it('is a deflated zip', async () => {
     const buf = Buffer.from(await (await makeZipDeflated(files)).arrayBuffer());
     expect(buf.readUInt16LE(8)).toBe(8); // deflate
