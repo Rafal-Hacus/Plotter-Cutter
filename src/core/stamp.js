@@ -2,8 +2,9 @@
 // the cut line around it, and the two engraving layers, following the layout of a stamp made by hand in xTool Studio:
 //   cut  (black, vector cut): the convex hull around the artwork's rows (each line of text as a box, so straight
 //        edges, sharp corners, and the top and bottom straight) grown by `marginX` at the sides and `marginY` at the
-//        top and bottom, then stretched to the stamp size: the rubber cut out is always exactly W x H (or a
-//        rectangle / rounded rectangle of the size). The artwork is fitted to the size less those margins;
+//        top and bottom, then stretched to the stamp size: the rubber cut out is always exactly W x H, never
+//        bigger (or a rectangle / rounded rectangle of the size). The artwork is never bigger than W x H less those
+//        margins: fitted to it, or set smaller (scale, sizes in pt), and made smaller when asked for more;
 //   blue (fill engraving, the finishing pass): the cut shape with the artwork left out, so the letters stay raised;
 //   red  (fill engraving, the deep pass): the cut shape grown by `outerGrow` (0.8 mm: the edge is engraved past the
 //        cut) with the artwork grown by `textGrow` (0.2 mm: a shoulder under the letters) left out.
@@ -88,13 +89,14 @@ export function rowBoxes(rings) {
   }
   return rows;
 }
-// a convex ring grown by mx sideways and my up and down, corners kept sharp: grown evenly in a space squeezed
-// sideways by my / mx, then stretched back
-function growXY(ring, mx, my) {
-  if (!mx || !my) { const m = mx || my; return m ? offset([ring], m, 'miter')[0] : ring; }
-  const f = my / mx, g = offset([ring.map(([x, y]) => [x * f, y])], my, 'miter');
-  const r = g.reduce((best, q) => (!best || q.length > best.length ? q : best), null);
-  return simplifyConvex(r.map(([x, y]) => [x / f, y]));
+// A convex ring grown by mx sideways and my up and down, corners kept sharp: every corner moved out to the four
+// corners of an mx x my box, and the hull of those (the Minkowski sum with the box). Level edges move exactly my,
+// upright ones exactly mx, slanted ones in between (45 degrees: (mx + my) / sqrt 2, as the stamp made in xTool
+// Studio has it); works with either distance 0.
+export function growXY(ring, mx, my) {
+  const pts = [];
+  for (const [x, y] of ring) pts.push([x - mx, y - my], [x + mx, y - my], [x + mx, y + my], [x - mx, y + my]);
+  return simplifyConvex(convexHull(pts));
 }
 function roundedRect(x, y, w, h, r) {
   r = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -106,6 +108,9 @@ function roundedRect(x, y, w, h, r) {
 // as measured in the stamp made in xTool Studio: 38 x 19 mm, text 33.37 x 17.39 mm, red edge and letter shoulder
 export const STAMP_DEFAULTS = { marginX: 2.3, marginY: 0.8, textGrow: 0.2, outerGrow: 0.8 };
 
+// The distances from the text to the cut a W x H stamp uses: as set, but at most a quarter of the stamp each
+export const stampMargins = (W, H, marginX, marginY) => ({ mx: Math.min(Math.max(0, marginX), W * 0.25), my: Math.min(Math.max(0, marginY), H * 0.25) });
+
 // art: filled rings (any orientation, overlaps allowed), any units; W x H: the stamp size (mm).
 // opts: { marginX, marginY, textGrow, outerGrow, shape: 'hull' | 'rect' | 'round', radius, scale (the text at this
 //         share of its fitted size, e.g. 0.9), fit (true: scale the
@@ -116,11 +121,13 @@ export function buildStamp(art, W, H, opts = {}) {
   if (!art.length) throw new Error('Nothing to engrave: the stamp is empty.');
   // the distances from the text to the cut take at most a quarter of the stamp on each side: a distance typed by
   // mistake (the stamp's size, say) leaves the text half the stamp, not a speck; `margins` says what was used
-  const b = bbox(art), mx = Math.min(o.marginX, W * 0.25), my = Math.min(o.marginY, H * 0.25);
+  const b = bbox(art), { mx, my } = stampMargins(W, H, o.marginX, o.marginY);
   const fitK = Math.min(b.w > 0 ? (W - 2 * mx) / b.w : Infinity, b.h > 0 ? (H - 2 * my) / b.h : Infinity);
-  // scale: the text made smaller (or bigger) than it fits, e.g. 0.9 for 90 %
-  const k = (o.fit ? fitK : 1) * (o.scale > 0 ? o.scale : 1);
-  if (!(k > 0) || !isFinite(k)) throw new Error('The stamp has nothing to fit (an empty line?).');
+  if (!(fitK > 0) || !isFinite(fitK)) throw new Error('The stamp has nothing to fit (an empty line?).');
+  // scale: the text made smaller than it fits, e.g. 0.9 for 90 %; set in pt (fit: false), its own size. Never
+  // bigger than fits: the cut is the stamp size, so the text must stay inside it with its distances (`shrunk`
+  // says when it had to be made smaller than asked)
+  const want = (o.fit ? fitK : 1) * (o.scale > 0 ? o.scale : 1), k = Math.min(want, fitK), shrunk = want > fitK * 1.0001;
   const dx = W / 2 - (b.x0 + b.w / 2) * k, dy = H / 2 - (b.y0 + b.h / 2) * k;
   // at its real size, without the points closer than `detail` to the line through their neighbours (far below what
   // the laser can show; letters' curves come in many tiny pieces, and every polygon step below scales with them)
@@ -135,14 +142,15 @@ export function buildStamp(art, W, H, opts = {}) {
     const corners = [];
     for (const q of rowBoxes(A)) corners.push([q.x0, q.y0], [q.x1, q.y0], [q.x1, q.y1], [q.x0, q.y1]);
     const grown = growXY(simplifyConvex(convexHull(corners)), mx, my), g = bbox([grown]);
-    // and as big as the stamp: the artwork is fitted to one side, the cut is stretched to the other as well, so
-    // the rubber that is cut out is exactly W x H
-    // (never squeezed: text set larger than the stamp keeps its cut around it)
-    const fitTo = (n, size) => (n <= size + 0.01 ? size / n : 1); // (rounding can make it a hair too big)
-    const sx = fitTo(g.w, W), sy = fitTo(g.h, H), cx = g.x0 + g.w / 2, cy = g.y0 + g.h / 2;
-    cut = grown.map(([x, y]) => [W / 2 + (x - cx) * sx, H / 2 + (y - cy) * sy]);
+    // and exactly as big as the stamp, never bigger: the text fits inside W x H less the distances, so the grown
+    // outline fits inside W x H, centred. It is extended to fill it, the same way it was grown (the top and bottom
+    // edges moved out, the sides lengthened): it still holds everything it held, which stretching would not (a
+    // narrow line over a wide one, stretched upwards, cuts through the wide one), and stays straight at the top
+    // and the bottom. The rubber cut out is W x H.
+    const ex = Math.max(0, W - g.w) / 2, ey = Math.max(0, H - g.h) / 2;
+    cut = growXY(grown, ex, ey).map(([x, y]) => [Math.min(W, Math.max(0, x)), Math.min(H, Math.max(0, y))]);
   }
   const blue = [cut, ...A];
   const red = [...offset([cut], o.outerGrow, 'miter'), ...offset(A, o.textGrow, 'round')];
-  return { art: A, cut, blue, red, scale: k, W, H, margins: { x: mx, y: my, cutX: mx < o.marginX, cutY: my < o.marginY } };
+  return { art: A, cut, blue, red, scale: k, shrunk, W, H, margins: { x: mx, y: my, cutX: mx < o.marginX, cutY: my < o.marginY } };
 }

@@ -114,7 +114,8 @@ test('pieczątki: bold / italic / underline / line size in the editor, another f
   await li.locator('.stexact').selectOption('exact');
   await expect(li.locator('.stst')).toContainText('Letters 6 pt.');
   await li.locator('.stpt').fill('30');
-  await expect(li.locator('.stst')).toContainText('The text is bigger than the stamp');
+  await expect(li.locator('.stst')).toContainText('the text was made smaller to stay inside it');
+  await expect(li.locator('.stst')).toContainText('cut 48 × 19 mm.');
   await li.locator('.stpt').fill('6');
   const pdf = await PDFDocument.load(await download(page, 'exStampsProof'));
   expect(pdf.getPageCount()).toBe(1);

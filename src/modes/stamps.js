@@ -4,7 +4,7 @@
 // project (.xs) with the laser settings of the stamp project, one group per stamp (core/xs.js).
 import { packRoll } from '../core/rollpack.js';
 import { sanitize } from '../core/sanitize.js';
-import { bbox, buildStamp, strokeToShapes, union } from '../core/stamp.js';
+import { bbox, buildStamp, stampMargins, strokeToShapes, union } from '../core/stamp.js';
 import { richOutlines } from '../core/stamptext.js';
 import { DEFAULT_FAMILY, addFontFiles, cssFamily, families, fontResolver, loadLibrary, onFontsChanged, ownFamilies, removeFamily } from '../stampfonts.js';
 import { SHAPES, expandUses, flattenPath, num, parseSvg } from '../core/svg.js';
@@ -97,8 +97,8 @@ async function artOf(it, W, H, opts) {
   // Lines spread apart to fill the height (the height grows with the spacing, the width doesn't), at most to twice
   // the font size. Fitted: a long line makes the text fill the width long before the height, so the lines spread
   // until the text block has the shape of the space for it. Set in pt: until it is as high as the space for it.
-  const b0 = bbox(art), roomH = (H - 2 * opts.marginY);
-  const wantH = it.exact ? roomH / EM_MM : b0.w * roomH / (W - 2 * opts.marginX);
+  const { mx, my } = stampMargins(W, H, opts.marginX, opts.marginY), b0 = bbox(art), roomH = H - 2 * my;
+  const wantH = it.exact ? roomH / EM_MM : b0.w * roomH / (W - 2 * mx);
   if (!(b0.w > 0) || b0.h >= wantH) return mm(art);
   const b1 = bbox(at(s0 + 0.5)), perUnit = (b1.h - b0.h) / 0.5;
   if (!(perUnit > 0)) return mm(art);
@@ -186,7 +186,7 @@ function list() {
         <label class="stradius">Corner radius<input type="number" class="str" min="0" step="0.5"> mm</label></div>
       <div class="fields"><label>Text to cut, sides<input type="number" class="stmx" min="0" step="0.1"> mm</label>
         <label>top and bottom<input type="number" class="stmy" min="0" step="0.1"> mm</label>
-        <label title="The text at this share of the size it fits at (or of the size set in pt)">Text scale<input type="number" class="stscale" min="10" max="300" step="1"> %</label></div>
+        <label title="The text at this share of the size it fits at (or of the size set in pt); at most 100 %: the text never gets bigger than the stamp">Text scale<input type="number" class="stscale" min="10" max="100" step="1"> %</label></div>
       <div class="status stst"></div></div><button type="button" class="remove">×</button>`;
     const q = s => li.querySelector(s), dn = q('.dname');
     dn.textContent = it.name; dn.title = it.name;
@@ -246,7 +246,7 @@ function list() {
       inp.addEventListener('input', () => { it[key] = inp.value === '' ? null : parseFloat(inp.value); schedule(); });
     }
     const sc = q('.stscale'); sc.value = it.scale || 100;
-    sc.addEventListener('input', () => { const v = parseFloat(sc.value); it.scale = v >= 10 && v <= 300 ? v : 100; schedule(); });
+    sc.addEventListener('input', () => { const v = parseFloat(sc.value); it.scale = v >= 10 && v <= 100 ? v : 100; schedule(); });
     const rr = q('.str'); rr.value = it.radius; rr.addEventListener('input', () => { it.radius = Math.max(0, parseFloat(rr.value) || 0); schedule(); });
     const rm = q('.remove'); rm.setAttribute('aria-label', `Remove ${it.name}`);
     rm.addEventListener('click', () => { stamps.items.splice(stamps.items.indexOf(it), 1); list(); schedule(); });
@@ -280,8 +280,7 @@ function status(it) {
       const pts = trimLines(it.lines).map(l => l.size * 10 * (it.exact ? r.scale : r.scale / EM_MM)), r1 = v => num(Math.round(v * 10) / 10);
       const lo = Math.min(...pts), hi = Math.max(...pts);
       st.textContent += ` Letters ${lo === hi ? r1(lo) : `${r1(lo)}–${r1(hi)}`} pt.`;
-      const o = stampOpts(readOpts(), it);
-      if (it.exact && (a.w > W - 2 * o.marginX + 0.01 || a.h > H - 2 * o.marginY + 0.01)) { st.textContent += ' The text is bigger than the stamp: make the letters smaller, or choose Fit to the stamp.'; st.classList.add('warn'); }
+      if (r.shrunk && it.exact) { st.textContent += ' The sizes set don’t fit the stamp: the text was made smaller to stay inside it (the cut is never bigger than the stamp).'; st.classList.add('warn'); }
     }
   }
   const th = it.li.querySelector('.thumb');
