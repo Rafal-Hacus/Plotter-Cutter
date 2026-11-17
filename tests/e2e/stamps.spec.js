@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { inflateRawSync } from 'node:zlib';
 import { PDFDocument } from 'pdf-lib';
-import { download, fixture, mode, noProblems, openApp } from './helpers.js';
+import { download, fixture, mode, noProblems, openApp, setField } from './helpers.js';
 
 const PT = 72 / 25.4;
 
@@ -42,6 +42,14 @@ test('pieczątki: a text stamp (B3) and an SVG stamp, saved as an xTool project 
   await logo.locator('.stshape').selectOption('rect');
   await expect(logo.locator('.stst')).toContainText('59 × 25 mm: text 54.4 × 16.2 mm, cut 59 × 25 mm.');
   await expect(page.locator('#count')).toHaveText('3 stamps on the bed');
+  // the stamp's size typed as the general distance to the cut by mistake: a warning, and one click back
+  await page.locator('details:has(#stMarginX) summary').click();
+  await setField(page, 'stMarginX', 48);
+  await expect(logo.locator('.stst')).toContainText('is more than a quarter of the stamp');
+  await page.click('#stLayoutReset');
+  await expect(page.locator('#stMarginX')).toHaveValue('2.3');
+  await expect(logo.locator('.stst')).toContainText('Text to cut 2.3 mm at the sides, 0.8 mm top and bottom.');
+  await expect(logo.locator('.stst')).not.toContainText('quarter');
   // text scale 90 %: the text narrower by a tenth, the cut still the stamp's size
   await logo.locator('.stscale').fill('90');
   await expect(logo.locator('.stst')).toContainText('59 × 25 mm: text 49 × 14.6 mm, cut 59 × 25 mm.');
@@ -106,7 +114,8 @@ test('pieczątki: bold / italic / underline / line size in the editor, another f
   await li.locator('.stexact').selectOption('exact');
   await expect(li.locator('.stst')).toContainText('Letters 6 pt.');
   await li.locator('.stpt').fill('30');
-  await expect(li.locator('.stst')).toContainText('The text is bigger than the stamp');
+  await expect(li.locator('.stst')).toContainText('the text was made smaller to stay inside it');
+  await expect(li.locator('.stst')).toContainText('cut 48 × 19 mm.');
   await li.locator('.stpt').fill('6');
   const pdf = await PDFDocument.load(await download(page, 'exStampsProof'));
   expect(pdf.getPageCount()).toBe(1);

@@ -74,8 +74,11 @@ describe('buildStamp', () => {
     expect(bbox([s.cut])).toMatchObject({ w: expect.closeTo(48, 3), h: expect.closeTo(19, 3) });
   });
   it('a small stamp with big distances to the cut: the distances shrink, the text still fits', () => {
-    const s = buildStamp(art, 20, 6, { marginX: 15, marginY: 4 }), a = bbox(s.art);
-    expect(a.w).toBeGreaterThan(0); expect(a.w).toBeLessThanOrEqual(20); expect(a.h).toBeLessThanOrEqual(6);
+    // (the stamp's own size typed as the distance by mistake: 70 x 26 with 48 / 19 mm)
+    const s = buildStamp(art, 70, 26, { marginX: 48, marginY: 19 }), a = bbox(s.art);
+    expect(s.margins).toMatchObject({ x: 17.5, y: 6.5, cutX: true, cutY: true });
+    expect(a.w).toBeGreaterThan(30); // the text keeps half the stamp, not a speck
+    expect(buildStamp(art, 70, 26).margins).toMatchObject({ x: 2.3, y: 0.8, cutX: false, cutY: false });
   });
   it('rejects an empty stamp', () => { expect(() => buildStamp([], 48, 19)).toThrow(/empty/); });
 });
@@ -111,5 +114,38 @@ describe('richOutlines', () => {
     const two = richOutlines([line([{ text: 'Duży' }], { size: 2 }), line([{ text: 'Duży' }])], () => ({ font: regular }));
     const single = bbox(richOutlines([line([{ text: 'Duży' }])], () => ({ font: regular })));
     expect(bbox(two).w).toBeCloseTo(2 * single.w, 3); // the line at size 2 is twice as wide, and the widest
+  });
+});
+
+describe('buildStamp invariants (200 random stamps)', () => {
+  it('the cut is never bigger than the stamp, the text is inside it with its distances, nothing is stretched', { timeout: 120_000 }, () => {
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+    const sq = (x, y, w, h) => [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+    const texts = [['Usługi ogólnobudowlane', 'Piotr Adamów', 'Telefon 530 819 299 E-mail piotr.adamow@interia.pl'], ['Ż'], ['A', 'B', 'C', 'D', 'E', 'F'], ['Długa linia tekstu na pieczątce firmowej']];
+    for (let n = 0; n < 200; n++) {
+      const W = 15 + rnd() * 80, H = 8 + rnd() * 40;
+      const art = n % 3 === 2
+        ? Array.from({ length: 1 + Math.floor(rnd() * 6) }, () => sq(rnd() * 50, rnd() * 30, 0.5 + rnd() * 20, 0.5 + rnd() * 10))
+        : textOutlines(font, texts[n % texts.length]);
+      const opts = { marginX: [0, 2.3, 5, 48][n % 4], marginY: [0, 0.8, 3, 19][(n >> 2) % 4], scale: [1, 0.9, 0.5, 1.5][(n >> 4) % 4], fit: n % 5 !== 0, shape: ['hull', 'rect', 'round'][n % 3] };
+      const s = buildStamp(art, W, H, opts), c = bbox([s.cut]), a = bbox(s.art), raw = bbox(art), m = s.margins, e = 1e-6;
+      const tag = `stamp ${n}: ${W.toFixed(1)} x ${H.toFixed(1)} ${JSON.stringify(opts)}`;
+      // the cut: inside the stamp; around the text, exactly the stamp
+      expect(c.x0, tag).toBeGreaterThanOrEqual(-e); expect(c.y0, tag).toBeGreaterThanOrEqual(-e);
+      expect(c.x1, tag).toBeLessThanOrEqual(W + e); expect(c.y1, tag).toBeLessThanOrEqual(H + e);
+      if (opts.shape !== 'round') { expect(c.w, tag).toBeCloseTo(W, 4); expect(c.h, tag).toBeCloseTo(H, 4); }
+      // the text: inside the stamp less the distances, inside the cut, its proportions kept
+      expect(a.x0, tag).toBeGreaterThanOrEqual(m.x - 0.01); expect(a.x1, tag).toBeLessThanOrEqual(W - m.x + 0.01);
+      expect(a.y0, tag).toBeGreaterThanOrEqual(m.y - 0.01); expect(a.y1, tag).toBeLessThanOrEqual(H - m.y + 0.01);
+      // (points on the cut line count: with a distance of 0 the letters touch it)
+      const nearCut = p => s.cut.some((q, i) => { const r = s.cut[(i + 1) % s.cut.length], dx = r[0] - q[0], dy = r[1] - q[1], L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, ((p[0] - q[0]) * dx + (p[1] - q[1]) * dy) / L)) : 0; return Math.hypot(p[0] - q[0] - t * dx, p[1] - q[1] - t * dy) < 0.01; });
+      for (const r of s.art) for (const p of r) expect(inside(p, s.cut) || nearCut(p), tag).toBe(true);
+      if (raw.w > 1e-6 && raw.h > 1e-6) expect(a.w / a.h, tag).toBeCloseTo(raw.w / raw.h, 1);
+      // the distances never take more than a quarter of the stamp
+      expect(m.x, tag).toBeLessThanOrEqual(W / 4 + e); expect(m.y, tag).toBeLessThanOrEqual(H / 4 + e);
+      // the layers
+      expect(s.blue[0], tag).toBe(s.cut);
+    }
   });
 });

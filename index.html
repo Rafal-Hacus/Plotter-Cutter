@@ -225,10 +225,11 @@
       </details>
       <div class="row"><label for="stSize">Size of new stamps</label><select id="stSize"><option value="b1s">Wagraf B1s (28 × 12 mm)</option><option value="b2">Wagraf B2 (39 × 15 mm)</option><option value="b3" selected>Wagraf B3 (48 × 19 mm)</option><option value="b4">Wagraf B4 (59 × 25 mm)</option><option value="custom">Custom size</option></select></div>
       <details class="sub"><summary>Layout of a stamp</summary>
-      <div class="row"><label for="stMarginX">Space from the text to the cut, sides</label><span class="mm"><input id="stMarginX" type="number" min="0" step="0.1" value="2.3">mm</span></div>
-      <div class="row"><label for="stMarginY">Space from the text to the cut, top and bottom</label><span class="mm"><input id="stMarginY" type="number" min="0" step="0.1" value="0.8">mm</span></div>
+      <div class="row"><label for="stMarginX">Space from the text to the cut, sides</label><span class="mm"><input id="stMarginX" type="number" min="0" max="15" step="0.1" value="2.3">mm</span></div>
+      <div class="row"><label for="stMarginY">Space from the text to the cut, top and bottom</label><span class="mm"><input id="stMarginY" type="number" min="0" max="15" step="0.1" value="0.8">mm</span></div>
       <div class="row"><label for="stShoulder">Shoulder under the letters (deep engraving)</label><span class="mm"><input id="stShoulder" type="number" min="0" step="0.05" value="0.2">mm</span></div>
       <div class="row"><label for="stEdge">Deep engraving past the cut</label><span class="mm"><input id="stEdge" type="number" min="0" step="0.1" value="0.8">mm</span></div>
+      <div class="actions"><button type="button" class="link" id="stLayoutReset">Back to the values of the xTool stamp (2.3 / 0.8 / 0.2 / 0.8 mm)</button></div>
       <p class="hint">As in the stamp made in xTool Studio. Layers and laser settings (P2): blue, fill engraving 30 % power, speed 400, 300 lines/inch, 1 pass; red, fill engraving 35 %, speed 300, 200 lines/inch, 5 passes; black, cut 80 %, speed 20, 2 passes.</p>
       </details>
       <div class="row"><label for="stGap">Space between stamps on the bed</label><span class="mm"><input id="stGap" type="number" min="0" step="0.5" value="3">mm</span></div>
