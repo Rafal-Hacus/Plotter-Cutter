@@ -259,8 +259,9 @@ the P2 (processing order blue, red, black, as in the original file).
 A PDF page added in Stickers is a sticker with its page as the artwork. **Kiss cut** for it:
 
 - **Cut line from file** (picked when the PDF has one): the closed line drawn in the PDF, stroked and not filled
-  (the usual cut line). On a layer of its own named like Cut, CutContour, Kiss, Wykrój or Cięcie it is left out of
-  the print; otherwise it prints with the page.
+  (the usual cut line), at its own size in the PDF to start with. Drawn in a spot colour named like CutContour, Cut,
+  Kiss, Wykrój or Cięcie, or on a layer of its own named so, it is left out of the print; otherwise it prints with
+  the page.
 - **Trace artwork**: traced around the artwork with the border set under Cut lines, as for SVGs.
 - **Circle** (round stickers): a circle found on the page, or set by hand.
 

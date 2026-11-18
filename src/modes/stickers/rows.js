@@ -36,7 +36,7 @@ export function updateRow(d) {
   if (state.layout) { const n = state.layout.counts.get(d.id) || 0; bits.push(n === 1 ? '1 on the sheet.' : `${n} on the sheet.`); }
   const c = d.circle;
   if (c && c.kind === 'round') bits.push(c.found ? 'Round sticker: the cut circle was placed on the circle found in the PDF (2 % inside its edge); adjust it below if needed.' : 'Round sticker: no clear circle found in the PDF, so the cut circle is centred at 90 % of the page; adjust it below.');
-  else if (c && c.kind === 'cut') bits.push(`Kiss cut along the line drawn in the PDF${c.cutLines.length > 1 ? ` (${c.cutLines.length} lines)` : ''}.${c.hidLayer ? ' Its layer is left out of the print.' : ' It is part of the page, so it prints too: put it on a layer of its own named Cut or CutContour to keep it off the print.'}`);
+  else if (c && c.kind === 'cut') bits.push(`Kiss cut along the line drawn in the PDF${c.cutLines.length > 1 ? ` (${c.cutLines.length} lines)` : ''}.${c.spotCut ? ' Its spot colour (CutContour) is left out of the print.' : c.hidLayer ? ' Its layer is left out of the print.' : ' It is part of the page, so it prints too: put it on a layer of its own named Cut or CutContour to keep it off the print.'}`);
   else if (c) bits.push('Kiss cut traced around the artwork, with the border set under Cut lines.');
   else if (r.cutMode) bits.push('Kiss cut follows the line in the file; everything outside the easy-peel margin is cropped off.');
   if (r.bleedShort) bits.push('The image doesn’t reach the die line everywhere, so parts of the easy-peel margin will print white.');

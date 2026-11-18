@@ -101,7 +101,7 @@ test('a PDF sticker (picture + a cut line): the kiss cut follows the PDF\'s line
   // the kiss-cut lines: the PDF's rounded box (58 x 40) for each sticker of the first file
   await enabled(page, 'exCut');
   const kiss = cutLayers((await download(page, 'exCut')).toString()).Kiss_cut;
-  expect(kiss.some(k => { const b = bbox(k); return Math.abs(b[2] - b[0] - 58) < 0.3 && Math.abs(b[3] - b[1] - 40) < 0.3; })).toBe(true);
+  expect(kiss.some(k => { const b = bbox(k), w = b[2] - b[0], h = b[3] - b[1]; return Math.abs(Math.max(w, h) - 58) < 0.3 && Math.abs(Math.min(w, h) - 40) < 0.3; })).toBe(true); // (upright or turned)
   // traced instead: the outline follows the artwork (a picture and a circle), not the box
   await line.locator('.m').selectOption('trace');
   await expect(line.locator('.status')).toContainText('Kiss cut traced around the artwork');
@@ -109,5 +109,32 @@ test('a PDF sticker (picture + a cut line): the kiss cut follows the PDF\'s line
   await line.locator('.m').selectOption('round');
   await expect(line.locator('.circ')).toBeVisible();
   await expect(line.locator('.status')).toContainText('Round sticker');
+  noProblems(problems);
+});
+
+test('a PDF sticker with its cut line in a CutContour spot colour: cut along it, left out of the print, real size', async ({ page }) => {
+  const problems = await openApp(page);
+  await page.setInputFiles('#files', fixture('sticker-cutspot.pdf'));
+  const row = page.locator('#list li.design');
+  await expect(row.locator('.status')).toContainText('Its spot colour (CutContour) is left out of the print.');
+  await expect(row.locator('.m')).toHaveValue('cut');
+  // the cut line's own size in the PDF (58 x 40 mm), not the page's
+  await expect(row.locator('.h')).toHaveValue('40');
+  await expect(row.locator('.status')).toContainText('Cut line 58 × 40 mm');
+  // the picture it prints from has no magenta line
+  const magenta = await page.evaluate(async () => {
+    const el = document.querySelector('#list .thumb image');
+    const u = decodeURIComponent(el.getAttribute('href') || '').match(/data:image\/jpeg;base64,[A-Za-z0-9+/=]+/)[0], im = new Image();
+    im.src = u; await im.decode();
+    const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height).data; let n = 0;
+    for (let k = 0; k < d.length; k += 4) if (d[k] > 180 && d[k + 1] < 80 && d[k + 2] > 80 && d[k + 2] < 200) n++;
+    return n;
+  });
+  expect(magenta).toBe(0);
+  // the kiss cut is the spot-colour line
+  await enabled(page, 'exCut');
+  const kiss = cutLayers((await download(page, 'exCut')).toString()).Kiss_cut;
+  expect(kiss.some(k => { const b = bbox(k), w = b[2] - b[0], h = b[3] - b[1]; return Math.abs(Math.max(w, h) - 58) < 0.3 && Math.abs(Math.min(w, h) - 40) < 0.3; })).toBe(true); // (upright or turned)
   noProblems(problems);
 });

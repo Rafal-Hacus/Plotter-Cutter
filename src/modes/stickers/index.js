@@ -1,6 +1,7 @@
 // The stickers mode: adding designs, tracing their outlines and nesting them on the sheet.
 import { circleSvg, detectCircle } from '../../core/image.js';
 import { pagePaths } from '../../core/pdfpaths.js';
+import { stripCutColour } from '../../core/pdfcutstrip.js';
 import { bbox } from '../../core/stamp.js';
 import { num } from '../../core/svg.js';
 import { isPdfFile, tick } from '../../core/util.js';
@@ -60,10 +61,17 @@ async function addPdfStickers(file) {
   await ensureLibs();
   const bytes = new Uint8Array(await file.arrayBuffer());
   const pdf = await window.pdfjsLib.getDocument(pdfSource(bytes.slice())).promise, { OPS } = window.pdfjsLib;
+  // a cut line in a spot colour of its own (CutContour …): read from the page as it is, then taken out of the copy
+  // that is drawn and printed
+  let printBytes = bytes, printPdf = pdf, spotCut = false;
+  try {
+    const r = await stripCutColour(window.PDFLib, bytes.slice(), CUT_LAYER);
+    if (r.removed) { printBytes = r.bytes; spotCut = true; printPdf = await window.pdfjsLib.getDocument(pdfSource(r.bytes.slice())).promise; }
+  } catch (e) { console.warn('Could not take the cut colour out of the print:', e); }
   // layers that hold the cut line: hidden in the picture (and the page is then printed from the picture)
   let ocConfig, hidLayer = false;
   try {
-    ocConfig = await pdf.getOptionalContentConfig();
+    ocConfig = await printPdf.getOptionalContentConfig();
     for (const [id, grp] of ocConfig) if (grp && CUT_LAYER.test(grp.name || '')) { ocConfig.setVisibility(id, false); hidLayer = true; }
   } catch { ocConfig = null; }
   for (let i = 1; i <= pdf.numPages; i++) {
@@ -81,21 +89,24 @@ async function addPdfStickers(file) {
         if (b.w > 5 && b.h > 5) cutLines.push(pts); // (points: about 2 mm)
       }
     }
+    const ppg = printPdf === pdf ? pg : await printPdf.getPage(i);
     const vp = pg.getViewport({ scale: Math.min(10, 3000 / Math.max(vp1.width, vp1.height)) }); // ~3000 px: 300 dpi up to ~25 cm
     const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
     const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
-    await pg.render({ canvasContext: g, viewport: vp, ...(ocConfig ? { optionalContentConfigPromise: Promise.resolve(ocConfig) } : {}) }).promise;
+    await ppg.render({ canvasContext: g, viewport: vp, ...(ocConfig ? { optionalContentConfigPromise: Promise.resolve(ocConfig) } : {}) }).promise;
     const det = detectCircle(cv);
     // cut a little inside the detected edge, so no background shows if the cut lands a bit off
     const c = {
-      img: cv.toDataURL('image/jpeg', 0.92), w: vp1.width, h: vp1.height, pdf: bytes, page: i - 1, mbx: pg.view[0], mby: pg.view[1],
+      img: cv.toDataURL('image/jpeg', 0.92), w: vp1.width, h: vp1.height, pdf: printBytes, page: i - 1, mbx: pg.view[0], mby: pg.view[1],
       rot: ((pg.rotate || 0) % 360 + 360) % 360, size: det ? det.size * 0.98 : 0.9, x: det ? det.x : 0, y: det ? det.y : 0, found: !!det,
-      cutLines, kind: cutLines.length ? 'cut' : det ? 'round' : 'trace', hidLayer
+      cutLines, kind: cutLines.length ? 'cut' : det ? 'round' : 'trace', hidLayer, spotCut
     };
     cv.width = cv.height = 1;
     const d = prepareDesign(pdfStickerSvg(c), pdf.numPages > 1 ? `${file.name} p.${i}` : file.name);
     d.circle = c; d.mode = c.kind === 'trace' ? 'trace' : 'cut';
     if (c.kind === 'round') d.heightMm = 50;
+    // the cut line at its size in the PDF (the page is usually a little bigger: the bleed)
+    else if (c.kind === 'cut') d.heightMm = Math.round(bbox(cutLines).h * 25.4 / 72 * 10) / 10;
     designs.push(d); addRow(d);
   }
 }
