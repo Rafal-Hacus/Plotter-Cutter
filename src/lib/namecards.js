@@ -1,5 +1,6 @@
 // Winietki (place cards) from a list of names: one PDF page per name, the card size plus bleed, an optional
 // shared background, and the name set in an embedded font (Polish letters included).
+import { embedPages } from '../core/pdfembed.js';
 import montserrat from '@expo-google-fonts/montserrat/500Medium/Montserrat_500Medium.ttf?url';
 import playfair from '@expo-google-fonts/playfair-display/400Regular/PlayfairDisplay_400Regular.ttf?url';
 import greatVibes from '@expo-google-fonts/great-vibes/400Regular/GreatVibes_400Regular.ttf?url';
@@ -44,7 +45,7 @@ export async function buildNameCardsPdf(opts) {
   const font = await pdf.embedFont(opts.font === 'custom' && opts.fontFile ? opts.fontFile : await fontBytes(FONTS[opts.font] ? opts.font : 'sans'), { subset: true });
   let bgObj = null;
   if (bg) {
-    if (bg.kind === 'pdf') [bgObj] = await pdf.embedPdf(await PDFDocument.load(bg.bytes, { ignoreEncryption: true }), [bg.page || 0]);
+    if (bg.kind === 'pdf') [bgObj] = await embedPages(pdf, await PDFDocument.load(bg.bytes, { ignoreEncryption: true }), [bg.page || 0]);
     else bgObj = bg.kind === 'png' ? await pdf.embedPng(bg.bytes) : await pdf.embedJpg(bg.bytes);
   }
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(opts.color || '') || [0, '1f', '2a', '24'];

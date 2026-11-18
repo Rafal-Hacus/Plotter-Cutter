@@ -3,6 +3,7 @@
 // around it is printed. The cut is the trim with rounded corners, or the outermost line drawn in the file (e.g. the
 // outline of a road sign). Gives the print PDF, the cut PLT and the cut SVG, one sheet per page when the roll is
 // split into sections, each with its own marks and cut file (on one long print, or a page each).
+import { embedPages } from '../core/pdfembed.js';
 import { lemurMarks } from '../core/marks.js';
 import { PT, mul, roundRect } from '../core/matrix.js';
 import { outermostLoop, pagePaths } from '../core/pdfpaths.js';
@@ -208,7 +209,7 @@ async function buildPdf() {
   for (const it of roll.items) {
     if (!it.copies) continue;
     if (!docs.has(it.bytes)) docs.set(it.bytes, await PDFDocument.load(it.bytes, { ignoreEncryption: true }));
-    emb.set(it, (await out.embedPdf(docs.get(it.bytes), [it.page]))[0]);
+    emb.set(it, (await embedPages(out, docs.get(it.bytes), [it.page]))[0]);
   }
   const N = roll.sheets.length, font = N > 1 ? await out.embedFont(StandardFonts.Helvetica) : null;
   const pages = roll.long ? [[roll.sheets, roll.sheets[N - 1].oy + roll.sheets[N - 1].H]] : roll.sheets.map(sec => [[sec], sec.H]);
