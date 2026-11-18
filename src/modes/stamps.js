@@ -219,7 +219,14 @@ function list() {
       document.addEventListener('selectionchange', () => { if (ed.contains(document.getSelection().anchorNode)) showPt(); });
       pt.addEventListener('mousedown', () => { ptLines = selectedLines(ed); });
       pt.addEventListener('focus', () => { if (!ptLines) ptLines = selectedLines(ed); });
-      pt.addEventListener('input', () => { const v = parseFloat(pt.value); if (!(v > 0)) return; for (const blk of ptLines || selectedLines(ed)) setPt(blk, v); edited(); });
+      // a size typed in pt means that size: the stamp is then set as typed, not fitted (fitted, the pt sizes only set the
+      // lines' proportions and 8 pt came out as big as the stamp allows)
+      pt.addEventListener('input', () => {
+        const v = parseFloat(pt.value); if (!(v > 0)) return;
+        for (const blk of ptLines || selectedLines(ed)) setPt(blk, v);
+        if (!it.exact) { it.exact = true; q('.stexact').value = 'exact'; }
+        edited();
+      });
       pt.addEventListener('blur', () => { ptLines = null; showPt(); });
       let ptLines = null;
       showPt();

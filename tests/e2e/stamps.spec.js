@@ -197,3 +197,20 @@ test('pieczątki: sloped sides: the deep pass split into steps, each a layer of 
   expect(area('#ff8c00')).toBeGreaterThan(0);
   noProblems(problems);
 });
+
+test('pieczątki: a size typed in pt is the size the letters come out (the stamp switches to “as set”)', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'stamps');
+  await page.click('#stAddText');
+  const li = page.locator('#stList li').nth(0);
+  await li.locator('.steditor').evaluate(ed => { ed.innerHTML = '<div style="text-align: center;" data-pt="10">HHHH</div>'; ed.dispatchEvent(new Event('input')); });
+  await expect(li.locator('.stexact')).toHaveValue('fit');
+  // select the line, type 8 pt
+  await li.locator('.steditor').evaluate(ed => { const r = document.createRange(); r.selectNodeContents(ed); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+  await li.locator('.stpt').fill('8');
+  await expect(li.locator('.stexact')).toHaveValue('exact');
+  await expect(li.locator('.stst')).toContainText('Letters 8 pt.');
+  // 8 pt Arial-like capitals: 8 x 0.3528 mm x 0.69 (cap height) = 1.9 mm
+  await expect(li.locator('.stst')).toContainText('× 1.9 mm, cut 48 × 19 mm.');
+  noProblems(problems);
+});
