@@ -1,5 +1,6 @@
 // Sticker print PDFs: one sheet, or a batch of as many sheets as the copies need with one pair of PLTs per
 // distinct sheet.
+import { embedPages } from '../../core/pdfembed.js';
 import { PT, apply, mul } from '../../core/matrix.js';
 import { loadImg, sizedSvg } from '../../core/svg.js';
 import { asciiOnly, tick } from '../../core/util.js';
@@ -60,13 +61,13 @@ async function drawVectorStickers(page, out, L, Hpt, cache) {
     if (!cache.has(key)) {
       if (!cache.docs) cache.docs = new Map();
       if (!cache.docs.has(c.pdf)) cache.docs.set(c.pdf, await PDFDocument.load(c.pdf, { ignoreEncryption: true }));
-      cache.set(key, (await out.embedPdf(cache.docs.get(c.pdf), [c.page]))[0]);
+      cache.set(key, (await embedPages(out, cache.docs.get(c.pdf), [c.page]))[0]);
     }
     const emb = cache.get(key);
     if (!names.has(key)) names.set(key, page.node.newXObject(`V${key}`, emb.ref));
     const P = placeMatrix(it), r = d.res;
     const A = [r.s, 0, 0, r.s, r.offX - r.s * d.vb.x, r.offY - r.s * d.vb.y]; // design units (page pt, y down) -> sticker mm
-    const G = [1, 0, 0, -1, -c.mbx, c.mby + c.h];                              // PDF page space (y up) -> design units
+    const G = [1, 0, 0, -1, 0, c.h];                                            // the embedded page (from its corner, y up) -> design units
     const S = mul(F, P), M = mul(S, mul(A, G));
     const ops = [pushGraphicsState()];
     for (const loop of r.clipLoops) {

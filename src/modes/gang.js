@@ -1,5 +1,6 @@
 // Print sheets (gang printing for the guillotine): pictures and PDF pages, each scaled with its proportions kept
 // to cover the chosen format plus bleed (or to fit inside it), imposed on 310 × 440 sheets with crop marks.
+import { embedPages } from '../core/pdfembed.js';
 import { jpegOrientation, readAsDataUrl } from '../core/image.js';
 import { PT, mul } from '../core/matrix.js';
 import { mm1, num } from '../core/svg.js';
@@ -189,7 +190,7 @@ async function buildGangPdf() {
     if (it.kind === 'img') emb.set(it, it.mime === 'png' ? await out.embedPng(it.bytes) : await out.embedJpg(it.bytes));
     else {
       if (!srcDocs.has(it.bytes)) srcDocs.set(it.bytes, await PDFDocument.load(it.bytes, { ignoreEncryption: true }));
-      const [pgE] = await out.embedPdf(srcDocs.get(it.bytes), [it.page]);
+      const [pgE] = await embedPages(out, srcDocs.get(it.bytes), [it.page]);
       emb.set(it, pgE);
     }
   }
@@ -205,7 +206,7 @@ async function buildGangPdf() {
       if (!names.has(e)) names.set(e, page.node.newXObject('Gang', e.ref));
       const pl = gangPlace(it, gangBox(slot), fill), rc = slot.clip;
       // source units -> natural size (image: unit square; PDF page: points from its media box)
-      const S0 = it.kind === 'img' ? [it.w, 0, 0, it.h, 0, 0] : [1, 0, 0, 1, -it.mbx, -it.mby];
+      const S0 = it.kind === 'img' ? [it.w, 0, 0, it.h, 0, 0] : [1, 0, 0, 1, 0, 0];
       // natural (y up) -> sheet points (y up), rotated a quarter turn when the orientation differs
       const s = pl.s * PT, x0 = pl.x * PT, yTop = Hpt - pl.y * PT, chPt = pl.ch * s;
       const R = pl.rot ? [0, s, -s, 0, x0 + pl.cw * s, yTop - chPt] : [s, 0, 0, s, x0, yTop - chPt];
@@ -241,7 +242,7 @@ async function buildGangProof() {
     const page = out.addPage([PW, PH]);
     const e = it.kind === 'img' ? (it.mime === 'png' ? await out.embedPng(it.bytes) : await out.embedJpg(it.bytes)) : await (async () => {
       if (!srcDocs.has(it.bytes)) srcDocs.set(it.bytes, await PDFDocument.load(it.bytes, { ignoreEncryption: true }));
-      return (await out.embedPdf(srcDocs.get(it.bytes), [it.page]))[0];
+      return (await embedPages(out, srcDocs.get(it.bytes), [it.page]))[0];
     })();
     const pl = gangPlace(it, [0, 0, tw + 2 * b, th + 2 * b], fill), s = pl.s;
     // the printed area (bleed box) and the cut line, in the file's own units, centred on it
@@ -254,7 +255,7 @@ async function buildGangProof() {
     const ox = AX + (AW - (maxX - minX) * k) / 2 - minX * k, top = AY + AH - (AH - (maxY - minY) * k) / 2 + minY * k;
     const P = (x, y) => [ox + x * k, top - y * k]; // file units (y down) -> page points
     const [ix, iy] = P(0, it.h);
-    const M = it.kind === 'img' ? [it.w * k, 0, 0, it.h * k, ix, iy] : [k, 0, 0, k, ix - it.mbx * k, iy - it.mby * k];
+    const M = it.kind === 'img' ? [it.w * k, 0, 0, it.h * k, ix, iy] : [k, 0, 0, k, ix, iy];
     const name = page.node.newXObject('Src', e.ref);
     page.pushOperators(pushGraphicsState(), concatTransformationMatrix(...M), drawObject(name), popGraphicsState());
     // grey out what falls outside the cut line (only over the picture itself)

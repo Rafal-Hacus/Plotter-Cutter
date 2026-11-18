@@ -39,7 +39,8 @@ export function readOpts() {
     // cut lines in the files, and the plotter
     kissColor: text('kissColor'), dieColor: text('dieColor'), lineW: num('lineW', 0.1, 0.01),
     kissLayer: text('kissLayer').trim() || 'Kiss cut', dieLayer: text('dieLayer').trim() || 'Die cut',
-    overcut: Math.min(5, num('overcut', 0.5, 0)), bladeOffset: Math.min(2, num('bladeOffset', 0.35, 0)), // (more: a number typed in the wrong field) pltForce: on('pltForce'),
+    // (overcut over 5 mm or a blade offset over 2 mm: a number typed in the wrong field)
+    overcut: Math.min(5, num('overcut', 0.5, 0)), bladeOffset: Math.min(2, num('bladeOffset', 0.35, 0)), pltForce: on('pltForce'),
     kissForce: num('kissForce', 60, 1), dieForce: num('dieForce', 60, 1), cutSpeed: num('cutSpeed', 13, 1), upSpeed: num('upSpeed', 13, 1),
     // cards: the PDF, the cut, the back side
     cBleed: num('cBleed', 2, 0), cGap: num('cGap', 4, 0), cCutStyle: text('cCutStyle'), cRadius: num('cRadius', 0, 0),
