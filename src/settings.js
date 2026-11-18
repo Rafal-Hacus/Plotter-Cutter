@@ -39,7 +39,7 @@ export function readOpts() {
     // cut lines in the files, and the plotter
     kissColor: text('kissColor'), dieColor: text('dieColor'), lineW: num('lineW', 0.1, 0.01),
     kissLayer: text('kissLayer').trim() || 'Kiss cut', dieLayer: text('dieLayer').trim() || 'Die cut',
-    overcut: num('overcut', 0.5, 0), bladeOffset: num('bladeOffset', 0.35, 0), pltForce: on('pltForce'),
+    overcut: Math.min(5, num('overcut', 0.5, 0)), bladeOffset: Math.min(2, num('bladeOffset', 0.35, 0)), // (more: a number typed in the wrong field) pltForce: on('pltForce'),
     kissForce: num('kissForce', 60, 1), dieForce: num('dieForce', 60, 1), cutSpeed: num('cutSpeed', 13, 1), upSpeed: num('upSpeed', 13, 1),
     // cards: the PDF, the cut, the back side
     cBleed: num('cBleed', 2, 0), cGap: num('cGap', 4, 0), cCutStyle: text('cCutStyle'), cRadius: num('cRadius', 0, 0),
@@ -94,9 +94,15 @@ export function optionValues() {
 export function saveOpts() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(optionValues())); } catch (e) { /* storage unavailable */ }
 }
+const SANE = { bladeOffset: [2, '0.35'], overcut: [5, '0.5'] };
 export function loadOpts() {
   try {
     const o = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-    if (o && typeof o === 'object') applyOptionValues(o);
+    if (o && typeof o === 'object') {
+      // values kept from an earlier visit that can only be a slip (a size typed into the blade offset makes every
+      // corner a swing of centimetres and every line land off its place) go back to their standard values
+      for (const [id, [max, def]] of Object.entries(SANE)) if (parseFloat(o[id]) > max) o[id] = def;
+      applyOptionValues(o);
+    }
   } catch (e) { /* storage unavailable, or not what we saved */ }
 }

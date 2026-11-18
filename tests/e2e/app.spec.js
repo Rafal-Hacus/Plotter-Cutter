@@ -80,3 +80,16 @@ test('files dropped on a mode that takes none are ignored', async ({ page }) => 
   await expect(page.locator('#count')).toHaveText('Empty sheet');
   noProblems(problems);
 });
+
+test('a blade offset or overcut saved far too big (a size typed into it) goes back to the standard value', async ({ page }) => {
+  const problems = await openApp(page);
+  await setField(page, 'bladeOffset', '26');
+  await setField(page, 'overcut', '40');
+  await setField(page, 'kissForce', '1');
+  await page.waitForFunction(() => /"bladeOffset":"26"/.test(localStorage.getItem('stickerSheet.opts.v2') || ''));
+  await page.reload();
+  await expect(page.locator('#bladeOffset')).toHaveValue('0.35');
+  await expect(page.locator('#overcut')).toHaveValue('0.5');
+  await expect(page.locator('#kissForce')).toHaveValue('1'); // (other settings are kept)
+  noProblems(problems);
+});
