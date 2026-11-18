@@ -4,7 +4,7 @@
 // project (.xs) with the laser settings of the stamp project, one group per stamp (core/xs.js).
 import { packRoll } from '../core/rollpack.js';
 import { sanitize } from '../core/sanitize.js';
-import { bbox, buildStamp, stampMargins, strokeToShapes, union } from '../core/stamp.js';
+import { bbox, buildStamp, splitPasses, stampMargins, strokeToShapes, union } from '../core/stamp.js';
 import { richOutlines } from '../core/stamptext.js';
 import { DEFAULT_FAMILY, addFontFiles, cssFamily, families, fontResolver, loadLibrary, onFontsChanged, ownFamilies, removeFamily } from '../stampfonts.js';
 import { SHAPES, expandUses, flattenPath, num, parseSvg } from '../core/svg.js';
@@ -21,6 +21,7 @@ import { registerMode } from './registry.js';
 // Wagraf self-inking stamps: imprint sizes from the Wagraf catalogue
 export const STAMP_SIZES = { b1s: ['Wagraf B1s', 28, 12], b2: ['Wagraf B2', 39, 15], b3: ['Wagraf B3', 48, 19], b4: ['Wagraf B4', 59, 25] };
 const LAYER_FILL = { red: '#ff8080', blue: '#5078ff' };
+const SLOPE_FILL = ['#f25c5c', '#e03535', '#c41f1f', '#a30f0f'];
 const stamps = { items: [], placed: [], tooBig: [] };
 let nextId = 1;
 
@@ -110,7 +111,7 @@ const EM_MM = 10 * 25.4 / 72;
 function stampOpts(o, it) {
   // the stamp's own distance from the text to the cut, else the one under Layout of a stamp
   const own = v => (v === '' || v == null || !isFinite(v) ? null : Math.max(0, +v));
-  return { marginX: own(it.mx) ?? o.stMarginX, marginY: own(it.my) ?? o.stMarginY, textGrow: own(it.rim) ?? o.stShoulder, shoulderScale: own(it.rim) == null && o.stShoulderScale, outerGrow: o.stEdge, shape: it.shape, radius: it.radius, fit: !(it.kind === 'text' && it.exact), scale: (it.scale || 100) / 100 };
+  return { marginX: own(it.mx) ?? o.stMarginX, marginY: own(it.my) ?? o.stMarginY, textGrow: own(it.rim) ?? o.stShoulder, shoulderScale: own(it.rim) == null && o.stShoulderScale, outerGrow: o.stEdge, slopeSteps: o.stSlope, slopeWidth: o.stSlopeWidth, shape: it.shape, radius: it.radius, fit: !(it.kind === 'text' && it.exact), scale: (it.scale || 100) / 100 };
 }
 // the stamp builder in a background thread (falls back to this thread if workers can't start)
 let worker = null, nextJob = 1;
@@ -274,6 +275,10 @@ function status(it) {
     // the distances from the text to the cut it used, and a warning when one was too big for the stamp
     const m = r.margins || { x: 0, y: 0 }, r2 = v => num(Math.round(v * 100) / 100);
     st.textContent += ` Text to cut ${r2(m.x)} mm at the sides, ${r2(m.y)} mm top and bottom; rim around the letters ${r2(r.shoulder ?? 0.2)} mm${it.rim == null ? (readOpts().stShoulderScale ? ' (automatic, thinner for small letters)' : ' (the general rim)') : ''}.`;
+    if (r.slope && r.slope.length) {
+      const o = readOpts(), p = splitPasses(5, r.slope.length + 1);
+      st.textContent += ` Sloped sides: ${r.slope.length + 1} steps over ${r2(o.stSlopeWidth)} mm from the rim (passes ${p.join(' + ')}).`;
+    }
     const rimEl = it.li.querySelector('.strim'); if (rimEl) rimEl.placeholder = r2(r.shoulder ?? 0.2);
     if (m.cutX || m.cutY) {
       const o = stampOpts(readOpts(), it);
@@ -429,8 +434,8 @@ const ringsD = rings => rings.map(r => `M${r.map(p => `${num(p[0])},${num(p[1])}
 // one stamp as it will be engraved (mirrored), in its own mm; mode 'thumb' for the list
 function stampSvg(r, mode) {
   const e = bbox(r.red.concat([r.cut])), pad = 0.5;
-  // the red (deep) layer drawn over the blue one, as xTool Studio shows them
-  const g = `<g transform="matrix(-1 0 0 1 ${num(e.x0 + e.x1)} 0)"><path d="${ringsD(r.blue)}" fill="${LAYER_FILL.blue}" fill-rule="evenodd"/><path d="${ringsD(r.red)}" fill="${LAYER_FILL.red}" fill-rule="evenodd"/><path d="${ringsD([r.cut])}" fill="none" stroke="#000" stroke-width="0.15"/></g>`;
+  // the red (deep) layer drawn over the blue one, as xTool Studio shows them; the slope's steps darker as they go deeper
+  const g = `<g transform="matrix(-1 0 0 1 ${num(e.x0 + e.x1)} 0)"><path d="${ringsD(r.blue)}" fill="${LAYER_FILL.blue}" fill-rule="evenodd"/><path d="${ringsD(r.red)}" fill="${LAYER_FILL.red}" fill-rule="evenodd"/>${(r.slope || []).map((rings, i) => `<path d="${ringsD(rings)}" fill="${SLOPE_FILL[i] || SLOPE_FILL[SLOPE_FILL.length - 1]}" fill-rule="evenodd"/>`).join('')}<path d="${ringsD([r.cut])}" fill="none" stroke="#000" stroke-width="0.15"/></g>`;
   if (mode === 'thumb') return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${num(e.x0 - pad)} ${num(e.y0 - pad)} ${num(e.w + 2 * pad)} ${num(e.h + 2 * pad)}" style="max-width:100%;max-height:100%">${g}</svg>`;
   return g;
 }
@@ -475,7 +480,7 @@ async function coverPng() {
 export async function buildStampsXs() {
   const list_ = stamps.placed.map(pl => {
     const r = pl.it.result;
-    return { x: pl.x, y: pl.y, parts: { blue: r.blue, red: r.red, black: [r.cut] } };
+    return { x: pl.x, y: pl.y, parts: { blue: r.blue, red: r.red, slope: r.slope || [], black: [r.cut] } };
   });
   let cover = null;
   try { cover = await coverPng(); } catch { /* the project is fine without a cover */ }

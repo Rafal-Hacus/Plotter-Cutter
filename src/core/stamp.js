@@ -6,7 +6,9 @@
 //        margins: fitted to it, or set smaller (scale, sizes in pt), and made smaller when asked for more;
 //   blue (fill engraving, the finishing pass): the cut shape with the artwork left out, so the letters stay raised;
 //   red  (fill engraving, the deep pass): the cut shape grown by `outerGrow` (0.8 mm: the edge is engraved past the
-//        cut) with the artwork grown by `textGrow` (0.2 mm: a shoulder under the letters) left out.
+//        cut) with the artwork grown by `textGrow` (0.2 mm: a shoulder under the letters) left out;
+//   slope (optional): further deep-pass layers, each leaving out the artwork grown a little more, so the deep pass is
+//        split into steps and the letters stand on a sloped shoulder.
 // Both engraving layers are compound paths filled even-odd: the artwork is unioned first so every letter is one
 // clean outline (its counters are holes, engraved like the background).
 // Units: mm, y down; rings are arrays of [x, y], closed implicitly.
@@ -38,6 +40,19 @@ export function strokeToShapes(lines, w, closed) {
   co.AddPaths(toC(lines), ClipperLib.JoinType.jtMiter, closed ? ClipperLib.EndType.etClosedLine : ClipperLib.EndType.etOpenButt);
   co.Execute(sol, w / 2 * S);
   return fromC(sol);
+}
+// a minus b (non-zero filling), as rings for an even-odd fill
+export function difference(a, b) {
+  const c = new ClipperLib.Clipper(), sol = new ClipperLib.Paths(), nz = ClipperLib.PolyFillType.pftNonZero;
+  c.AddPaths(toC(a), ClipperLib.PolyType.ptSubject, true);
+  c.AddPaths(toC(b), ClipperLib.PolyType.ptClip, true);
+  c.Execute(ClipperLib.ClipType.ctDifference, sol, nz, nz);
+  return fromC(sol);
+}
+// n passes shared by `steps` layers, the fewest on the first (the one nearest the letters): 5 over 3 is 1, 2, 2
+export function splitPasses(n, steps) {
+  const k = Math.max(1, Math.min(n, steps)), base = Math.floor(n / k), rem = n - base * k;
+  return Array.from({ length: k }, (_, i) => base + (i >= k - rem ? 1 : 0));
 }
 export function bbox(rings) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -81,7 +96,7 @@ export function letterHeight(rings) {
 // the letters of the stamp made in xTool Studio: 1.92 mm (75th percentile), with a 0.2 mm shoulder
 export const REF_LETTER = 1.92;
 // as measured in the stamp made in xTool Studio: 38 x 19 mm, text 33.37 x 17.39 mm, red edge and letter shoulder
-export const STAMP_DEFAULTS = { marginX: 2.3, marginY: 0.8, textGrow: 0.2, outerGrow: 0.8, shoulderScale: true };
+export const STAMP_DEFAULTS = { marginX: 2.3, marginY: 0.8, textGrow: 0.2, outerGrow: 0.8, shoulderScale: true, slopeSteps: 1, slopeWidth: 0.6 };
 
 // The distances from the text to the cut a W x H stamp uses: as set, but at most a quarter of the stamp each
 export const stampMargins = (W, H, marginX, marginY) => ({ mx: Math.min(Math.max(0, marginX), W * 0.25), my: Math.min(Math.max(0, marginY), H * 0.25) });
@@ -120,6 +135,11 @@ export function buildStamp(art, W, H, opts = {}) {
   // the shoulder (the rim left around the letters by the deep pass): set for letters the size of the original
   // stamp's; smaller letters get a narrower one in proportion, so small text doesn't drown in its rim
   const shoulder = o.shoulderScale ? Math.max(Math.min(0.05, o.textGrow), Math.min(o.textGrow, o.textGrow * letterHeight(A) / REF_LETTER)) : o.textGrow;
-  const red = [...offset([cut], o.outerGrow, 'miter'), ...offset(A, shoulder, 'round')];
-  return { art: A, cut, blue, red, scale: k, shrunk, shoulder, W, H, margins: { x: mx, y: my, cutX: mx < o.marginX, cutY: my < o.marginY } };
+  const outer = offset([cut], o.outerGrow, 'miter'), red = [...outer, ...offset(A, shoulder, 'round')];
+  // a sloped shoulder (slopeSteps > 1): the deep pass split into steps, each engraving only further from the letters
+  // (the letters grown by the rim, then by slopeWidth / (steps - 1) more each step), so the depth grows with the
+  // distance and every letter stands on a little mountain instead of a straight wall. `slope`: the layers after red.
+  const steps = Math.max(1, Math.min(5, Math.round(o.slopeSteps) || 1)), slope = [];
+  for (let s = 1; s < steps; s++) slope.push(difference(outer, offset(A, shoulder + o.slopeWidth * s / (steps - 1), 'round')));
+  return { art: A, cut, blue, red, slope, scale: k, shrunk, shoulder, W, H, margins: { x: mx, y: my, cutX: mx < o.marginX, cutY: my < o.marginY } };
 }

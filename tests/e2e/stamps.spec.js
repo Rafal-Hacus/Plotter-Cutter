@@ -167,3 +167,33 @@ test('pieczątki: the xTool file is made on a plain http page too (no crypto.ran
   expect(Object.keys(files)).toContain('vectors/svg/index.json');
   noProblems(problems);
 });
+
+test('pieczątki: sloped sides: the deep pass split into steps, each a layer of its own further from the letters', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'stamps');
+  await page.click('#stAddText');
+  const text = page.locator('#stList li').nth(0);
+  await text.locator('.steditor').evaluate(ed => { ed.innerHTML = '<div style="text-align: center;" data-size="1">Usługi ogólnobudowlane</div><div style="text-align: center;" data-size="1">tel. 600 000 000</div>'; ed.dispatchEvent(new Event('input')); });
+  await expect(text.locator('.stst')).toContainText('48 × 19 mm');
+  await expect(text.locator('.stst')).not.toContainText('Sloped');
+  await setField(page, 'stSlope', '3');
+  await expect(text.locator('.stst')).toContainText('Sloped sides: 3 steps over 0.6 mm from the rim (passes 1 + 2 + 2).');
+  const files = unzipDeflated(await download(page, 'exStampsXs'));
+  const J = re => JSON.parse(files[Object.keys(files).find(n => re.test(n))].toString());
+  const ds = J(/displays-0\.json$/).displays, canvas = J(/^canvases\/[^/]+\.json$/), dev = J(/devices\/device-MP2-1\.json$/), prof = J(/^profiles\.json$/);
+  // blue, red, orange, yellow, black
+  expect(Object.keys(canvas.layerData)).toEqual(['#2366ff', '#fe0002', '#ff8c00', '#ffd400', '#000000']);
+  expect(ds.map(d => d.layerTag).sort()).toEqual(['#000000', '#2366ff', '#fe0002', '#ff8c00', '#ffd400']);
+  // each layer's passes: red 1, the steps 2 and 2 (5 in all, as before), same power and speed
+  const profiles = prof.profiles || prof, binding = Object.values(dev.processing)[0].modes.LASER_PLANE.bindings || [];
+  const passesOf = tag => {
+    const id = ds.find(d => d.layerTag === tag).id, b = binding.find(x => x.displayIds.includes(id));
+    return (profiles[b.baseProfileId] || Object.values(profiles).flat().find(p => p.id === b.baseProfileId)).values;
+  };
+  expect([passesOf('#fe0002').repeat, passesOf('#ff8c00').repeat, passesOf('#ffd400').repeat]).toEqual([1, 2, 2]);
+  expect(passesOf('#ffd400').power).toBe(35);
+  // each step reaches less close to the letters: its area is smaller than the one before
+  const area = tag => { const d = ds.find(x => x.layerTag === tag); return d.width * d.height; };
+  expect(area('#ff8c00')).toBeGreaterThan(0);
+  noProblems(problems);
+});

@@ -12,13 +12,19 @@
 //                                    original stamp had 30 %, raised to 55 % after cutting stamps with it)
 //   #FE0002  red   fill engraving   35 % power, speed 300, 200 lines/inch, 5 passes (the deep pass)
 //   #000000  black vector cut       80 % power, speed 20, 2 passes                 (cutting the stamp out)
+// With a sloped shoulder the deep pass is split into steps (core/stamp.js): red keeps its area with the first share
+// of the 5 passes, and each further step (orange, yellow, green, purple) engraves a little further from the letters
+// with the next share, same power and speed; the passes add up, so the outside is exactly as deep as before.
 // Each path has its own binding to its profile, plus two "shadow" bindings with xTool's defaults for the other
 // processing types (what xTool switches to if you change the type), all as xTool writes them.
+
+import { splitPasses } from './stamp.js';
 
 export const XS_APP = { appVersion: '1.7.30', canvasVersion: '2.16.2' };
 export const BED = { w: 600, h: 308 }; // xTool P2 working area (mm)
 
 const LAYERS = { blue: '#2366ff', red: '#fe0002', black: '#000000' };
+export const SLOPE_COLORS = ['#ff8c00', '#ffd400', '#00b050', '#a64dff'];
 // the settings of the stamp project
 const FILL = (power, speed, repeat, density) => ({ power, speed, repeat, density, bitmapScanMode: 'zMode', airPump: 50, enableKerf: false, kerfDistance: 0, defocus: false, defocus_distance: 8 });
 const CUT = (power, speed, repeat) => ({ power, speed, repeat, cuttingDrop: false, sinkingMethod: 'one', firstCuttingDropValue: 1, cuttingDropValue: 1, descentIntervalDescent: 1, descentPerStep: 1, enableBreakPoint: false, breakPointGenMode: 'auto', breakPointSize: 0.5, breakPointMode: 'count', breakPointCount: 2, breakPointDistance: 100, breakPointPower: 0, enableKerf: false, kerfDistance: 0, airPump: 100, enableOverCut: false, overCutDistance: 0.5 });
@@ -36,6 +42,7 @@ const SHADOW = {
 };
 const SHADOWS_OF = { blue: ['vengrave', 'cut'], red: ['vengrave', 'cut'], black: ['vengrave', 'fill'] };
 
+const withRepeat = (def, repeat) => ({ ...def, values: { ...def.values, repeat } });
 const f6 = v => { const r = Math.round(v * 1e6) / 1e6; return Object.is(r, -0) ? 0 : r; };
 const n6 = v => String(f6(v));
 // rings -> SVG path data as xTool writes it: "M x yL x y x y …Z" per ring
@@ -80,12 +87,12 @@ const uuid = () => {
 
 // One display (a path on the canvas), with xTool's fields in xTool's order. kind: 'blue' | 'red' | 'black'.
 // (paths inside a group carry no groupTag of their own, as in xTool's file)
-function display(kind, { id, x, y, w, h, zOrder, sourceId, groupTags, path }) {
+function display(kind, { id, x, y, w, h, zOrder, sourceId, groupTags, path, color = LAYERS[kind] }) {
   const filled = kind !== 'black';
   const d = {
     id, name: null, type: 'PATH', x: f6(x), y: f6(y), angle: 180, scale: { x: 1, y: 1 }, skew: { x: 3.141593, y: 0 }, pivot: { x: 0, y: 0 },
     localSkew: { x: 0, y: 3.141593 }, offsetX: f6(x), offsetY: f6(y), lockRatio: kind !== 'black', isClosePath: true, zOrder, sourceId,
-    groupTags, layerTag: LAYERS[kind], layerColor: LAYERS[kind], visible: true, originColor: '#000000', enableTransform: true,
+    groupTags, layerTag: color, layerColor: color, visible: true, originColor: '#000000', enableTransform: true,
     visibleState: true, lockState: false, resourceOrigin: '', customData: { tabBreaks: {}, startPoint: {} }, rootComponentId: '',
     minCanvasVersion: '0.0.0', alpha: 1,
     // as in the stamp project: the blue engraving is shown filled, the red one and the cut as outlines
@@ -109,6 +116,7 @@ export async function buildXsFiles(stamps, { cover = null, name = 'Untitled', no
   const profile = def => { const id = `profile:${shortId()}`; profiles[id] = { id, processingType: def.processingType, values: { ...def.values } }; return id; };
   const shadowIds = Object.fromEntries(Object.entries(SHADOW).map(([k, def]) => [k, profile(def)]));
   let z = 0;
+  const used = new Set();
   for (const st of stamps) {
     const gid = `g-${uuid()}`;
     groupData[gid] = { groupName: '', groupTag: gid, visible: true, enableTransform: true, zOrder: 1, rotation: 0 };
@@ -116,17 +124,22 @@ export async function buildXsFiles(stamps, { cover = null, name = 'Untitled', no
     let ex0 = Infinity, ex1 = -Infinity, ey0 = Infinity;
     for (const rings of Object.values(st.parts)) for (const r of rings) for (const [px, py] of r) { if (px < ex0) ex0 = px; if (px > ex1) ex1 = px; if (py < ey0) ey0 = py; }
     const A = st.x + (ex1 - ex0) + ex0, Yo = st.y - ey0; // world x = A - local x; world y = Yo + local y
-    for (const kind of ['blue', 'red', 'black']) {
-      const rings = st.parts[kind];
+    // the deep pass's passes shared by red and the slope's steps
+    const slope = (st.parts.slope || []).slice(0, SLOPE_COLORS.length), passes = splitPasses(STAMP_SETTINGS.red.values.repeat, 1 + slope.length);
+    const layers = [['blue', st.parts.blue, LAYERS.blue, STAMP_SETTINGS.blue], ['red', st.parts.red, LAYERS.red, withRepeat(STAMP_SETTINGS.red, passes[0])],
+      ...slope.map((rings, i) => ['red', rings, SLOPE_COLORS[i], withRepeat(STAMP_SETTINGS.red, passes[i + 1])]), ['black', st.parts.black, LAYERS.black, STAMP_SETTINGS.black]];
+    for (const [kind, rings, color, setting] of layers) {
+      if (!rings.length) continue;
+      used.add(color);
       let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
       for (const r of rings) for (const [px, py] of r) { if (px < x0) x0 = px; if (px > x1) x1 = px; if (py < y0) y0 = py; if (py > y1) y1 = py; }
       const d = pathData(rings.map(r => r.map(([px, py]) => [px - x0, py - y0])));
       let path = { d };
       if (kind !== 'black') { const hash = sha256Hex(d); vectors[hash] = d; path = { hash }; }
       const id = uuid();
-      displays.push(display(kind, { id, x: A - x0, y: Yo + y0, w: x1 - x0, h: y1 - y0, zOrder: ++z, sourceId: uuid(), groupTags: [gid], path }));
+      displays.push(display(kind, { id, x: A - x0, y: Yo + y0, w: x1 - x0, h: y1 - y0, zOrder: ++z, sourceId: uuid(), groupTags: [gid], path, color }));
       const main = `binding:${shortId()}`;
-      bindings.push({ bindingId: main, canvasId, mode: 'LASER_PLANE', baseProfileId: profile(STAMP_SETTINGS[kind]), displayIds: [id] });
+      bindings.push({ bindingId: main, canvasId, mode: 'LASER_PLANE', baseProfileId: profile(setting), displayIds: [id] });
       for (const s of SHADOWS_OF[kind]) bindings.push({ bindingId: `binding:${shortId()}`, canvasId, mode: 'LASER_PLANE', baseProfileId: shadowIds[s], displayIds: [], shadowOf: main });
     }
   }
@@ -135,7 +148,8 @@ export async function buildXsFiles(stamps, { cover = null, name = 'Untitled', no
   const J = o => JSON.stringify(o, null, 2);
   const canvas = {
     id: canvasId, title: '{panel}1', hidden: false,
-    layerData: { '#2366ff': { name: '#2366FF', order: 1, visible: true }, '#fe0002': { name: '#FE0002', order: 2, visible: true }, '#000000': { name: '#000000', order: 3, visible: true } },
+    // in processing order: blue, red, the slope's steps, the cut (as the stamp project has them without a slope)
+    layerData: Object.fromEntries([LAYERS.blue, LAYERS.red, ...SLOPE_COLORS.filter(c => used.has(c)), LAYERS.black].map((c, i) => [c, { name: c.toUpperCase(), order: i + 1, visible: true }])),
     groupData,
     extendInfo: { version: XS_APP.canvasVersion, minCanvasVersion: '0.0.0', displayProcessConfigMap: {}, rulerPluginData: { rulerGuide: [] }, type: '2d' },
     chunkLayout: { displayCount: displays.length, chunkCount: 1, chunkIndexes: [0] }
