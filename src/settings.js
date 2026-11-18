@@ -66,7 +66,7 @@ export function readOpts() {
     vWeed: text('vWeed'), vWeedMargin: num('vWeedMargin', 3, 0), vMirror: on('vMirror'),
     penForce: num('penForce', 40, 1), penFill: on('penFill'), penStyle: text('penStyle'), penSpacing: num('penSpacing', 0.4, 0.1), penAngle: signed('penAngle'),
     // pieczątki
-    stSize: text('stSize'), stMarginX: num('stMarginX', 2.3, 0), stMarginY: num('stMarginY', 0.8, 0), stShoulder: num('stShoulder', 0.2, 0), stShoulderScale: on('stShoulderScale'),
+    stSize: text('stSize'), stMarginX: num('stMarginX', 2.3, 0), stMarginY: num('stMarginY', 0, 0), stShoulder: num('stShoulder', 0.3, 0), stShoulderScale: on('stShoulderScale'),
     stEdge: num('stEdge', 0.8, 0), stGap: num('stGap', 3, 0), stBedEdge: num('stBedEdge', 10, 0),
     // roll
     rollW: num('rollW', 1370, 100), rollMargin: num('rollMargin', 20, 17), rollGap: num('rollGap', 2, 0), rollBleed: num('rollBleed', 3, 0),

@@ -48,13 +48,13 @@ test('pieczątki: a text stamp (B3) and an SVG stamp, saved as an xTool project 
   await expect(logo.locator('.stst')).toContainText('is more than a quarter of the stamp');
   await page.click('#stLayoutReset');
   await expect(page.locator('#stMarginX')).toHaveValue('2.3');
-  await expect(logo.locator('.stst')).toContainText('Text to cut 2.3 mm at the sides, 0.8 mm top and bottom; rim around the letters 0.2 mm (automatic).');
+  await expect(logo.locator('.stst')).toContainText('Text to cut 2.3 mm at the sides, 0 mm top and bottom; rim around the letters 0.3 mm (the general rim).');
   await expect(logo.locator('.stst')).not.toContainText('quarter');
   // its own rim around the letters
   await logo.locator('.strim').fill('0.08');
   await expect(logo.locator('.stst')).toContainText('rim around the letters 0.08 mm.');
   await logo.locator('.strim').fill('');
-  await expect(logo.locator('.stst')).toContainText('(automatic)');
+  await expect(logo.locator('.stst')).toContainText('(the general rim)');
   // text scale 90 %: the text narrower by a tenth, the cut still the stamp's size
   await logo.locator('.stscale').fill('90');
   await expect(logo.locator('.stst')).toContainText('59 × 25 mm: text 49 × 14.6 mm, cut 59 × 25 mm.');

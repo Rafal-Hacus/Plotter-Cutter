@@ -32,7 +32,7 @@ describe('xTool project (.xs)', () => {
     expect(mode.data).toEqual({ material: 0, thickness: null, perimeter: null, diameter: null, isProcessByLayer: false, pathPlanning: 'auto', fillPlanning: 'separate', scanDirection: 'topToBottom', matchThresh: 0.7, enableOddEvenKerf: true, focalLen: null, focalLength: null });
     expect(new Set(mode.profileRefs)).toEqual(new Set(Object.keys(prof)));
     const want = {
-      '#2366ff': ['FILL_VECTOR_ENGRAVING', { power: 30, speed: 400, repeat: 1, density: 300 }],
+      '#2366ff': ['FILL_VECTOR_ENGRAVING', { power: 55, speed: 400, repeat: 1, density: 300 }],
       '#fe0002': ['FILL_VECTOR_ENGRAVING', { power: 35, speed: 300, repeat: 5, density: 200 }],
       '#000000': ['VECTOR_CUTTING', { power: 80, speed: 20, repeat: 2 }]
     };

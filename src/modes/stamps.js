@@ -273,7 +273,7 @@ function status(it) {
     st.textContent = `${num(W)} × ${num(H)} mm: text ${num(Math.round(a.w * 10) / 10)} × ${num(Math.round(a.h * 10) / 10)} mm, cut ${num(Math.round(c.w * 10) / 10)} × ${num(Math.round(c.h * 10) / 10)} mm.${it.svg && it.svg.texts ? ` ${it.svg.texts} text ${it.svg.texts === 1 ? 'element was' : 'elements were'} left out: convert text to outlines (paths) in the SVG.` : ''}`;
     // the distances from the text to the cut it used, and a warning when one was too big for the stamp
     const m = r.margins || { x: 0, y: 0 }, r2 = v => num(Math.round(v * 100) / 100);
-    st.textContent += ` Text to cut ${r2(m.x)} mm at the sides, ${r2(m.y)} mm top and bottom; rim around the letters ${r2(r.shoulder ?? 0.2)} mm${it.rim == null ? ' (automatic)' : ''}.`;
+    st.textContent += ` Text to cut ${r2(m.x)} mm at the sides, ${r2(m.y)} mm top and bottom; rim around the letters ${r2(r.shoulder ?? 0.2)} mm${it.rim == null ? (readOpts().stShoulderScale ? ' (automatic, thinner for small letters)' : ' (the general rim)') : ''}.`;
     const rimEl = it.li.querySelector('.strim'); if (rimEl) rimEl.placeholder = r2(r.shoulder ?? 0.2);
     if (m.cutX || m.cutY) {
       const o = stampOpts(readOpts(), it);
@@ -429,7 +429,8 @@ const ringsD = rings => rings.map(r => `M${r.map(p => `${num(p[0])},${num(p[1])}
 // one stamp as it will be engraved (mirrored), in its own mm; mode 'thumb' for the list
 function stampSvg(r, mode) {
   const e = bbox(r.red.concat([r.cut])), pad = 0.5;
-  const g = `<g transform="matrix(-1 0 0 1 ${num(e.x0 + e.x1)} 0)"><path d="${ringsD(r.red)}" fill="${LAYER_FILL.red}" fill-rule="evenodd"/><path d="${ringsD(r.blue)}" fill="${LAYER_FILL.blue}" fill-rule="evenodd"/><path d="${ringsD([r.cut])}" fill="none" stroke="#000" stroke-width="0.15"/></g>`;
+  // the red (deep) layer drawn over the blue one, as xTool Studio shows them
+  const g = `<g transform="matrix(-1 0 0 1 ${num(e.x0 + e.x1)} 0)"><path d="${ringsD(r.blue)}" fill="${LAYER_FILL.blue}" fill-rule="evenodd"/><path d="${ringsD(r.red)}" fill="${LAYER_FILL.red}" fill-rule="evenodd"/><path d="${ringsD([r.cut])}" fill="none" stroke="#000" stroke-width="0.15"/></g>`;
   if (mode === 'thumb') return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${num(e.x0 - pad)} ${num(e.y0 - pad)} ${num(e.w + 2 * pad)} ${num(e.h + 2 * pad)}" style="max-width:100%;max-height:100%">${g}</svg>`;
   return g;
 }
@@ -540,7 +541,18 @@ onFontsChanged(fontList);
 // the stamps without their own distance to the cut show the general one
 for (const [id, cls] of [['stMarginX', '.stmx'], ['stMarginY', '.stmy']]) byId(id).addEventListener('input', () => { for (const el of document.querySelectorAll(`#stList ${cls}`)) el.placeholder = byId(id).value; });
 // the values of the stamp made in xTool Studio
-const ST_DEFAULTS = { stMarginX: 2.3, stMarginY: 0.8, stShoulder: 0.2, stEdge: 0.8 };
+const ST_DEFAULTS = { stMarginX: 2.3, stMarginY: 0, stShoulder: 0.3, stEdge: 0.8 };
+// once: the values kept from before the standard changed (0.8 mm top and bottom, 0.2 mm rim that thins for small
+// letters) move to the new standard (0 mm, a 0.3 mm rim for all); values you set yourself stay
+try {
+  if (!localStorage.getItem('pc.stampDefaults.v2')) {
+    setTimeout(() => {
+      const set = (id, from, to) => { const e = byId(id); if (e.type === 'checkbox' ? e.checked === from : parseFloat(e.value) === from) { if (e.type === 'checkbox') e.checked = to; else e.value = String(to); e.dispatchEvent(new Event(e.type === 'checkbox' ? 'change' : 'input')); } };
+      set('stMarginY', 0.8, 0); set('stShoulder', 0.2, 0.3); set('stShoulderScale', true, false);
+      try { localStorage.setItem('pc.stampDefaults.v2', '1'); } catch { /* storage unavailable */ }
+    }, 0);
+  }
+} catch { /* storage unavailable */ }
 const setDefaults = ids => { for (const id of ids) { const e = byId(id); e.value = String(ST_DEFAULTS[id]); e.dispatchEvent(new Event('input')); } };
 byId('stLayoutReset').addEventListener('click', () => setDefaults(Object.keys(ST_DEFAULTS)));
 // a distance to the cut over 15 mm kept from an earlier visit is a mistake (no stamp is set like that): back to

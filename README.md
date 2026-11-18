@@ -247,7 +247,7 @@ hand in xTool Studio:
 - **black** (cut, 80 % power, speed 20, 2 passes): around the text with straight edges and sharp corners, straight
   along the top and the bottom, and always exactly the stamp size (e.g. 48 × 19 mm for B3, also when the text is
   limited by the height) (or a rectangle / rounded rectangle of the size);
-- **blue** (fill engraving, 30 %, speed 400, 300 lines/inch, 1 pass): the stamp less the letters;
+- **blue** (fill engraving, 55 %, speed 400, 300 lines/inch, 1 pass): the stamp less the letters;
 - **red** (fill engraving, 35 %, speed 300, 200 lines/inch, 5 passes): the stamp grown 0.8 mm past the cut less the
   letters grown 0.2 mm (a shoulder under them).
 
