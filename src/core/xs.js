@@ -8,7 +8,8 @@
 // data here starts at 0, 0 (its own bounding box), so offsetX = x and offsetY = y.
 //
 // Layers and settings (the stamp's three parts, see core/stamp.js), in processing order:
-//   #2366FF  blue  fill engraving   30 % power, speed 400, 300 lines/inch, 1 pass   (the finishing pass)
+//   #2366FF  blue  fill engraving   55 % power, speed 400, 300 lines/inch, 1 pass   (the finishing pass; the
+//                                    original stamp had 30 %, raised to 55 % after cutting stamps with it)
 //   #FE0002  red   fill engraving   35 % power, speed 300, 200 lines/inch, 5 passes (the deep pass)
 //   #000000  black vector cut       80 % power, speed 20, 2 passes                 (cutting the stamp out)
 // Each path has its own binding to its profile, plus two "shadow" bindings with xTool's defaults for the other
@@ -23,7 +24,7 @@ const FILL = (power, speed, repeat, density) => ({ power, speed, repeat, density
 const CUT = (power, speed, repeat) => ({ power, speed, repeat, cuttingDrop: false, sinkingMethod: 'one', firstCuttingDropValue: 1, cuttingDropValue: 1, descentIntervalDescent: 1, descentPerStep: 1, enableBreakPoint: false, breakPointGenMode: 'auto', breakPointSize: 0.5, breakPointMode: 'count', breakPointCount: 2, breakPointDistance: 100, breakPointPower: 0, enableKerf: false, kerfDistance: 0, airPump: 100, enableOverCut: false, overCutDistance: 0.5 });
 const VENGRAVE = (power, speed, repeat) => ({ power, speed, repeat, enableKerf: false, kerfDistance: 0, airPump: 50, defocus: false, defocus_distance: 8 });
 export const STAMP_SETTINGS = {
-  blue: { processingType: 'FILL_VECTOR_ENGRAVING', values: FILL(30, 400, 1, 300) },
+  blue: { processingType: 'FILL_VECTOR_ENGRAVING', values: FILL(55, 400, 1, 300) },
   red: { processingType: 'FILL_VECTOR_ENGRAVING', values: FILL(35, 300, 5, 200) },
   black: { processingType: 'VECTOR_CUTTING', values: CUT(80, 20, 2) }
 };

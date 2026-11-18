@@ -1,5 +1,8 @@
 // The stickers mode: adding designs, tracing their outlines and nesting them on the sheet.
 import { circleSvg, detectCircle } from '../../core/image.js';
+import { pagePaths } from '../../core/pdfpaths.js';
+import { bbox } from '../../core/stamp.js';
+import { num } from '../../core/svg.js';
 import { isPdfFile, tick } from '../../core/util.js';
 import { EMPTY_LIST, setMsg, ui } from '../../dom.js';
 import { ensureLibs, pdfSource } from '../../lib/pdf.js';
@@ -40,35 +43,70 @@ async function computeStickers(o, stale) {
 }
 registerMode('stickers', { compute: computeStickers, renderPreview: renderStickerPreview, renderStats: renderStickerStats, onDrop: addFiles });
 
-/* ---------- round stickers from a PDF: the page as artwork, a circle as the kiss cut ---------- */
-async function addPdfCircles(file) {
+/* ---------- stickers from a PDF: the page as artwork, and the kiss cut one of three ways ---------- */
+//   kind 'cut':   the line drawn in the PDF (stroked, not filled: the usual cut line, as for SVGs)
+//   kind 'trace': traced around the artwork with the kiss-cut offset, as for SVGs
+//   kind 'round': a circle, found on the page or set by hand (round stickers)
+// A cut line on a layer of its own (named Cut, CutContour, Kiss, Wykrój, Cięcie …) is left out of the print.
+const CUT_LAYER = /cut|kiss|contour|wykr[oó]j|ci[eę]cie|kontur/i;
+// the sticker's SVG: the page picture, plus the circle or the PDF's cut lines (in page points, y down)
+export function pdfStickerSvg(c) {
+  if (c.kind === 'round') return circleSvg(c);
+  const lines = c.kind === 'cut' ? c.cutLines.map(r => `<path d="M${r.map(p => `${num(p[0])},${num(p[1])}`).join('L')}Z" fill="none" stroke="#e6007e" stroke-width="${num(Math.min(c.w, c.h) / 400)}"/>`).join('') : '';
+  return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${num(c.w)} ${num(c.h)}" width="${num(c.w)}pt" height="${num(c.h)}pt">`
+    + `<image href="${c.img}" x="0" y="0" width="${num(c.w)}" height="${num(c.h)}" preserveAspectRatio="none"/>${lines}</svg>`;
+}
+async function addPdfStickers(file) {
   await ensureLibs();
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const pdf = await window.pdfjsLib.getDocument(pdfSource(bytes.slice())).promise;
+  const pdf = await window.pdfjsLib.getDocument(pdfSource(bytes.slice())).promise, { OPS } = window.pdfjsLib;
+  // layers that hold the cut line: hidden in the picture (and the page is then printed from the picture)
+  let ocConfig, hidLayer = false;
+  try {
+    ocConfig = await pdf.getOptionalContentConfig();
+    for (const [id, grp] of ocConfig) if (grp && CUT_LAYER.test(grp.name || '')) { ocConfig.setVisibility(id, false); hidLayer = true; }
+  } catch { ocConfig = null; }
   for (let i = 1; i <= pdf.numPages; i++) {
     const pg = await pdf.getPage(i), vp1 = pg.getViewport({ scale: 1 });
+    // the PDF's cut lines: closed, stroked and not filled, longer than a few mm; in the picture's coordinates
+    const ol = await pg.getOperatorList();
+    const cutLines = [];
+    for (const p of pagePaths(ol.fnArray, ol.argsArray, OPS)) {
+      if (!p.stroke || p.fill) continue;
+      for (const sp of p.subpaths) {
+        const a = sp.pts[0], z = sp.pts[sp.pts.length - 1];
+        if (!(sp.closed || Math.hypot(a[0] - z[0], a[1] - z[1]) < 0.5) || sp.pts.length < 3) continue;
+        const pts = sp.pts.map(([x, y]) => vp1.convertToViewportPoint(x, y));
+        const b = bbox([pts]);
+        if (b.w > 5 && b.h > 5) cutLines.push(pts); // (points: about 2 mm)
+      }
+    }
     const vp = pg.getViewport({ scale: Math.min(10, 3000 / Math.max(vp1.width, vp1.height)) }); // ~3000 px: 300 dpi up to ~25 cm
     const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
     const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
-    await pg.render({ canvasContext: g, viewport: vp }).promise;
+    await pg.render({ canvasContext: g, viewport: vp, ...(ocConfig ? { optionalContentConfigPromise: Promise.resolve(ocConfig) } : {}) }).promise;
     const det = detectCircle(cv);
     // cut a little inside the detected edge, so no background shows if the cut lands a bit off
-    const c = { img: cv.toDataURL('image/jpeg', 0.92), w: vp1.width, h: vp1.height, pdf: bytes, page: i - 1, mbx: pg.view[0], mby: pg.view[1], rot: ((pg.rotate || 0) % 360 + 360) % 360, size: det ? det.size * 0.98 : 0.9, x: det ? det.x : 0, y: det ? det.y : 0, found: !!det };
+    const c = {
+      img: cv.toDataURL('image/jpeg', 0.92), w: vp1.width, h: vp1.height, pdf: bytes, page: i - 1, mbx: pg.view[0], mby: pg.view[1],
+      rot: ((pg.rotate || 0) % 360 + 360) % 360, size: det ? det.size * 0.98 : 0.9, x: det ? det.x : 0, y: det ? det.y : 0, found: !!det,
+      cutLines, kind: cutLines.length ? 'cut' : det ? 'round' : 'trace', hidLayer
+    };
     cv.width = cv.height = 1;
-    const d = prepareDesign(circleSvg(c), pdf.numPages > 1 ? `${file.name} p.${i}` : file.name);
-    d.circle = c; d.mode = 'cut'; d.heightMm = 50;
+    const d = prepareDesign(pdfStickerSvg(c), pdf.numPages > 1 ? `${file.name} p.${i}` : file.name);
+    d.circle = c; d.mode = c.kind === 'trace' ? 'trace' : 'cut';
+    if (c.kind === 'round') d.heightMm = 50;
     designs.push(d); addRow(d);
   }
 }
-// after the circle of a round sticker was moved or resized: the design is made again around the new circle
+// after the circle was moved or resized, or the kind of kiss cut changed: the design is made again
 export function rebuildCircle(d) {
   const keep = { qty: d.qty, heightMm: d.heightMm, ui: d.ui, circle: d.circle };
-  Object.assign(d, prepareDesign(circleSvg(d.circle), d.name), keep, { mode: 'cut' });
-  // the shapes read for the vinyl and pen modes belong to the old circle
+  Object.assign(d, prepareDesign(pdfStickerSvg(d.circle), d.name), keep, { mode: d.circle.kind === 'trace' ? 'trace' : 'cut' });
+  // the shapes read for the vinyl and pen modes belong to the old design
   d.vgeo = d.vres = d.vkey = null;
   updateRow(d); schedule();
 }
-// SVG files become stickers (or shapes, in the vinyl and pen modes); PDFs become round stickers.
 export async function addFiles(fileList) {
   const pdfOk = !isMarkless();
   const files = Array.from(fileList).filter(f => /\.svg$/i.test(f.name) || f.type === 'image/svg+xml' || (pdfOk && isPdfFile(f)));
@@ -77,7 +115,7 @@ export async function addFiles(fileList) {
   const failed = [];
   for (const f of files) {
     try {
-      if (isPdfFile(f)) { setMsg(`Reading ${f.name}…`); await addPdfCircles(f); setMsg(''); continue; }
+      if (isPdfFile(f)) { setMsg(`Reading ${f.name}…`); await addPdfStickers(f); setMsg(''); continue; }
       const d = prepareDesign(await f.text(), f.name);
       designs.push(d); addRow(d);
     } catch (e) {

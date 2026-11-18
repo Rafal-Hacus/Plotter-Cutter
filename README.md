@@ -247,12 +247,22 @@ hand in xTool Studio:
 - **black** (cut, 80 % power, speed 20, 2 passes): around the text with straight edges and sharp corners, straight
   along the top and the bottom, and always exactly the stamp size (e.g. 48 × 19 mm for B3, also when the text is
   limited by the height) (or a rectangle / rounded rectangle of the size);
-- **blue** (fill engraving, 30 %, speed 400, 300 lines/inch, 1 pass): the stamp less the letters;
+- **blue** (fill engraving, 55 %, speed 400, 300 lines/inch, 1 pass): the stamp less the letters;
 - **red** (fill engraving, 35 %, speed 300, 200 lines/inch, 5 passes): the stamp grown 0.8 mm past the cut less the
   letters grown 0.2 mm (a shoulder under them).
 
 All stamps (with copies) are laid out on the P2's 600 × 308 mm bed, each one a group, and saved as one project for
 the P2 (processing order blue, red, black, as in the original file).
+
+## Stickers from PDFs
+
+A PDF page added in Stickers is a sticker with its page as the artwork. **Kiss cut** for it:
+
+- **Cut line from file** (picked when the PDF has one): the closed line drawn in the PDF, stroked and not filled
+  (the usual cut line). On a layer of its own named like Cut, CutContour, Kiss, Wykrój or Cięcie it is left out of
+  the print; otherwise it prints with the page.
+- **Trace artwork**: traced around the artwork with the border set under Cut lines, as for SVGs.
+- **Circle** (round stickers): a circle found on the page, or set by hand.
 
 ## Roll (signs, labels, banners)
 

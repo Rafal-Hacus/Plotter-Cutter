@@ -73,3 +73,41 @@ test('PLT modifier "fix dense paths" keeps every outline (regression)', async ({
   }
   noProblems(problems);
 });
+
+test('a PDF sticker (picture + a cut line): the kiss cut follows the PDF\'s line; or traced; or a circle', async ({ page }) => {
+  const problems = await openApp(page);
+  await page.setInputFiles('#files', [fixture('sticker-cutline.pdf'), fixture('sticker-cutlayer.pdf')]);
+  const rows = page.locator('#list li.design');
+  await expect(rows).toHaveCount(2);
+  const [line, layer] = [rows.nth(0), rows.nth(1)];
+  // the line in the PDF is found and used; on a layer of its own it is kept off the print
+  await expect(line.locator('.m')).toHaveValue('cut');
+  await expect(line.locator('.status')).toContainText('Kiss cut along the line drawn in the PDF. It is part of the page, so it prints too');
+  await expect(layer.locator('.status')).toContainText('Its layer is left out of the print.');
+  // the pictures the stickers print from: the magenta line in the first, none in the second
+  const magenta = await page.evaluate(async () => Promise.all([...document.querySelectorAll('#list .thumb image')].map(async el => {
+    const u = decodeURIComponent(el.getAttribute('href') || '').match(/data:image\/jpeg;base64,[A-Za-z0-9+/=]+/)[0], im = new Image();
+    im.src = u; await im.decode();
+    const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height).data; let n = 0;
+    for (let k = 0; k < d.length; k += 4) if (d[k] > 180 && d[k + 1] < 80 && d[k + 2] > 80 && d[k + 2] < 200) n++;
+    return n;
+  })));
+  expect(magenta[0]).toBeGreaterThan(1000);
+  expect(magenta[1]).toBe(0);
+  // the cut line is 58 x 40 mm in the PDF: at its own height of 40 mm it comes out 58 mm wide
+  await line.locator('.h').fill('40');
+  await expect(line.locator('.status')).toContainText('Cut line 58 × 40 mm');
+  // the kiss-cut lines: the PDF's rounded box (58 x 40) for each sticker of the first file
+  await enabled(page, 'exCut');
+  const kiss = cutLayers((await download(page, 'exCut')).toString()).Kiss_cut;
+  expect(kiss.some(k => { const b = bbox(k); return Math.abs(b[2] - b[0] - 58) < 0.3 && Math.abs(b[3] - b[1] - 40) < 0.3; })).toBe(true);
+  // traced instead: the outline follows the artwork (a picture and a circle), not the box
+  await line.locator('.m').selectOption('trace');
+  await expect(line.locator('.status')).toContainText('Kiss cut traced around the artwork');
+  // or a circle: its size and position fields appear
+  await line.locator('.m').selectOption('round');
+  await expect(line.locator('.circ')).toBeVisible();
+  await expect(line.locator('.status')).toContainText('Round sticker');
+  noProblems(problems);
+});

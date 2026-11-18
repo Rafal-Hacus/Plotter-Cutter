@@ -10,7 +10,8 @@ import { state } from '../../state.js';
 
 // vec: for the print PDF, round stickers made from a PDF are left out here and drawn from the original PDF instead
 // A rotated PDF page is printed from its rendered image: the vector embed would come out unrotated.
-export const vecCircle = d => !!(d.circle && d.circle.pdf && !d.circle.rot);
+// (not when the cut line's layer is hidden in the picture: the vector page would print it)
+export const vecCircle = d => !!(d.circle && d.circle.pdf && !d.circle.rot && !d.circle.hidLayer);
 // The sheet as an SVG. kind: 'all' (print + cut), 'print', 'cut', or 'art' (artwork only, no marks). L: the layout.
 export function buildExport(kind, L, vec = false) {
   const t = state.template, o = readOpts();

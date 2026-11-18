@@ -34,7 +34,10 @@ export function updateRow(d) {
   const r = d.res, bits = [];
   bits.push(`${r.cutMode ? 'Cut line' : 'Art'} ${mm1(r.frW)} × ${mm1(r.frH)} mm, die cut ${mm1(r.cutW)} × ${mm1(r.cutH)} mm.`);
   if (state.layout) { const n = state.layout.counts.get(d.id) || 0; bits.push(n === 1 ? '1 on the sheet.' : `${n} on the sheet.`); }
-  if (d.circle) bits.push(d.circle.found ? 'Round sticker: the cut circle was placed on the circle found in the PDF (2 % inside its edge); adjust it below if needed.' : 'Round sticker: no clear circle found in the PDF, so the cut circle is centred at 90 % of the page; adjust it below.');
+  const c = d.circle;
+  if (c && c.kind === 'round') bits.push(c.found ? 'Round sticker: the cut circle was placed on the circle found in the PDF (2 % inside its edge); adjust it below if needed.' : 'Round sticker: no clear circle found in the PDF, so the cut circle is centred at 90 % of the page; adjust it below.');
+  else if (c && c.kind === 'cut') bits.push(`Kiss cut along the line drawn in the PDF${c.cutLines.length > 1 ? ` (${c.cutLines.length} lines)` : ''}.${c.hidLayer ? ' Its layer is left out of the print.' : ' It is part of the page, so it prints too: put it on a layer of its own named Cut or CutContour to keep it off the print.'}`);
+  else if (c) bits.push('Kiss cut traced around the artwork, with the border set under Cut lines.');
   else if (r.cutMode) bits.push('Kiss cut follows the line in the file; everything outside the easy-peel margin is cropped off.');
   if (r.bleedShort) bits.push('The image doesn’t reach the die line everywhere, so parts of the easy-peel margin will print white.');
   if (r.joined) bits.push('Nearby parts joined into one shape.');
@@ -68,15 +71,20 @@ export function addRow(d) {
   rm.setAttribute('aria-label', `Remove ${d.name}`);
   const mIn = li.querySelector('.m');
   mIn.value = d.mode;
-  if (!d.canCut) { mIn.querySelector('[value=cut]').disabled = true; mIn.title = 'No stroked, unfilled line found in this file'; }
+  const c = d.circle;
+  if (c) {
+    // a sticker from a PDF: the kiss cut along the PDF's line, traced around the artwork, or a circle
+    mIn.insertAdjacentHTML('beforeend', '<option value="round">Circle (round sticker)</option>');
+    mIn.value = c.kind;
+    if (!c.cutLines.length) { mIn.querySelector('[value=cut]').disabled = true; mIn.title = 'No cut line (a stroked, unfilled closed line) in this PDF'; }
+  } else if (!d.canCut) { mIn.querySelector('[value=cut]').disabled = true; mIn.title = 'No stroked, unfilled line found in this file'; }
   const hl = li.querySelector('.hl').firstChild;
-  const setHl = () => { hl.textContent = d.circle ? 'Sticker Ø (cut line), mm' : d.mode === 'cut' ? 'Cut line height, mm' : 'Height, mm'; };
+  const setHl = () => { hl.textContent = c && c.kind === 'round' ? 'Sticker Ø (cut line), mm' : d.mode === 'cut' ? 'Cut line height, mm' : 'Height, mm'; };
   setHl();
-  if (d.circle) {
-    // round sticker from a PDF: the circle is the kiss cut; its size and position on the page are set here
-    li.querySelector('.ksel').hidden = true;
+  if (c) {
+    // a round sticker's circle: its size and position on the page are set here
     const box = li.querySelector('.circ'), cs = box.querySelector('.cs'), cx = box.querySelector('.cx'), cy = box.querySelector('.cy');
-    box.hidden = false;
+    box.hidden = c.kind !== 'round';
     const fill = () => { cs.value = num(Math.round(d.circle.size * 1000) / 10); cx.value = num(Math.round(d.circle.x * 1000) / 10); cy.value = num(Math.round(d.circle.y * 1000) / 10); };
     fill();
     let t = null;
@@ -91,7 +99,10 @@ export function addRow(d) {
       else { d.ui.status.textContent = 'No clear circle found; set the size and position by hand.'; }
     });
   }
-  mIn.addEventListener('change', () => { d.mode = mIn.value; setHl(); schedule(); });
+  mIn.addEventListener('change', () => {
+    if (c) { c.kind = mIn.value; li.querySelector('.circ').hidden = c.kind !== 'round'; setHl(); rebuildCircle(d); return; }
+    d.mode = mIn.value; setHl(); schedule();
+  });
   hIn.addEventListener('input', () => { const v = parseFloat(hIn.value); if (isFinite(v) && v >= 5) { d.heightMm = v; schedule(); } });
   qIn.addEventListener('input', () => { const v = parseInt(qIn.value, 10); d.qty = (qIn.value === '' || !isFinite(v)) ? null : Math.max(0, v); schedule(); });
   rm.addEventListener('click', () => {
