@@ -26,6 +26,8 @@ export function updateRow(d) {
     if (d.busy || !d.vres) { st.textContent = 'Reading the shapes…'; return; }
     const r = d.vres, n = state.vinylLayout ? state.vinylLayout.counts.get(d.id) || 0 : 0;
     st.textContent = `${state.mode === 'pen' ? 'Drawing' : 'Cut'} ${mm1(r.frW)} × ${mm1(r.frH)} mm, ${r.nPaths} paths. ${n === 1 ? `1 on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.` : `${n} on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.`}${vOpts().vMirror ? ' Mirrored.' : ''}`;
+    if (r.texts) st.textContent += ` ${r.texts} text ${r.texts === 1 ? 'element is' : 'elements are'} left out: convert text to curves (outlines) in the SVG.`;
+    if (r.strokes && state.mode !== 'pen') st.textContent += ` ${r.strokes === 1 ? '1 shape is' : `${r.strokes} shapes are`} only a thick stroke: the knife follows the middle of the stroke, not its edges. Convert strokes to outlines to cut them as drawn.`;
     return;
   }
   st.classList.toggle('err', !!d.error);
