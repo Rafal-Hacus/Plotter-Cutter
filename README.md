@@ -9,7 +9,7 @@ Everything runs in the browser. Nothing is uploaded; the page loads nothing from
 ## Running in Portainer
 
 The image is published to `ghcr.io/rafal-hacus/plotter-cutter` by GitHub Actions (for normal PCs/servers and for
-ARM boards like a Raspberry Pi or many NAS boxes) on every push to the default branch, so Portainer only pulls it.
+ARM boards like a Raspberry Pi or many NAS boxes) on every push to the default branch once all checks pass, so Portainer only pulls it.
 
 1. **Stacks → Add stack**, name it e.g. `plotter-cutter`.
 2. **Repository**: URL `https://github.com/Rafal-Hacus/Plotter-Cutter`, reference `refs/heads/main`, compose path
@@ -218,7 +218,7 @@ purpose, look at the difference first, then refresh them:
 UPDATE_GOLDEN=1 npm run test:e2e -- golden
 ```
 
-CI (GitHub Actions, started by hand for now: Actions → CI → Run workflow) runs all checks and starts the stack from `docker-compose.yml` (built from that commit) and smoke-tests it. A second workflow publishes the image to GitHub's container registry.
+CI (GitHub Actions, on every push and pull request) runs all checks and starts the stack from `docker-compose.yml` (built from that commit) and smoke-tests it. Only when all of that passes on the default branch (or a `v*` tag) does it publish the image to GitHub's container registry (`publish.yml`, which can also be run by hand for any branch).
 
 ## Notes on the cut paths
 
