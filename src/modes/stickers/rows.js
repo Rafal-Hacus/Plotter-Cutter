@@ -19,6 +19,9 @@ function thumbSvg(d) {
 export function updateRow(d) {
   if (!d.ui) return;
   d.ui.thumb.innerHTML = thumbSvg(d);
+  // the height may have been set for the design (vinyl starts at the shapes' real size): show it, unless being typed
+  const hIn = d.ui.li && d.ui.li.querySelector('.h');
+  if (hIn && document.activeElement !== hIn) hIn.value = mm1(d.heightMm);
   const st = d.ui.status;
   if (isMarkless()) {
     st.classList.toggle('err', !!d.verr);
@@ -105,7 +108,7 @@ export function addRow(d) {
     if (c) { c.kind = mIn.value; li.querySelector('.circ').hidden = c.kind !== 'round'; setHl(); rebuildCircle(d); return; }
     d.mode = mIn.value; setHl(); schedule();
   });
-  hIn.addEventListener('input', () => { const v = parseFloat(hIn.value); if (isFinite(v) && v >= 5) { d.heightMm = v; schedule(); } });
+  hIn.addEventListener('input', () => { const v = parseFloat(hIn.value); if (isFinite(v) && v >= 5) { d.heightMm = v; d.hEdited = true; schedule(); } });
   qIn.addEventListener('input', () => { const v = parseInt(qIn.value, 10); d.qty = (qIn.value === '' || !isFinite(v)) ? null : Math.max(0, v); schedule(); });
   rm.addEventListener('click', () => {
     const i = designs.indexOf(d); if (i >= 0) designs.splice(i, 1);

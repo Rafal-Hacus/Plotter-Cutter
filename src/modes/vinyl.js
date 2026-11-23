@@ -81,9 +81,11 @@ async function processVinyl(d, o) {
   for (const g of geo) for (const [x, y] of g.pts) { gx0 = Math.min(gx0, x); gx1 = Math.max(gx1, x); gy0 = Math.min(gy0, y); gy1 = Math.max(gy1, y); }
   const bw = gx1 - gx0, bh = gy1 - gy0;
   if (!(bh > 0)) throw new Error('The shapes in this file have no height.');
-  // the height is the file's (its page / viewBox), as in the stickers mode: a file drawn to size cuts at that size,
-  // whatever blank space there is around the shapes
-  const s = d.heightMm / d.vb.h, frW = bw * s, frH = bh * s;
+  // the height is the shapes' (what gets cut), as typed. Until it is typed it starts at the shapes' real size in the
+  // file (the file's height is its page's, blank space included: a logo drawn to size on an A4 page was cut 297 mm
+  // tall, one with a little margin a little too big)
+  if (!d.hEdited && !d.realSized) { d.heightMm = d.heightMm * bh / d.vb.h; d.realSized = true; }
+  const s = d.heightMm / bh, frW = bw * s, frH = d.heightMm;
   const weedEach = o.vWeed === 'each', wm = weedEach ? o.vWeedMargin : 0;
   const pad = o.vGap / 2 + wm + 1.5;
   const Wc = Math.ceil((frW + 2 * pad) / CELL), Hc = Math.ceil((frH + 2 * pad) / CELL);

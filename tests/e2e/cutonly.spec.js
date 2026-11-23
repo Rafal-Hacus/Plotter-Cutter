@@ -10,7 +10,8 @@ test('vinyl: a file drawn to size is cut at that size, blank space around the sh
   await mode(page, 'vinyl');
   // a 100 x 40 mm page with a 20 x 10 mm rectangle on it
   await page.setInputFiles('#files', [svgFile('box.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="100mm" height="40mm" viewBox="0 0 100 40"><rect x="10" y="5" width="20" height="10" fill="#000"/></svg>')]);
-  await expect(page.locator('#list .h')).toHaveValue('40');
+  // the height field starts at the shapes' real height (10), not the page's (40)
+  await expect(page.locator('#list .h')).toHaveValue('10');
   await page.locator('#list input.q').fill('1');
   await expect(page.locator('#count')).toHaveText('1 copy on the vinyl');
   await expect(page.locator('#list .status')).toContainText('Cut 20 × 10 mm');
@@ -19,6 +20,9 @@ test('vinyl: a file drawn to size is cut at that size, blank space around the sh
   const z = unzip(await download(page, 'exVinylPlt')), s = pltStrokes(Object.values(z)[0].toString());
   // PLT X runs along the feed, Y across: the rectangle may be turned, so compare the two sides either way
   expect([span(s, 0), span(s, 1)].sort((a, b) => a - b)).toEqual([400, 800]);
+  // a height typed is the height of what gets cut
+  await page.locator('#list .h').fill('50');
+  await expect(page.locator('#list .status')).toContainText('Cut 100 × 50 mm');
   noProblems(problems);
 });
 
