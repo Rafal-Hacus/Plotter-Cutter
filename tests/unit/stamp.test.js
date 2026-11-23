@@ -61,6 +61,20 @@ describe('buildStamp', () => {
     const r = bbox([buildStamp(art, 59, 25, { shape: 'round', radius: 3 }).cut]);
     expect(r.w).toBeCloseTo(59, 6); expect(r.h).toBeCloseTo(25, 6);
   });
+  it('a rounded rectangle never cuts through letters that fill its corners: the radius is made smaller there', () => {
+    // a block of capitals as wide as the stamp allows at its height: its corners reach the stamp's corners
+    const block = textOutlines(font, ['HEHEHEHEHE', 'EHEHEHEHEH']), b0 = bbox(block), H = 19;
+    const nearCut = (p, cut) => cut.some((q, i) => { const r = cut[(i + 1) % cut.length], dx = r[0] - q[0], dy = r[1] - q[1], L = dx * dx + dy * dy, t = L ? Math.max(0, Math.min(1, ((p[0] - q[0]) * dx + (p[1] - q[1]) * dy) / L)) : 0; return Math.hypot(p[0] - q[0] - t * dx, p[1] - q[1] - t * dy) < 0.01; });
+    for (const [mx, my, radius] of [[2.3, 0, 4], [0, 0, 2], [2.3, 0.8, 6]]) {
+      const W = b0.w / b0.h * (H - 2 * my) + 2 * mx - 0.01, s = buildStamp(block, W, H, { shape: 'round', radius, marginX: mx, marginY: my });
+      for (const r of s.art) for (const p of r) expect(inside(p, s.cut) || nearCut(p, s.cut), `${mx}/${my} r${radius}`).toBe(true);
+      expect(Math.min(...s.radii)).toBeLessThan(radius - 1);
+      const c = bbox([s.cut]);
+      expect(c.w).toBeCloseTo(W, 6); expect(c.h).toBeCloseTo(H, 6);
+    }
+    // corners the text leaves empty keep the radius set
+    expect(buildStamp(textOutlines(font, ['Ż']), 48, 19, { shape: 'round', radius: 3 }).radii).toEqual([3, 3, 3, 3]);
+  });
   it('text scale: the text smaller than it fits, the cut still the stamp size', () => {
     const full = bbox(buildStamp(art, 48, 19).art), s = buildStamp(art, 48, 19, { scale: 0.8 }), a = bbox(s.art);
     expect(a.w).toBeCloseTo(full.w * 0.8, 2);
@@ -96,6 +110,16 @@ describe('richOutlines', () => {
     const faux = bbox(richOutlines([line([{ text: 'Stempel', bold: true }])], b => ({ font: regular, fauxBold: b })));
     expect(real.w).toBeGreaterThan(plain.w);
     expect(faux.w).toBeGreaterThan(plain.w);
+  });
+  it('names the letters the font has no glyph for (they would be missing from the stamp), not spaces or invisible ones', async () => {
+    const { missingChars } = await import('../../src/core/stamptext.js');
+    const script = fontkit.create(readFileSync('node_modules/@expo-google-fonts/great-vibes/400Regular/GreatVibes_400Regular.ttf'));
+    const lines = [line([{ text: 'Żółw → ok­​\t' }]), line([{ text: 'ul. → ✓', bold: true }])];
+    expect(missingChars(lines, () => ({ font: script }))).toBe('→✓');
+    expect(missingChars(lines, () => ({ font: regular }))).toBe('✓');
+    // bold runs are checked in the bold face
+    expect(missingChars(lines, b => ({ font: b ? script : regular }))).toBe('→✓');
+    expect(missingChars([line([{ text: 'Zázólc' }])], () => ({ font: regular }))).toBe(''); // decomposed accents
   });
   it('slants a made-up italic, underlines, and sizes each line', async () => {
     const { richOutlines } = await import('../../src/core/stamptext.js');

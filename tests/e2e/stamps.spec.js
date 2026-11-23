@@ -214,3 +214,44 @@ test('pieczątki: a size typed in pt is the size the letters come out (the stamp
   await expect(li.locator('.stst')).toContainText('× 1.9 mm, cut 48 × 19 mm.');
   noProblems(problems);
 });
+
+test('pieczątki: adding or removing a stamp keeps the others’ status and picture in the list', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'stamps');
+  await page.click('#stAddText');
+  const first = page.locator('#stList li').nth(0);
+  await expect(first.locator('.stst')).toContainText('48 × 19 mm');
+  await page.click('#stAddText');
+  await expect(page.locator('#count')).toHaveText('2 stamps on the bed');
+  await expect(first.locator('.stst')).toContainText('48 × 19 mm');
+  await expect(first.locator('.thumb svg')).toHaveCount(1);
+  await page.locator('#stList li').nth(1).locator('.remove').click();
+  await expect(page.locator('#count')).toHaveText('1 stamp on the bed');
+  await expect(first.locator('.stst')).toContainText('48 × 19 mm');
+  await expect(first.locator('.thumb svg')).toHaveCount(1);
+  noProblems(problems);
+});
+
+test('pieczątki: text pasted from Word keeps its line breaks, and letters the font lacks are named, not silently left out', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'stamps');
+  await page.click('#stAddText');
+  const li = page.locator('#stList li').nth(0), ed = li.locator('.steditor');
+  await ed.evaluate(e => { e.innerHTML = '<div style="text-align: center;" data-pt="10"><br></div>'; e.dispatchEvent(new Event('input')); });
+  await ed.locator('div').first().click();
+  // Word's plain text: CRLF between paragraphs, a vertical tab for a line break (Shift+Enter)
+  await ed.evaluate(e => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', 'Firma\r\nul. Długa 1' + String.fromCharCode(11) + '00-001 Warszawa');
+    e.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await expect(ed.locator('div')).toHaveCount(3);
+  await expect(ed.locator('div').nth(2)).toHaveText('00-001 Warszawa');
+  await expect(li.locator('.stst')).toContainText('48 × 19 mm');
+  await expect(li.locator('.stst')).not.toContainText('The font has no');
+  // a symbol the script font doesn't have: the stamp says so
+  await ed.evaluate(e => { e.innerHTML = '<div style="text-align: center;" data-pt="10">Tel. ☎ 600 000 000</div>'; e.dispatchEvent(new Event('input')); });
+  await li.locator('.stfont').selectOption('greatVibes');
+  await expect(li.locator('.stst')).toContainText('The font has no “☎”: it is left out of the stamp.');
+  noProblems(problems);
+});

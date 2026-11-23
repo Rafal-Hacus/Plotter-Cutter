@@ -37,7 +37,7 @@ export function richOutlines(lines, fontFor, { spacing = 1.15, steps = 12 } = {}
     const s = line.size || 1;
     let w = 0;
     const runs = (line.runs || []).filter(r => r.text).map(r => {
-      const f = fontFor(!!r.bold, !!r.italic), run = f.font.layout(r.text), k = s / f.font.unitsPerEm;
+      const f = fontFor(!!r.bold, !!r.italic), run = f.font.layout(r.text.normalize('NFC')), k = s / f.font.unitsPerEm;
       // a made-up bold is wider by its thickening on each letter
       const adv = run.positions.reduce((a, p) => a + p.xAdvance, 0) * k + (f.fauxBold ? FAUX_BOLD * s * run.glyphs.length : 0);
       const out = { r, f, run, k, x: w, w: adv };
@@ -72,6 +72,22 @@ export function richOutlines(lines, fontFor, { spacing = 1.15, steps = 12 } = {}
     }
   });
   return rings;
+}
+
+// The letters of the text the font (the face each run is set in) has no glyph for, each once, in order: the font
+// sets them as nothing at all, so they would be silently missing from the stamp (a decorative font without ą, ł,
+// a symbol). Spaces and invisible characters (soft hyphen, zero-width space, controls) don't count.
+// (code point ranges: controls, soft hyphen, joiners, direction marks, variation selectors, BOM, specials)
+const INVISIBLE = [[0, 0x20], [0x7f, 0xa0], [0xad, 0xad], [0x34f, 0x34f], [0x61c, 0x61c], [0x115f, 0x1160], [0x17b4, 0x17b5], [0x180b, 0x180f], [0x200b, 0x200f], [0x2028, 0x202f], [0x205f, 0x206f], [0x3000, 0x3000], [0x3164, 0x3164], [0xfe00, 0xfe0f], [0xfeff, 0xfeff], [0xffa0, 0xffa0], [0xfff0, 0xfff8]];
+const invisible = ch => /\s/.test(ch) || INVISIBLE.some(([a, b]) => ch.codePointAt(0) >= a && ch.codePointAt(0) <= b);
+export function missingChars(lines, fontFor) {
+  const out = new Set();
+  for (const line of lines) for (const r of line.runs || []) {
+    if (!r.text) continue;
+    const font = fontFor(!!r.bold, !!r.italic).font;
+    for (const ch of r.text.normalize('NFC')) if (!invisible(ch) && !font.hasGlyphForCodePoint(ch.codePointAt(0))) out.add(ch);
+  }
+  return [...out].join('');
 }
 
 // plain lines in one font (each line one run)

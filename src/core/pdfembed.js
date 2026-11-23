@@ -10,7 +10,25 @@ export function embedPages(out, doc, indices, boxes) {
     return out.embedPage(p, { left: mb.x, bottom: mb.y, right: mb.x + mb.width, top: mb.y + mb.height });
   }));
 }
-
+// a w x h form (lower left at 0,0) turned clockwise by rot -> the page as seen (its lower left at 0,0, y up)
+const turn = (rot, w, h) => rot === 90 ? [0, -1, 1, 0, 0, w] : rot === 180 ? [-1, 0, 0, -1, w, h] : rot === 270 ? [0, 1, -1, 0, h, 0] : [1, 0, 0, 1, 0, 0];
+// A page as it is seen: viewers (and pdf.js's pictures) turn a page by its /Rotate (clockwise, a multiple of 90°);
+// the embedded form above is not turned. Returns { rot, w, h: the size as seen (points), M: form space (media box
+// lower left at 0,0) -> the page as seen (its lower left at 0,0, y up), P: page space -> the page as seen }.
+export function pageView(page) {
+  const mb = page.getMediaBox(), w = mb.width, h = mb.height;
+  const rot = ((Math.round((page.getRotation().angle || 0) / 90) * 90) % 360 + 360) % 360, M = turn(rot, w, h);
+  return { rot, w: rot % 180 ? h : w, h: rot % 180 ? w : h, M, P: [M[0], M[1], M[2], M[3], M[4] - M[0] * mb.x - M[2] * mb.y, M[5] - M[1] * mb.x - M[3] * mb.y] };
+}
+// a box { x, y, w, h } of page space as seen (the box around it, turned)
+export function seenBox(view, b) {
+  const xs = [], ys = [];
+  for (const [x, y] of [[b.x, b.y], [b.x + b.w, b.y], [b.x, b.y + b.h], [b.x + b.w, b.y + b.h]]) {
+    const P = view.P; xs.push(P[0] * x + P[2] * y + P[4]); ys.push(P[1] * x + P[3] * y + P[5]);
+  }
+  const x0 = Math.min(...xs), y0 = Math.min(...ys);
+  return { x: x0, y: y0, w: Math.max(...xs) - x0, h: Math.max(...ys) - y0 };
+}
 const PT = 72 / 25.4;
 const meet = (a, b) => {
   const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y);
@@ -31,12 +49,9 @@ export function pageGeom(page) {
     box = { x: tb.x - s, y: tb.y - s, width: tb.width + 2 * s, height: tb.height + 2 * s };
     bleed = Math.round(s / PT * 100) / 100;
   }
-  const rot = (((Math.round((page.getRotation().angle || 0) / 90) % 4) + 4) % 4) * 90, turned = rot % 180 !== 0;
+  const rot = pageView(page).rot, turned = rot % 180 !== 0;
   return { box, rot, w: turned ? box.height : box.width, h: turned ? box.width : box.height, bleed };
 }
 // The matrix from an embedded page (form points, from the box's lower left corner, y up) to the page as shown
 // (points, from its lower left corner, y up): the page's /Rotate applied.
-export function shownMatrix(g) {
-  const w = g.box.width, h = g.box.height;
-  return g.rot === 90 ? [0, -1, 1, 0, 0, w] : g.rot === 180 ? [-1, 0, 0, -1, w, h] : g.rot === 270 ? [0, 1, -1, 0, h, 0] : [1, 0, 0, 1, 0, 0];
-}
+export const shownMatrix = g => turn(g.rot, g.box.width, g.box.height);

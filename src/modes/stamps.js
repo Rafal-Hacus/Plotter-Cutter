@@ -5,7 +5,7 @@
 import { packRoll } from '../core/rollpack.js';
 import { sanitize } from '../core/sanitize.js';
 import { bbox, buildStamp, splitPasses, stampMargins, strokeToShapes, union } from '../core/stamp.js';
-import { richOutlines } from '../core/stamptext.js';
+import { missingChars, richOutlines } from '../core/stamptext.js';
 import { DEFAULT_FAMILY, addFontFiles, cssFamily, families, fontResolver, loadLibrary, onFontsChanged, ownFamilies, removeFamily } from '../stampfonts.js';
 import { SHAPES, expandUses, flattenPath, num, parseSvg } from '../core/svg.js';
 import { BED, buildXsFiles } from '../core/xs.js';
@@ -92,6 +92,7 @@ async function artOf(it, W, H, opts) {
   if (!lines.length) throw new Error('Type the text of the stamp.');
   // the layout is in em of 10 pt; set as typed (pt), it is turned into mm, else the stamp fits it to its size
   const fontFor = await fontResolver(it.font), at = sp => richOutlines(lines, fontFor, { spacing: sp });
+  it.missing = missingChars(lines, fontFor);
   const mm = rings => (it.exact ? rings.map(r => r.map(([x, y]) => [x * EM_MM, y * EM_MM])) : rings);
   const s0 = it.spacing / 100, art = at(s0);
   if (!it.spread || lines.length < 2) return mm(art);
@@ -201,7 +202,8 @@ function list() {
       // the editor's font follows the stamp's font where the browser has it (only a guide: the stamp is drawn exactly)
       const edited = () => { it.html = ed.innerHTML; it.lines = parseEditor(ed); it.name = trimLines(it.lines).map(l => l.runs.map(r => r.text).join('')).find(t => t.trim()) || 'Stamp'; dn.textContent = it.name; schedule(); };
       ed.addEventListener('input', edited);
-      ed.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData.getData('text/plain') || '').replace(/\r\n?/g, '\n')); });
+      // as plain text; Word's line break (Shift+Enter) comes as a vertical tab, which the browser would drop
+      ed.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData.getData('text/plain') || '').replace(/\r\n?|[\v\f\u2028\u2029]/g, '\n')); });
       for (const b of li.querySelectorAll('.steditbar button')) {
         b.addEventListener('mousedown', e => e.preventDefault()); // keep the selection in the editor
         b.addEventListener('click', () => {
@@ -263,8 +265,9 @@ function list() {
     const rm = q('.remove'); rm.setAttribute('aria-label', `Remove ${it.name}`);
     rm.addEventListener('click', () => { stamps.items.splice(stamps.items.indexOf(it), 1); list(); schedule(); });
     it.li = li;
-    syncRow(it, li); status(it);
+    syncRow(it, li);
     ul.appendChild(li);
+    status(it); // (once in the page: status skips a row that is not)
   }
 }
 function syncRow(it, li) {
@@ -282,6 +285,7 @@ function status(it) {
     // the distances from the text to the cut it used, and a warning when one was too big for the stamp
     const m = r.margins || { x: 0, y: 0 }, r2 = v => num(Math.round(v * 100) / 100);
     st.textContent += ` Text to cut ${r2(m.x)} mm at the sides, ${r2(m.y)} mm top and bottom; rim around the letters ${r2(r.shoulder ?? 0.2)} mm${it.rim == null ? (readOpts().stShoulderScale ? ' (automatic, thinner for small letters)' : ' (the general rim)') : ''}.`;
+    if (it.shape === 'round' && r.radii && Math.min(...r.radii) < Math.min(it.radius, W / 2, H / 2) - 0.005) st.textContent += ` Corners rounded less than set (${r.radii.map(r2).join(' / ')} mm) so the cut stays clear of the letters.`;
     if (r.slope && r.slope.length) {
       const o = readOpts(), p = splitPasses(5, r.slope.length + 1);
       st.textContent += ` Sloped sides: ${r.slope.length + 1} steps over ${r2(o.stSlopeWidth)} mm from the rim (passes ${p.join(' + ')}).`;
@@ -290,6 +294,10 @@ function status(it) {
     if (m.cutX || m.cutY) {
       const o = stampOpts(readOpts(), it);
       st.textContent += ` The distance set (${[m.cutX ? `${r2(o.marginX)} mm` : '', m.cutY ? `${r2(o.marginY)} mm` : ''].filter(Boolean).join(' / ')}) is more than a quarter of the stamp, so it was made smaller: check “Text to cut” here and under Layout of a stamp.`;
+      st.classList.add('warn');
+    }
+    if (it.kind === 'text' && it.missing) {
+      st.textContent += ` The font has no ${[...it.missing].map(c => `“${c}”`).join(' ')}: ${[...it.missing].length > 1 ? 'they are' : 'it is'} left out of the stamp. Choose another font (or bold / italic).`;
       st.classList.add('warn');
     }
     if (it.kind === 'text') {

@@ -16,10 +16,21 @@ export const safeRef = (v, el) => {
   if (t.startsWith('#')) return true;
   return el.localName === 'image' && /^data:image\/(png|jpe?g|gif|webp|bmp|svg\+xml)[;,]/i.test(t);
 };
-export const cleanCss = css => String(css)
-  .replace(/@import[^;]*;?/gi, '')
-  .replace(/url\(\s*(['"]?)(?!\s*#|\s*data:image\/)[^)]*\)/gi, 'none')
-  .replace(/expression\s*\(/gi, '(');
+// CSS escapes are read first, so "u\72l(" or "@\69mport" can't hide a link from the checks below
+const cssCp = h => { const n = parseInt(h, 16); return n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : '\ufffd'; };
+const unescapeCss = css => css.replace(/\\([0-9a-f]{1,6})[ \t\n\r\f]?|\\([^\n\r\f0-9a-f])/gi, (m, h, c) => (h ? cssCp(h) : c));
+// a style without anything that loads from elsewhere is kept as it is
+const RISKY_CSS = /@import|url\(|image-set\(|expression\s*\(/i;
+export const cleanCss = css => {
+  const u = unescapeCss(String(css));
+  if (!RISKY_CSS.test(u)) return String(css);
+  return u
+    .replace(/@import[^;]*;?/gi, '')
+    .replace(/url\(\s*(['"]?)(?!\s*#|\s*data:image\/)[^)]*\)/gi, 'none')
+    // image-set("http://…") loads from a plain string, without url()
+    .replace(/(?:-webkit-)?image-set\([^)]*\)/gi, 'none')
+    .replace(/expression\s*\(/gi, '(');
+};
 
 export function sanitize(doc) {
   const root = doc.documentElement;
@@ -38,7 +49,7 @@ export function sanitize(doc) {
       const n = a.name.toLowerCase(), v = a.value;
       if (/^on/.test(n) || /^(javascript|vbscript|data:text)/i.test(stripControl(v))) { e.removeAttributeNode(a); continue; }
       if (a.localName === 'href' || n === 'src') { if (!safeRef(v, e)) e.removeAttributeNode(a); continue; }
-      if (n === 'style' || /url\(/i.test(v)) { const c = cleanCss(v); if (c !== v) a.value = c; }
+      if (n === 'style' || /url|image-set|\\/i.test(v)) { const c = cleanCss(v); if (c !== v) a.value = c; }
     }
   }
 }

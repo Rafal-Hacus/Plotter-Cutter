@@ -19,6 +19,9 @@ function thumbSvg(d) {
 export function updateRow(d) {
   if (!d.ui) return;
   d.ui.thumb.innerHTML = thumbSvg(d);
+  // the height may have been set for the design (vinyl starts at the shapes' real size): show it, unless being typed
+  const hIn = d.ui.li && d.ui.li.querySelector('.h');
+  if (hIn && document.activeElement !== hIn) hIn.value = mm1(d.heightMm);
   const st = d.ui.status;
   if (isMarkless()) {
     st.classList.toggle('err', !!d.verr);
@@ -26,6 +29,8 @@ export function updateRow(d) {
     if (d.busy || !d.vres) { st.textContent = 'Reading the shapes…'; return; }
     const r = d.vres, n = state.vinylLayout ? state.vinylLayout.counts.get(d.id) || 0 : 0;
     st.textContent = `${state.mode === 'pen' ? 'Drawing' : 'Cut'} ${mm1(r.frW)} × ${mm1(r.frH)} mm, ${r.nPaths} paths. ${n === 1 ? `1 on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.` : `${n} on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.`}${vOpts().vMirror ? ' Mirrored.' : ''}`;
+    if (r.texts) st.textContent += ` ${r.texts} text ${r.texts === 1 ? 'element is' : 'elements are'} left out: convert text to curves (outlines) in the SVG.`;
+    if (r.strokes && state.mode !== 'pen') st.textContent += ` ${r.strokes === 1 ? '1 shape is' : `${r.strokes} shapes are`} only a thick stroke: the knife follows the middle of the stroke, not its edges. Convert strokes to outlines to cut them as drawn.`;
     return;
   }
   st.classList.toggle('err', !!d.error);
@@ -99,11 +104,17 @@ export function addRow(d) {
       else { d.ui.status.textContent = 'No clear circle found; set the size and position by hand.'; }
     });
   }
+  // the height applies to the cut line in cut mode and to the artwork otherwise: switching keeps the sticker's
+  // scale (the artwork's size on the sheet), so the height is worked out again for what it now applies to
+  const frameH = () => ((d.mode === 'cut' && d.cutBox) || d.vb).h;
   mIn.addEventListener('change', () => {
-    if (c) { c.kind = mIn.value; li.querySelector('.circ').hidden = c.kind !== 'round'; setHl(); rebuildCircle(d); return; }
-    d.mode = mIn.value; setHl(); schedule();
+    const perUnit = d.heightMm / frameH();
+    if (c) { c.kind = mIn.value; li.querySelector('.circ').hidden = c.kind !== 'round'; rebuildCircle(d); }
+    else d.mode = mIn.value;
+    d.heightMm = perUnit * frameH(); hIn.value = mm1(d.heightMm);
+    setHl(); schedule();
   });
-  hIn.addEventListener('input', () => { const v = parseFloat(hIn.value); if (isFinite(v) && v >= 5) { d.heightMm = v; schedule(); } });
+  hIn.addEventListener('input', () => { const v = parseFloat(hIn.value); if (isFinite(v) && v >= 5) { d.heightMm = v; d.hEdited = true; schedule(); } });
   qIn.addEventListener('input', () => { const v = parseInt(qIn.value, 10); d.qty = (qIn.value === '' || !isFinite(v)) ? null : Math.max(0, v); schedule(); });
   rm.addEventListener('click', () => {
     const i = designs.indexOf(d); if (i >= 0) designs.splice(i, 1);

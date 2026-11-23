@@ -31,15 +31,16 @@ export function readOpts() {
   return {
     // stickers: outlines and nesting
     kiss: num('kiss', 2, 0), die: num('die', 2, 0), gap: num('gap', 2, 0), joinGap: num('joinGap', 3, 0),
-    clearance: num('clearance', 5, 0), rotate: on('rotate'), center: on('center'), ignoreWhite: on('ignoreWhite'),
+    clearance: Math.min(50, num('clearance', 5, 0)), rotate: on('rotate'), center: on('center'), ignoreWhite: on('ignoreWhite'),
     quality: text('quality'), borderFill: on('borderFill'), borderColor: text('borderColor'), batchMix: on('batchMix'),
     // the sheet with registration marks
     sheetSize: text('sheetSize'), sheetW: num('sheetW', 310, 60), sheetH: num('sheetH', 440, 60),
-    sheetFeed: on('sheetFeed'), sheetFeedMm: num('sheetFeedMm', 60, 0), dpi: num('dpi', 300, 1),
+    sheetFeed: on('sheetFeed'), sheetFeedMm: Math.min(200, num('sheetFeedMm', 60, 0)), dpi: num('dpi', 300, 1),
     // cut lines in the files, and the plotter
-    kissColor: text('kissColor'), dieColor: text('dieColor'), lineW: num('lineW', 0.1, 0.01),
+    kissColor: text('kissColor'), dieColor: text('dieColor'), lineW: Math.min(2, num('lineW', 0.1, 0.01)),
     kissLayer: text('kissLayer').trim() || 'Kiss cut', dieLayer: text('dieLayer').trim() || 'Die cut',
-    // (overcut over 5 mm or a blade offset over 2 mm: a number typed in the wrong field)
+    // (overcut over 5 mm or a blade offset over 2 mm: a number typed in the wrong field; the same for the clearance,
+    // the blank strip, the line width and the rim around stamp letters below, see SANE)
     overcut: Math.min(5, num('overcut', 0.5, 0)), bladeOffset: Math.min(2, num('bladeOffset', 0.35, 0)), pltForce: on('pltForce'),
     kissForce: num('kissForce', 60, 1), dieForce: num('dieForce', 60, 1), cutSpeed: num('cutSpeed', 13, 1), upSpeed: num('upSpeed', 13, 1),
     // cards: the PDF, the cut, the back side
@@ -67,7 +68,7 @@ export function readOpts() {
     vWeed: text('vWeed'), vWeedMargin: num('vWeedMargin', 3, 0), vMirror: on('vMirror'),
     penForce: num('penForce', 40, 1), penFill: on('penFill'), penStyle: text('penStyle'), penSpacing: num('penSpacing', 0.4, 0.1), penAngle: signed('penAngle'),
     // pieczątki
-    stSize: text('stSize'), stMarginX: num('stMarginX', 2.3, 0), stMarginY: num('stMarginY', 0, 0), stShoulder: num('stShoulder', 0.3, 0), stShoulderScale: on('stShoulderScale'), stSlope: num('stSlope', 1, 1), stSlopeWidth: Math.min(2, num('stSlopeWidth', 0.6, 0.1)),
+    stSize: text('stSize'), stMarginX: num('stMarginX', 2.3, 0), stMarginY: num('stMarginY', 0, 0), stShoulder: Math.min(1, num('stShoulder', 0.3, 0)), stShoulderScale: on('stShoulderScale'), stSlope: num('stSlope', 1, 1), stSlopeWidth: Math.min(2, num('stSlopeWidth', 0.6, 0.1)),
     stEdge: num('stEdge', 0.8, 0), stGap: num('stGap', 3, 0), stBedEdge: num('stBedEdge', 10, 0),
     // roll
     rollW: num('rollW', 1370, 100), rollMargin: num('rollMargin', 20, 17), rollGap: num('rollGap', 2, 0), rollBleed: num('rollBleed', 3, 0),
@@ -77,12 +78,18 @@ export function readOpts() {
     sqMargin: num('sqMargin', 10, 0), sqGap: num('sqGap', 0, 0), spDpi: parseFloat(text('spDpi')) || 72
   };
 }
+// Values that can only be a slip (a size typed into the blade offset makes every corner a swing of centimetres
+// and every line land off its place; a clearance of 120 mm leaves a few stickers on the sheet): kept from an earlier
+// visit or in saved settings, they go back to their standard values. id: [highest real value, standard value]
+const SANE = { bladeOffset: [2, '0.35'], overcut: [5, '0.5'], clearance: [50, '5'], sheetFeedMm: [200, '60'], lineW: [2, '0.1'], stShoulder: [1, '0.3'],
+  // (a duplex printer's back side or a start dot is off by a few mm: more than 10 mm either way is a slip)
+  cOffX: [10, '0'], cOffY: [10, '0'], cShiftX: [10, '0'], cShiftY: [10, '0'] };
 // set the fields from { id: value }; ids that are missing keep their value
 export function applyOptionValues(values, ids = OPT_IDS) {
   for (const id of ids) {
     if (!Object.hasOwn(values, id)) continue;
-    const e = byId(id);
-    if (e.type === 'checkbox') e.checked = !!values[id]; else e.value = String(values[id]);
+    const e = byId(id), v = Object.hasOwn(SANE, id) && Math.abs(parseFloat(values[id])) > SANE[id][0] ? SANE[id][1] : values[id];
+    if (e.type === 'checkbox') e.checked = !!v; else e.value = String(v);
   }
 }
 const STORE_KEY = 'stickerSheet.opts.v2';
@@ -96,16 +103,9 @@ export function optionValues() {
 export function saveOpts() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(optionValues())); } catch (e) { /* storage unavailable */ }
 }
-// (a duplex printer's back side or a start dot is off by a few mm: a shift of more than 10 mm either way is a slip)
-const SANE = { bladeOffset: [2, '0.35'], overcut: [5, '0.5'], cOffX: [10, '0'], cOffY: [10, '0'], cShiftX: [10, '0'], cShiftY: [10, '0'] };
 export function loadOpts() {
   try {
     const o = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-    if (o && typeof o === 'object') {
-      // values kept from an earlier visit that can only be a slip (a size typed into the blade offset makes every
-      // corner a swing of centimetres and every line land off its place) go back to their standard values
-      for (const [id, [max, def]] of Object.entries(SANE)) if (Math.abs(parseFloat(o[id])) > max) o[id] = def;
-      applyOptionValues(o);
-    }
+    if (o && typeof o === 'object') applyOptionValues(o);
   } catch (e) { /* storage unavailable, or not what we saved */ }
 }

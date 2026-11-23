@@ -6,7 +6,7 @@ import { dirname } from 'node:path';
 
 export const LIMITS = { presets: 500, name: 80, keys: 400, key: 40, value: 500, mode: 40 };
 const KEY_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
-export const MODES = ['stickers', 'cards', 'vouchers', 'winietka', 'guillotine', 'deck', 'gang', 'morgana', 'duplex', 'vinyl', 'pen', 'squares', 'svgplt'];
+export const MODES = ['stickers', 'cards', 'vouchers', 'winietka', 'guillotine', 'deck', 'gang', 'morgana', 'duplex', 'vinyl', 'pen', 'roll', 'stamps', 'squares', 'svgplt'];
 
 export class ValidationError extends Error {}
 
