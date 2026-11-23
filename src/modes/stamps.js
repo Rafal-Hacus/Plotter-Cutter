@@ -282,6 +282,7 @@ function status(it) {
     // the distances from the text to the cut it used, and a warning when one was too big for the stamp
     const m = r.margins || { x: 0, y: 0 }, r2 = v => num(Math.round(v * 100) / 100);
     st.textContent += ` Text to cut ${r2(m.x)} mm at the sides, ${r2(m.y)} mm top and bottom; rim around the letters ${r2(r.shoulder ?? 0.2)} mm${it.rim == null ? (readOpts().stShoulderScale ? ' (automatic, thinner for small letters)' : ' (the general rim)') : ''}.`;
+    if (it.shape === 'round' && r.radii && Math.min(...r.radii) < Math.min(it.radius, W / 2, H / 2) - 0.005) st.textContent += ` Corners rounded less than set (${r.radii.map(r2).join(' / ')} mm) so the cut stays clear of the letters.`;
     if (r.slope && r.slope.length) {
       const o = readOpts(), p = splitPasses(5, r.slope.length + 1);
       st.textContent += ` Sloped sides: ${r.slope.length + 1} steps over ${r2(o.stSlopeWidth)} mm from the rim (passes ${p.join(' + ')}).`;
