@@ -85,7 +85,7 @@ Open http://localhost:8080 (or the computer's address on your network) and sign 
 | `PORT` | `8080` | port inside the container |
 | `SESSION_DAYS` | `30` | how long a sign-in lasts |
 | `COOKIE_SECURE` | `false` | `true` behind HTTPS |
-| `TRUST_PROXY` | `false` | `true` behind a reverse proxy that sets `X-Forwarded-For` |
+| `TRUST_PROXY` | `false` | `true` behind a reverse proxy that sets `X-Forwarded-For`: the lockout then counts the address the proxy saw (the last one in the header), the cookie is HTTPS-only when `X-Forwarded-Proto` says `https`, and a proxy that rewrites `Host` is fine when it sends `X-Forwarded-Host` |
 | `SESSION_SECRET` | generated into `/data` | key for signing sessions |
 | `AUTH_DISABLED` | `false` | local development only: no login at all |
 

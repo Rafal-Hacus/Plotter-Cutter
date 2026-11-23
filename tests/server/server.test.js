@@ -234,6 +234,41 @@ describe('lockout', () => {
   });
 });
 
+describe('behind a reverse proxy (TRUST_PROXY)', () => {
+  it('locks out the address the proxy saw, whatever X-Forwarded-For the browser sends', async () => {
+    const s = await start({ TRUST_PROXY: 'true' });
+    const old = base; base = s.url;
+    try {
+      // the proxy appends the real address after what came from the browser
+      for (let i = 0; i < 5; i++) await login('shop', 'wrong password', { 'x-forwarded-for': `10.0.0.${i}, 203.0.113.7` });
+      expect((await login('shop', PASSWORD, { 'x-forwarded-for': '10.9.9.9, 203.0.113.7' })).headers.get('location')).toBe('login?e=locked');
+      // someone else behind the same proxy still gets in
+      expect((await login('shop', PASSWORD, { 'x-forwarded-for': '198.51.100.2' })).headers.get('set-cookie')).toContain('pc_session=');
+    } finally { base = old; s.app.server.close(); }
+  });
+  it('makes the cookie HTTPS-only when the proxy says the browser came over HTTPS', async () => {
+    const s = await start({ TRUST_PROXY: 'true' });
+    const old = base; base = s.url;
+    try {
+      expect((await login('shop', PASSWORD, { 'x-forwarded-proto': 'https' })).headers.get('set-cookie')).toMatch(/; Secure$/);
+      expect((await login('shop', PASSWORD, { 'x-forwarded-proto': 'http' })).headers.get('set-cookie')).not.toContain('Secure');
+    } finally { base = old; s.app.server.close(); }
+    // without TRUST_PROXY the header is not believed
+    expect((await login('shop', PASSWORD, { 'x-forwarded-proto': 'https' })).headers.get('set-cookie')).not.toContain('Secure');
+  });
+  it('accepts the sign-in from the page when the proxy passes its own Host and the browser one in X-Forwarded-Host', async () => {
+    const s = await start({ TRUST_PROXY: 'true' });
+    const old = base; base = s.url;
+    try {
+      const page = { origin: 'https://plotter.example', 'x-forwarded-host': 'plotter.example' };
+      expect((await login('shop', PASSWORD, page)).headers.get('set-cookie')).toContain('pc_session=');
+      expect((await login('shop', PASSWORD, { ...page, origin: 'https://evil.example' })).status).toBe(403);
+    } finally { base = old; s.app.server.close(); }
+    // without TRUST_PROXY the header is not believed
+    expect((await login('shop', PASSWORD, { origin: 'https://plotter.example', 'x-forwarded-host': 'plotter.example' })).status).toBe(403);
+  });
+});
+
 describe('restarts', () => {
   it('a session stays valid after the server restarts with the same password', async () => {
     const a = await start(), b = await start();
@@ -305,6 +340,9 @@ describe('config and crypto', () => {
     expect(() => loadConfig({ DATA_DIR: dir, AUTH_PASSWORD: 'short' })).toThrow(/8 characters/);
     expect(() => loadConfig({ DATA_DIR: dir, AUTH_PASSWORD_HASH: 'plain' })).toThrow(/scrypt/);
     expect(loadConfig({ DATA_DIR: dir, AUTH_DISABLED: 'true' }).authDisabled).toBe(true);
+    // a SESSION_DAYS that is not a number would make every sign-in expire at once
+    expect(loadConfig({ DATA_DIR: dir, SESSION_DAYS: '30 days' }).sessionDays).toBe(30);
+    expect(loadConfig({ DATA_DIR: dir, SESSION_DAYS: '7' }).sessionDays).toBe(7);
   });
   it('accepts a pre-made password hash, in the new and the old form', () => {
     const h = hashPassword(PASSWORD);
