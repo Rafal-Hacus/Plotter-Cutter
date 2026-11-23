@@ -16,8 +16,9 @@ export default defineConfig({
     { command: `npx vite build && npx vite preview --port ${PORT} --strictPort`, url: `http://localhost:${PORT}/`, reuseExistingServer: !process.env.CI, timeout: 120_000 },
     // the real server with a login, on the same build, with a fresh data folder each run
     {
-      command: 'node -e "require(\'fs\').rmSync(\'.tmp/e2e-data\',{recursive:true,force:true})" && node server/index.js',
-      url: `http://localhost:${SERVER_PORT}/healthz`, reuseExistingServer: false, timeout: 60_000,
+      // it serves dist: wait until the build above is done (the preview answers), or it serves half-written files
+      command: `node -e "require('fs').rmSync('.tmp/e2e-data',{recursive:true,force:true})" && until curl -sf http://localhost:${PORT}/ >/dev/null; do sleep 0.5; done && node server/index.js`,
+      url: `http://localhost:${SERVER_PORT}/healthz`, reuseExistingServer: false, timeout: 180_000, // (includes waiting for the build)
       env: { PORT: String(SERVER_PORT), HOST: '127.0.0.1', DATA_DIR: '.tmp/e2e-data', STATIC_DIR: 'dist', AUTH_USERNAME: 'shop', AUTH_PASSWORD: 'e2e password 123' }
     }
   ]
