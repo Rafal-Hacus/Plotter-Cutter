@@ -99,9 +99,15 @@ export function addRow(d) {
       else { d.ui.status.textContent = 'No clear circle found; set the size and position by hand.'; }
     });
   }
+  // the height applies to the cut line in cut mode and to the artwork otherwise: switching keeps the sticker's
+  // scale (the artwork's size on the sheet), so the height is worked out again for what it now applies to
+  const frameH = () => ((d.mode === 'cut' && d.cutBox) || d.vb).h;
   mIn.addEventListener('change', () => {
-    if (c) { c.kind = mIn.value; li.querySelector('.circ').hidden = c.kind !== 'round'; setHl(); rebuildCircle(d); return; }
-    d.mode = mIn.value; setHl(); schedule();
+    const perUnit = d.heightMm / frameH();
+    if (c) { c.kind = mIn.value; li.querySelector('.circ').hidden = c.kind !== 'round'; rebuildCircle(d); }
+    else d.mode = mIn.value;
+    d.heightMm = perUnit * frameH(); hIn.value = mm1(d.heightMm);
+    setHl(); schedule();
   });
   hIn.addEventListener('input', () => { const v = parseFloat(hIn.value); if (isFinite(v) && v >= 5) { d.heightMm = v; schedule(); } });
   qIn.addEventListener('input', () => { const v = parseInt(qIn.value, 10); d.qty = (qIn.value === '' || !isFinite(v)) ? null : Math.max(0, v); schedule(); });

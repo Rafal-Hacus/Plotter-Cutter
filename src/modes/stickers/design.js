@@ -61,6 +61,10 @@ export function prepareDesign(text, name) {
     warns.push('Contains live text: the outline is traced with the browser’s fonts, so if they differ from yours the cut lines end up shifted. Convert text to curves before exporting.');
   }
   const cut = detectCutShapes(doc);
+  const mode = cut.idx.length && cut.hasImage ? 'cut' : 'trace';
+  // in cut mode the height is the cut line's: start at the cut line's own size in the file, not the whole file's
+  // (else the sticker comes out bigger by the file's height over the cut line's)
+  const heightMm = mode === 'cut' && cut.box ? natH * cut.box.h / vb.h : natH;
   // normalised copy for drawing
   root.setAttribute('viewBox', `${vb.x} ${vb.y} ${vb.w} ${vb.h}`);
   root.removeAttribute('width'); root.removeAttribute('height');
@@ -108,9 +112,9 @@ export function prepareDesign(text, name) {
   const markup = fixRefs(parts.inner);
   const markupNoCut = cut.idx.length ? fixRefs(splitRoot(without(odoc, cut.idx).documentElement).inner) : markup;
   return {
-    id, name, vb, norm, markup, markupNoCut, cutMask, wrap, warns, heightMm: natH, qty: null,
+    id, name, vb, norm, markup, markupNoCut, cutMask, wrap, warns, heightMm, qty: null,
     sharedDefs: shared.join(''), canCut: cut.idx.length > 0, cutBox: cut.box,
-    mode: cut.idx.length && cut.hasImage ? 'cut' : 'trace',
+    mode,
     url: dataUri(norm), urlNoCut: cut.idx.length ? dataUri(normNoCut) : dataUri(norm),
     key: null, res: null, error: null, busy: false, ui: null
   };

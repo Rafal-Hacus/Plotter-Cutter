@@ -28,7 +28,8 @@ for (const cfg of [{ kiss: 2, die: 2, joinGap: 3 }, { kiss: 0, die: 5, joinGap: 
       // never closer than the margin; the median right on it (notches narrower than the join distance get filled, so the max can be more)
       expect(dist[0]).toBeGreaterThan(cfg.die - 0.06);
       expect(dist[dist.length >> 1]).toBeLessThan(cfg.die + 0.08);
-      for (const k of own) for (const p of k) expect(distToLoops(p, [d])).toBeGreaterThan(cfg.die - 0.06);
+      // (the round corners of the cut-line sticker come out up to ~0.08 mm short: 0.1 mm pixels, 0.05 mm simplification)
+      for (const k of own) for (const p of k) expect(distToLoops(p, [d])).toBeGreaterThan(cfg.die - 0.1);
     }
     // die lines of different stickers keep the 'space between die cuts' (2 mm default) apart
     for (let i = 0; i < die.length; i++) for (let j = i + 1; j < die.length; j++) {
@@ -166,5 +167,23 @@ test('a PDF sticker whose crop box is smaller than its media box prints in regis
   const blue = await blueBox(page, await download(page, 'exPdf'));
   // upright or turned, the print sits 2 mm inside the kiss cut on every side (it was 2 mm off on two sides)
   for (let i = 0; i < 4; i++) expect(Math.abs(blue[i] - kiss[i]), `side ${i}: print ${blue} kiss ${kiss}`).toBeCloseTo(2, 0);
+  noProblems(problems);
+});
+
+test('an SVG sticker with a cut line comes in at the cut line\'s real size; switching the kiss cut keeps the size', async ({ page }) => {
+  // cut.svg: a 60 x 40 mm file with a 50 x 30 mm cut line (the height used to be the file's, so it came out 66.7 x 40)
+  const problems = await openApp(page);
+  await page.setInputFiles('#files', fixture('cut.svg'));
+  const row = page.locator('#list li.design');
+  await expect(row.locator('.m')).toHaveValue('cut');
+  await expect(row.locator('.h')).toHaveValue('30');
+  await expect(row.locator('.status')).toContainText('Cut line 50 × 30 mm');
+  // traced instead: the height is now the artwork's, at the same scale
+  await row.locator('.m').selectOption('trace');
+  await expect(row.locator('.h')).toHaveValue('40');
+  await expect(row.locator('.status')).toContainText('Art 60 × 40 mm');
+  await row.locator('.m').selectOption('cut');
+  await expect(row.locator('.h')).toHaveValue('30');
+  await expect(row.locator('.status')).toContainText('Cut line 50 × 30 mm');
   noProblems(problems);
 });
