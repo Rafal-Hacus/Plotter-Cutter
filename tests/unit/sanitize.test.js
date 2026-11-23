@@ -31,6 +31,17 @@ describe('sanitize', () => {
   it('cleanCss drops imports and external urls only', () => {
     expect(cleanCss('@import "x.css"; a{fill:url(#g);b:url(https://x/y)}')).toBe(' a{fill:url(#g);b:none}');
   });
+  it('cleanCss sees through CSS escapes and image-set(), which load from elsewhere without a plain url(', () => {
+    // each of these made Chromium fetch the address even after sanitizing
+    expect(cleanCss('@\\69mport "http://evil.example/i.css"; a{fill:u\\72l(http://evil.example/e)}')).not.toContain('evil');
+    expect(cleanCss('a{fill:u\\000072 l(http://evil.example/e)}')).not.toContain('evil');
+    expect(cleanCss('a{background:image-set("http://evil.example/s" 1x)} b{background:-webkit-image-set(url(http://evil.example/w) 1x)}')).not.toContain('evil');
+    // harmless styles stay exactly as they were, escapes included
+    expect(cleanCss('.st0{fill:#E30613} .t{font-family:"Font\\20 Name"}')).toBe('.st0{fill:#E30613} .t{font-family:"Font\\20 Name"}');
+    const doc = parseSvg('<svg xmlns="http://www.w3.org/2000/svg"><rect fill="u\\72l(http://evil.example/a)" style="background:image-set(\'http://evil.example/b\' 1x)"/></svg>');
+    sanitize(doc);
+    expect(new XMLSerializer().serializeToString(doc)).not.toContain('evil');
+  });
 });
 
 describe('svg helpers', () => {

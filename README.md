@@ -4,12 +4,13 @@ Print-and-cut sheet builder for a Skycut plotter with SignCut-style registration
 kiss and die (easy-peel) cut lines, business cards, vouchers, card decks, Morgana CardXtra, guillotine sheets,
 vinyl and pen cutting, SVG to PLT, and a PLT modifier.
 
-Everything runs in the browser. Nothing is uploaded; the page loads nothing from other sites.
+Everything runs in the browser; the page loads nothing from other sites. Only what you choose to keep (saved
+settings, the background library, your fonts) is stored on the app's own server.
 
 ## Running in Portainer
 
 The image is published to `ghcr.io/rafal-hacus/plotter-cutter` by GitHub Actions (for normal PCs/servers and for
-ARM boards like a Raspberry Pi or many NAS boxes) on every push to the default branch, so Portainer only pulls it.
+ARM boards like a Raspberry Pi or many NAS boxes) on every push to the default branch once all checks pass, so Portainer only pulls it.
 
 1. **Stacks → Add stack**, name it e.g. `plotter-cutter`.
 2. **Repository**: URL `https://github.com/Rafal-Hacus/Plotter-Cutter`, reference `refs/heads/main`, compose path
@@ -62,11 +63,12 @@ docker compose -f docker-compose.yml -f compose.build.yaml up -d --build
 
 Open http://localhost:8080 (or the computer's address on your network) and sign in.
 
-- Saved settings live in the `plotter-data` Docker volume (`/data/presets.json`), so they survive updates and
-  restarts. Back them up with:
+- Saved settings (`/data/presets.json`), the background library (`backgrounds.json`, `backgrounds/`), your fonts
+  (`fonts.json`, `fonts/`) and the login (`auth.json`) live in the `plotter-data` Docker volume, so they survive
+  updates and restarts. Back up the whole folder with:
 
   ```bash
-  docker compose cp plotter-cutter:/data/presets.json ./presets-backup.json
+  docker compose cp plotter-cutter:/data ./plotter-data-backup
   ```
 
 - Changing the password signs everyone out. Wrong passwords lock an address out for 15 minutes after 5 tries.
@@ -85,7 +87,7 @@ Open http://localhost:8080 (or the computer's address on your network) and sign 
 | `PORT` | `8080` | port inside the container |
 | `SESSION_DAYS` | `30` | how long a sign-in lasts |
 | `COOKIE_SECURE` | `false` | `true` behind HTTPS |
-| `TRUST_PROXY` | `false` | `true` behind a reverse proxy that sets `X-Forwarded-For` |
+| `TRUST_PROXY` | `false` | `true` behind a reverse proxy that sets `X-Forwarded-For`: the lockout then counts the address the proxy saw (the last one in the header), the cookie is HTTPS-only when `X-Forwarded-Proto` says `https`, and a proxy that rewrites `Host` is fine when it sends `X-Forwarded-Host` |
 | `SESSION_SECRET` | generated into `/data` | key for signing sessions |
 | `AUTH_DISABLED` | `false` | local development only: no login at all |
 
@@ -218,7 +220,7 @@ purpose, look at the difference first, then refresh them:
 UPDATE_GOLDEN=1 npm run test:e2e -- golden
 ```
 
-CI (GitHub Actions, started by hand for now: Actions → CI → Run workflow) runs all checks and starts the stack from `docker-compose.yml` (built from that commit) and smoke-tests it. A second workflow publishes the image to GitHub's container registry.
+CI (GitHub Actions, on every push and pull request) runs all checks and starts the stack from `docker-compose.yml` (built from that commit) and smoke-tests it. Only when all of that passes on the default branch (or a `v*` tag) does it publish the image to GitHub's container registry (`publish.yml`, which can also be run by hand for any branch).
 
 ## Notes on the cut paths
 

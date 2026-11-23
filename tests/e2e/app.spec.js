@@ -85,11 +85,20 @@ test('a blade offset or overcut saved far too big (a size typed into it) goes ba
   const problems = await openApp(page);
   await setField(page, 'bladeOffset', '26');
   await setField(page, 'overcut', '40');
+  // the same for the clearance from the marks (120 mm left 6 stickers of 88), the blank strip, the line width, the stamp rim
+  await setField(page, 'clearance', '120');
+  await setField(page, 'sheetFeedMm', '500');
+  await setField(page, 'lineW', '26');
+  await setField(page, 'stShoulder', '5');
   await setField(page, 'kissForce', '1');
-  await page.waitForFunction(() => /"bladeOffset":"26"/.test(localStorage.getItem('stickerSheet.opts.v2') || ''));
+  await page.waitForFunction(() => /"bladeOffset":"26".*"stShoulder":"5"/.test(localStorage.getItem('stickerSheet.opts.v2') || ''));
   await page.reload();
   await expect(page.locator('#bladeOffset')).toHaveValue('0.35');
   await expect(page.locator('#overcut')).toHaveValue('0.5');
+  await expect(page.locator('#clearance')).toHaveValue('5');
+  await expect(page.locator('#sheetFeedMm')).toHaveValue('60');
+  await expect(page.locator('#lineW')).toHaveValue('0.1');
+  await expect(page.locator('#stShoulder')).toHaveValue('0.3');
   await expect(page.locator('#kissForce')).toHaveValue('1'); // (other settings are kept)
   noProblems(problems);
 });
