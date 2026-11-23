@@ -140,19 +140,19 @@ test('a PDF sticker with its cut line in a CutContour spot colour: cut along it,
   noProblems(problems);
 });
 
-// Where blue prints on page 1 of a PDF, as a box in mm (drawn with the app's own pdf.js at 150 dpi).
-const blueBox = (page, bytes) => page.evaluate(async b64 => {
+// Where blue prints on page 1 of a PDF: its box in mm and its area in mm² (drawn with the app's own pdf.js at 150 dpi).
+const blueInk = (page, bytes) => page.evaluate(async b64 => {
   const bin = Uint8Array.from(atob(b64), ch => ch.charCodeAt(0));
   const pdf = await window.pdfjsLib.getDocument({ data: bin }).promise, pg = await pdf.getPage(1), vp = pg.getViewport({ scale: 150 / 72 });
   const c = document.createElement('canvas'); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
   await pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
   const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, n = 0;
   for (let y = 0; y < c.height; y++) for (let x = 0; x < c.width; x++) {
     const k = (y * c.width + x) * 4;
-    if (d[k + 2] > 180 && d[k] < 80 && d[k + 1] < 80) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x + 1); y1 = Math.max(y1, y + 1); }
+    if (d[k + 2] > 180 && d[k] < 80 && d[k + 1] < 80) { n++; x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x + 1); y1 = Math.max(y1, y + 1); }
   }
-  return [x0, y0, x1, y1].map(v => v * 25.4 / 150);
+  return { box: [x0, y0, x1, y1].map(v => v * 25.4 / 150), area: n * (25.4 / 150) ** 2 };
 }, bytes.toString('base64'));
 
 test('a PDF sticker whose crop box is smaller than its media box prints in register with its cut line', async ({ page }) => {
@@ -164,7 +164,7 @@ test('a PDF sticker whose crop box is smaller than its media box prints in regis
   await row.locator('.q').fill('1');
   await expect(page.locator('#count')).toHaveText('1 sticker on the sheet');
   const kiss = bbox(cutLayers((await download(page, 'exCut')).toString()).Kiss_cut[0]);
-  const blue = await blueBox(page, await download(page, 'exPdf'));
+  const blue = (await blueInk(page, await download(page, 'exPdf'))).box;
   // upright or turned, the print sits 2 mm inside the kiss cut on every side (it was 2 mm off on two sides)
   for (let i = 0; i < 4; i++) expect(Math.abs(blue[i] - kiss[i]), `side ${i}: print ${blue} kiss ${kiss}`).toBeCloseTo(2, 0);
   noProblems(problems);
@@ -185,5 +185,22 @@ test('an SVG sticker with a cut line comes in at the cut line\'s real size; swit
   await row.locator('.m').selectOption('cut');
   await expect(row.locator('.h')).toHaveValue('30');
   await expect(row.locator('.status')).toContainText('Cut line 50 × 30 mm');
+  noProblems(problems);
+});
+
+test('traced with "ignore white", a sticker\'s white background never prints over its neighbours', async ({ page }) => {
+  // a 60 x 60 mm white page (PDF: printed as vectors; SVG: as pixels) with a blue Ø 20 mm circle: traced around the
+  // circle the stickers sit ~28 mm apart, so each page's white square used to cover parts of the circles around it
+  const problems = await openApp(page);
+  await setField(page, 'ignoreWhite', true);
+  await page.setInputFiles('#files', [fixture('sticker-whitebg.pdf'), fixture('sticker-whitebg.svg')]);
+  const rows = page.locator('#list li.design');
+  await expect(rows).toHaveCount(2);
+  await rows.nth(0).locator('.m').selectOption('trace');
+  for (const i of [0, 1]) await rows.nth(i).locator('.q').fill('8');
+  await expect(page.locator('#count')).toHaveText('16 stickers on the sheet');
+  await expect(rows.nth(0).locator('.status')).toContainText('die cut 28');
+  const { area } = await blueInk(page, await download(page, 'exPdf'));
+  expect(area / (16 * Math.PI * 100)).toBeCloseTo(1, 1); // every circle prints whole
   noProblems(problems);
 });

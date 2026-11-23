@@ -76,7 +76,8 @@ async function drawVectorStickers(page, out, L, Hpt, cache) {
       loop.forEach((q, i) => { const [x, y] = apply(S, q); ops.push(i ? lineTo(x, y) : moveTo(x, y)); });
       ops.push(closePath());
     }
-    ops.push(clip(), endPath(), concatTransformationMatrix(...M), drawObject(names.get(key)), popGraphicsState());
+    if (r.clipLoops.length) ops.push(clip(), endPath()); // ('W n' with no path is not valid PDF)
+    ops.push(concatTransformationMatrix(...M), drawObject(names.get(key)), popGraphicsState());
     page.pushOperators(...ops);
   }
 }

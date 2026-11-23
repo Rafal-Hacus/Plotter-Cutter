@@ -24,9 +24,7 @@ export function renderStickerPreview() {
     for (const d of new Set(state.layout.items.map(it => it.d))) {
       const r = d.res;
       const im = `<image href="${r.cutMode ? d.urlNoCut : d.url}" x="${num(r.offX)}" y="${num(r.offY)}" width="${num(r.artW)}" height="${num(r.artH)}" preserveAspectRatio="none"/>`;
-      p.push(r.cutMode
-        ? `<g id="pv${d.id}"><clipPath id="pvc${d.id}"><path d="${r.clipD}"/></clipPath><g clip-path="url(#pvc${d.id})">${im}</g></g>`
-        : `<g id="pv${d.id}">${im}</g>`);
+      p.push(`<g id="pv${d.id}"><clipPath id="pvc${d.id}"><path d="${r.clipD}"/></clipPath><g clip-path="url(#pvc${d.id})">${im}</g></g>`);
     }
     p.push('</defs>');
   }

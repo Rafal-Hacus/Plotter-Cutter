@@ -210,12 +210,12 @@ export async function processDesign(d, o) {
   const DD = edt(dieBin, w, h), nLevel = lvl(gap / 2), nest = new Uint8Array(N);
   for (let i = 0; i < N; i++) nest[i] = DD[i] <= nLevel ? 1 : 0;
   fillHolesBin(nest, w, h);
-  let clipField = null, clipLevel = 0;
-  if (cutMode) {
-    clipField = Float32Array.from(DD); clipLevel = lvl(Math.min(gap / 2, 1));
-    fillHolesField(clipField, clipLevel, w, h);
-    borderOut(clipField, clipLevel);
-  }
+  // what of the artwork prints: the die line plus a little bleed (never more than half the space between die cuts,
+  // so a sticker never prints over its neighbour: a PDF page or an SVG with a white background reaches far past
+  // an outline traced with 'ignore white')
+  const clipField = Float32Array.from(DD), clipLevel = lvl(Math.min(gap / 2, 1));
+  fillHolesField(clipField, clipLevel, w, h);
+  borderOut(clipField, clipLevel);
 
   // Drop zero-length and near-duplicate segments: some cutter software divides by segment length.
   const clean = l => {
@@ -229,7 +229,7 @@ export async function processDesign(d, o) {
     .filter(l => l.length >= 3 && Math.abs(loopArea(l)) > 0.3);
   const kissLoops = toMm(march(kField, kLevel, w, h));
   const dieLoops = toMm(march(dField, dLevel, w, h));
-  const clipLoops = cutMode ? toMm(march(clipField, clipLevel, w, h)) : [];
+  const clipLoops = toMm(march(clipField, clipLevel, w, h));
 
   const cb = new Uint8Array(Wc * Hc);
   for (let y = 0; y < h; y++) {
