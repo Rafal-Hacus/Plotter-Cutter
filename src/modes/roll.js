@@ -3,9 +3,9 @@
 // around it is printed. The cut is the trim with rounded corners, or the outermost line drawn in the file (e.g. the
 // outline of a road sign). Gives the print PDF, the cut PLT and the cut SVG, one sheet per page when the roll is
 // split into sections, each with its own marks and cut file (on one long print, or a page each).
-import { embedPages } from '../core/pdfembed.js';
+import { embedPages, pageView, seenBox } from '../core/pdfembed.js';
 import { lemurMarks } from '../core/marks.js';
-import { PT, mul, roundRect } from '../core/matrix.js';
+import { PT, apply, mul, roundRect } from '../core/matrix.js';
 import { outermostLoop, pagePaths } from '../core/pdfpaths.js';
 import { writePlt } from '../core/plt.js';
 import { copiesFromName, packRoll } from '../core/rollpack.js';
@@ -32,7 +32,7 @@ async function readPdf(f) {
   const pdf = await window.pdfjsLib.getDocument(pdfSource(bytes.slice())).promise;
   const lib = await window.PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
   for (let i = 0; i < pdf.numPages; i++) {
-    const pg = await pdf.getPage(i + 1), lp = lib.getPage(i), mb = lp.getMediaBox(), tb = lp.getTrimBox();
+    const pg = await pdf.getPage(i + 1), lp = lib.getPage(i), mb = lp.getMediaBox(), tb = lp.getTrimBox(), view = pageView(lp);
     // the trim box, inside the media box (a missing one is the media box: no bleed)
     const tx = Math.max(mb.x, tb.x), ty = Math.max(mb.y, tb.y);
     const trim = { x: tx, y: ty, w: Math.min(mb.x + mb.width, tb.x + tb.width) - tx, h: Math.min(mb.y + mb.height, tb.y + tb.height) - ty };
@@ -41,17 +41,24 @@ async function readPdf(f) {
     // (a background reaching into the bleed is not a cut line: the line has to stay within 1 mm of the trim)
     const tol = PT, inside = b => b[0] >= trim.x - tol && b[1] >= trim.y - tol && b[2] <= trim.x + trim.w + tol && b[3] <= trim.y + trim.h + tol;
     const loop = outermostLoop(pagePaths(ol.fnArray, ol.argsArray, OPS), b => !inside(b));
-    const outer = loop && (loop.bbox[2] - loop.bbox[0]) > 0.8 * trim.w && (loop.bbox[3] - loop.bbox[1]) > 0.8 * trim.h ? loop : null;
-    // a picture of the whole page for the preview (at most 1600 px)
+    let outer = loop && (loop.bbox[2] - loop.bbox[0]) > 0.8 * trim.w && (loop.bbox[3] - loop.bbox[1]) > 0.8 * trim.h ? loop : null;
+    // from here on the page as it is seen (turned by its /Rotate), its media box's lower left corner at 0,0
+    const seen = seenBox(view, trim);
+    if (outer) {
+      const [x0, y0, x1, y1] = outer.bbox, ob = seenBox(view, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+      outer = { ...outer, pts: outer.pts.map(q => apply(view.P, q)), bbox: [ob.x, ob.y, ob.x + ob.w, ob.y + ob.h] };
+    }
+    // a picture of the page for the preview (at most 1600 px): pdf.js draws the crop box, turned
     const k = Math.min(4, 1600 / Math.max(mb.width, mb.height)), vp = pg.getViewport({ scale: k });
     const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
     await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
     const preview = cv.toDataURL('image/jpeg', 0.85);
     cv.width = cv.height = 1;
+    const [vx0, vy0, vx1, vy1] = pg.view;
     out.push({
-      name: pdf.numPages > 1 ? `${f.name} p.${i + 1}` : f.name, bytes, page: i, preview,
-      mb: { x: mb.x, y: mb.y, w: mb.width, h: mb.height }, trim, outer,
-      bleeds: [trim.x - mb.x, mb.x + mb.width - trim.x - trim.w, mb.y + mb.height - trim.y - trim.h, trim.y - mb.y].map(v => v / PT) // left, right, top, bottom (mm)
+      name: pdf.numPages > 1 ? `${f.name} p.${i + 1}` : f.name, bytes, page: i, preview, form: view.M,
+      mb: { x: 0, y: 0, w: view.w, h: view.h }, shown: seenBox(view, { x: vx0, y: vy0, w: vx1 - vx0, h: vy1 - vy0 }), trim: seen, outer,
+      bleeds: [seen.x, view.w - seen.x - seen.w, view.h - seen.y - seen.h, seen.y].map(v => v / PT) // left, right, top, bottom (mm)
     });
   }
   return out;
@@ -130,7 +137,7 @@ function compute(o) {
   byId('rollSheet').value = String(roll.view);
   byId('rowRollSheet').hidden = roll.sheets.length < 2 || roll.long;
 }
-// page space of a piece's PDF (points, y up) -> sheet mm (y down), for a piece placed at p (its bleed box)
+// a piece's page as seen (points, y up, its lower left at 0,0) -> sheet mm (y down), for a piece placed at p (its bleed box)
 function pieceMatrix(p, B) {
   const t = p.it.trim, x0 = p.x + B, y0 = p.y + B;
   // turned a quarter clockwise: the page's top edge goes to the right
@@ -149,6 +156,8 @@ function markRects(W, H) {
 const startArrow = (W, H) => [[W - 21.68, H - 5], [W - 24.17, H - 7.5], [W - 26.69, H - 5]];
 // blank roll between two sections of one long print, so their marks stay clearly apart
 const SECTION_GAP = 10;
+// the longest page a PDF can have without UserUnit (14400 pt)
+const MAX_PAGE = 5080;
 // "2 / 3" printed under each section of a split job, between the bottom marks, so the right PLT goes with it
 const sectionLabel = (n, N) => `Section ${n + 1} / ${N}`;
 // the marks' centre lines, as writePlt takes them
@@ -162,9 +171,9 @@ function sectionSvg(sec, n, N, B, o) {
   sec.places.forEach((pl, i) => {
     const it = pl.it;
     if (ui.showArt.checked) {
-      // the page picture (pixels from the media box's top left, scaled to points) -> page space -> sheet
-      const M = mul(pieceMatrix(pl, B), [1, 0, 0, -1, it.mb.x, it.mb.y + it.mb.h]);
-      p.push(`<clipPath id="rc${n}_${i}"><rect x="${num(pl.x)}" y="${num(pl.y)}" width="${num(pl.w)}" height="${num(pl.h)}"/></clipPath><g clip-path="url(#rc${n}_${i})"><image href="${it.preview}" x="0" y="0" width="${num(it.mb.w)}" height="${num(it.mb.h)}" preserveAspectRatio="none" transform="matrix(${M.map(num).join(',')})"/></g>`);
+      // the page picture (pixels from the crop box's top left as seen, scaled to points) -> the page as seen -> sheet
+      const M = mul(pieceMatrix(pl, B), [1, 0, 0, -1, it.shown.x, it.shown.y + it.shown.h]);
+      p.push(`<clipPath id="rc${n}_${i}"><rect x="${num(pl.x)}" y="${num(pl.y)}" width="${num(pl.w)}" height="${num(pl.h)}"/></clipPath><g clip-path="url(#rc${n}_${i})"><use href="#ri${it.id}" transform="matrix(${M.map(num).join(',')})"/></g>`);
     }
     p.push(pathEl(cutLoop(pl, B), true, `fill:none;stroke:${CUT_RED};stroke-width:1.1;vector-effect:non-scaling-stroke`));
   });
@@ -180,6 +189,11 @@ function renderRollPreview() {
   const W = N ? roll.sheets[0].W : o.rollW, H = shown.length ? Math.max(...shown.map(([sec]) => sec.oy + sec.H)) : Math.max(300, o.rollW / 2);
   state.previewFrame = { x: -10, y: -10, w: W + 20, h: H + 20 };
   const f = state.previewFrame, p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${f.x} ${f.y} ${f.w} ${f.h}" role="img" aria-label="Roll preview">`];
+  // each page picture once, used by every copy (a long roll of labels would otherwise carry it hundreds of times)
+  if (ui.showArt.checked) {
+    const used = new Set(shown.flatMap(([sec]) => sec.places.map(pl => pl.it)));
+    p.push(`<defs>${[...used].map(it => `<image id="ri${it.id}" href="${it.preview}" x="0" y="0" width="${num(it.shown.w)}" height="${num(it.shown.h)}" preserveAspectRatio="none"/>`).join('')}</defs>`);
+  }
   if (!N) p.push(sectionSvg({ W, H, oy: 0, places: [] }, 0, 1, B, o));
   for (const [sec, n] of shown) p.push(sectionSvg(sec, n, N, B, o));
   // the blank roll between the sections of one long print
@@ -197,6 +211,9 @@ function renderRollStats(busyText) {
   ui.count.textContent = !roll.items.length ? 'No files yet' : `${plural(total, 'piece')}, ${N ? `${mm1(used)} mm of roll` : 'nothing placed'}${N > 1 ? ` in ${N} sections` : ''}`;
   const notes = [];
   if (N > 1) notes.push(`Cut in ${N} sections of at most ${mm1(readOpts().rollMax)} mm (${roll.sheets.map(sec => mm1(sec.H)).join(' + ')} mm), each with its own marks and its own PLT, so the plotter reads the marks again for every section. ${roll.long ? 'Printed as one long page, section 1 at the top, each labelled under its bottom marks.' : 'One print page per section.'}`);
+  // a PDF page can be at most 200 in (5080 mm) long: Acrobat and many RIPs refuse or shrink a longer one
+  const page = roll.long ? used : Math.max(0, ...roll.sheets.map(sec => sec.H));
+  if (page > MAX_PAGE) notes.push(`The print page is ${mm1(page)} mm long: PDF pages over ${MAX_PAGE} mm (200 in) won’t open in Acrobat and many RIPs. Cut in sections${roll.long ? ' and print a page each' : ''} to keep every page shorter.`);
   if (roll.tooBig.length) notes.push(`Too big for the roll: ${roll.tooBig.join(', ')}.`);
   setMsg(notes.join(' '), roll.tooBig.length > 0);
 }
@@ -222,8 +239,8 @@ async function buildPdf() {
       for (const pl of sec.places) {
         const e = emb.get(pl.it);
         if (!names.has(e)) names.set(e, page.node.newXObject('Roll', e.ref));
-        // the embedded page starts at its media box's lower left corner; then page space -> section mm -> page -> points
-        const M = mul([PT, 0, 0, -PT, 0, Hpt], mul(Y, mul(pieceMatrix(pl, B), [1, 0, 0, 1, pl.it.mb.x, pl.it.mb.y])));
+        // the embedded page (its media box's lower left corner at 0,0) -> the page as seen -> section mm -> page -> points
+        const M = mul([PT, 0, 0, -PT, 0, Hpt], mul(Y, mul(pieceMatrix(pl, B), pl.it.form)));
         drawClipped(page, names.get(e), [pl.x, pl.y + oy, pl.w, pl.h], M, Hpt);
       }
       for (const r of markRects(sec.W, sec.H)) page.drawRectangle({ x: r[0] * PT, y: Hpt - (r[1] + oy + r[3]) * PT, width: r[2] * PT, height: r[3] * PT, color: black });

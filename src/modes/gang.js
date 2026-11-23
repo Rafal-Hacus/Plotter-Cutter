@@ -1,6 +1,6 @@
 // Print sheets (gang printing for the guillotine): pictures and PDF pages, each scaled with its proportions kept
 // to cover the chosen format plus bleed (or to fit inside it), imposed on 310 × 440 sheets with crop marks.
-import { embedPages } from '../core/pdfembed.js';
+import { embedPages, pageView, seenBox } from '../core/pdfembed.js';
 import { jpegOrientation, readAsDataUrl } from '../core/image.js';
 import { PT, mul } from '../core/matrix.js';
 import { mm1, num } from '../core/svg.js';
@@ -52,11 +52,12 @@ async function readPdfPages(f) {
   const pdf = await window.pdfjsLib.getDocument(pdfSource(bytes.slice())).promise;
   const lib = await window.PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
   for (let i = 0; i < pdf.numPages; i++) {
-    const pg = await pdf.getPage(i + 1), mb = lib.getPage(i).getMediaBox();
+    // the page as it is seen (turned by its /Rotate); pdf.js's picture is of the crop box, turned
+    const pg = await pdf.getPage(i + 1), view = pageView(lib.getPage(i)), [vx0, vy0, vx1, vy1] = pg.view;
     const vp = pg.getViewport({ scale: 4 / PT });
     const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
     await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-    pages.push({ name: pdf.numPages > 1 ? `${f.name} p.${i + 1}` : f.name, kind: 'pdf', bytes, page: i, w: mb.width, h: mb.height, mbx: mb.x, mby: mb.y, preview: cv.toDataURL('image/jpeg', 0.85) });
+    pages.push({ name: pdf.numPages > 1 ? `${f.name} p.${i + 1}` : f.name, kind: 'pdf', bytes, page: i, w: view.w, h: view.h, view: view.M, shown: seenBox(view, { x: vx0, y: vy0, w: vx1 - vx0, h: vy1 - vy0 }), preview: cv.toDataURL('image/jpeg', 0.85) });
     cv.width = cv.height = 1;
   }
   return pages;
@@ -149,10 +150,10 @@ function renderGangPreview() {
       const it = seq[base + i], [cx, cy, cw2, ch2] = slot.clip;
       p.push(`<rect x="${num(slot.trim[0])}" y="${num(slot.trim[1])}" width="${num(slot.trim[2])}" height="${num(slot.trim[3])}" fill="none" stroke="${CUT_RED}" stroke-width="1.1" vector-effect="non-scaling-stroke"/>`);
       if (!it || !ui.showArt.checked) return;
-      const pl = gangPlace(it, gangBox(slot), fill);
+      const pl = gangPlace(it, gangBox(slot), fill), sh = it.shown || { x: 0, y: 0, w: it.w, h: it.h };
       // image drawn in its own (rotated) frame
       const M = pl.rot ? [0, -pl.s, pl.s, 0, pl.x, pl.y + pl.ch * pl.s] : [pl.s, 0, 0, pl.s, pl.x, pl.y];
-      p.push(`<clipPath id="gc${i}"><rect x="${num(cx)}" y="${num(cy)}" width="${num(cw2)}" height="${num(ch2)}"/></clipPath><g clip-path="url(#gc${i})"><image href="${it.preview}" x="0" y="0" width="${it.w}" height="${it.h}" preserveAspectRatio="none" transform="matrix(${M.map(num).join(',')})"/></g>`);
+      p.push(`<clipPath id="gc${i}"><rect x="${num(cx)}" y="${num(cy)}" width="${num(cw2)}" height="${num(ch2)}"/></clipPath><g clip-path="url(#gc${i})"><image href="${it.preview}" x="${sh.x}" y="${it.h - sh.y - sh.h}" width="${sh.w}" height="${sh.h}" preserveAspectRatio="none" transform="matrix(${M.map(num).join(',')})"/></g>`);
     });
     p.push(`<path d="${cropMarks(L, go).map(m => `M${num(m[0])} ${num(m[1])}L${num(m[2])} ${num(m[3])}`).join('')}" stroke="#000" stroke-width="1" vector-effect="non-scaling-stroke"/>`);
   }
@@ -205,8 +206,8 @@ async function buildGangPdf() {
       const e = emb.get(it);
       if (!names.has(e)) names.set(e, page.node.newXObject('Gang', e.ref));
       const pl = gangPlace(it, gangBox(slot), fill), rc = slot.clip;
-      // source units -> natural size (image: unit square; PDF page: points from its media box)
-      const S0 = it.kind === 'img' ? [it.w, 0, 0, it.h, 0, 0] : [1, 0, 0, 1, 0, 0];
+      // source units -> natural size (image: unit square; PDF page: points of the page as seen)
+      const S0 = it.kind === 'img' ? [it.w, 0, 0, it.h, 0, 0] : it.view;
       // natural (y up) -> sheet points (y up), rotated a quarter turn when the orientation differs
       const s = pl.s * PT, x0 = pl.x * PT, yTop = Hpt - pl.y * PT, chPt = pl.ch * s;
       const R = pl.rot ? [0, s, -s, 0, x0 + pl.cw * s, yTop - chPt] : [s, 0, 0, s, x0, yTop - chPt];
@@ -255,7 +256,7 @@ async function buildGangProof() {
     const ox = AX + (AW - (maxX - minX) * k) / 2 - minX * k, top = AY + AH - (AH - (maxY - minY) * k) / 2 + minY * k;
     const P = (x, y) => [ox + x * k, top - y * k]; // file units (y down) -> page points
     const [ix, iy] = P(0, it.h);
-    const M = it.kind === 'img' ? [it.w * k, 0, 0, it.h * k, ix, iy] : [k, 0, 0, k, ix, iy];
+    const M = it.kind === 'img' ? [it.w * k, 0, 0, it.h * k, ix, iy] : mul([k, 0, 0, k, ix, iy], it.view);
     const name = page.node.newXObject('Src', e.ref);
     page.pushOperators(pushGraphicsState(), concatTransformationMatrix(...M), drawObject(name), popGraphicsState());
     // grey out what falls outside the cut line (only over the picture itself)

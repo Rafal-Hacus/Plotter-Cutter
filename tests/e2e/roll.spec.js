@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { PDFDocument } from 'pdf-lib';
-import { download, fixture, mode, noProblems, openApp, setField, unzip } from './helpers.js';
+import { readFileSync } from 'node:fs';
+import { bbox, cutLayers, download, fixture, mode, noProblems, openApp, setField, unzip } from './helpers.js';
+import { isBlue, isRed, pdfColours, turnedPdf } from './pdfpixels.js';
 
 const PT = 72 / 25.4;
 // the cut loops of a PLT: each starts with a pen-up move to its first point
@@ -66,5 +68,45 @@ test('roll: cut in sections, each with its own marks and PLT, printed as one lon
   pdf = await PDFDocument.load(await download(page, 'exRollPdf'));
   expect(pdf.getPageCount()).toBe(3);
   expect(Math.round(pdf.getPage(0).getSize().height / PT)).toBe(Math.round(secH));
+  noProblems(problems);
+});
+
+test('roll: a page turned by /Rotate is cut and printed the way it is seen, also with its media box off 0,0', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'roll');
+  await setField(page, 'rollW', 450); await setField(page, 'rollTurn', false);
+  // seen: 90 x 140 mm, a red square at the top left, a blue one at the bottom right (whichever way the page is stored)
+  const files = [];
+  for (const rot of [0, 90, 180, 270]) files.push({ name: `turned${rot}_90x140mm_1szt.pdf`, mimeType: 'application/pdf', buffer: await turnedPdf(90, 140, rot, { ox: 20, oy: 35 }) });
+  await page.setInputFiles('#rollFile', files);
+  await expect(page.locator('#count')).toContainText('4 pieces');
+  for (const li of await page.locator('#rollList li').all()) await expect(li.locator('.rs')).toContainText('Cut 90 × 140 mm');
+  const svg = (await download(page, 'exRollSvg')).toString(), [cuts] = Object.values(cutLayers(svg));
+  expect(cuts).toHaveLength(4);
+  const boxes = cuts.map(bbox);
+  for (const b of boxes) { expect(b[2] - b[0]).toBeCloseTo(90, 3); expect(b[3] - b[1]).toBeCloseTo(140, 3); }
+  // the print: every piece's red square at the top left of its cut, the blue one at the bottom right
+  const pdf = await download(page, 'exRollPdf');
+  const colours = await pdfColours(page, pdf, boxes.flatMap(b => [[b[0] + 15, b[1] + 15], [b[2] - 15, b[3] - 15]]));
+  for (let i = 0; i < 4; i++) {
+    expect(isRed(colours[2 * i]), `piece ${i} top left ${colours[2 * i]}`).toBe(true);
+    expect(isBlue(colours[2 * i + 1]), `piece ${i} bottom right ${colours[2 * i + 1]}`).toBe(true);
+  }
+  noProblems(problems);
+});
+
+test('roll: a long run of one label: the preview carries the picture once; a page over 5080 mm is flagged', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'roll');
+  await setField(page, 'rollW', 600);
+  await page.setInputFiles('#rollFile', { name: 'label_80x30mm_1000szt.pdf', mimeType: 'application/pdf', buffer: readFileSync(fixture('label_80x30mm_4pcs.pdf')) });
+  await expect(page.locator('#count')).toContainText('1000 pieces');
+  expect(await page.locator('#stage image').count()).toBe(1);
+  expect(await page.locator('#stage use').count()).toBe(1000);
+  await expect(page.locator('#msg')).toContainText('PDF pages over 5080 mm (200 in)');
+  // in sections of 2 m, a page each: no page too long any more
+  await setField(page, 'rollMax', 2000); await setField(page, 'rollOnePage', false);
+  await expect(page.locator('#msg')).toContainText('One print page per section.');
+  await expect(page.locator('#msg')).not.toContainText('5080');
   noProblems(problems);
 });
