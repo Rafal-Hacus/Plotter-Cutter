@@ -5,10 +5,27 @@ import { state } from '../../state.js';
 // The card modes each keep their own PDF job, so switching between them loses nothing. state.job is the open one's.
 export const PRINT_MODES = ['cards', 'vouchers', 'winietka', 'guillotine', 'deck', 'morgana'];
 // items: the cards of a winietki job (one PDF page each); imgSrc: the pictures a job was made from, if any
-const newPrintJob = () => ({ imgSrc: null, name: null, bytes: null, pages: 0, pageW: 0, pageH: 0, mbx: 0, mby: 0, previews: [], layout: null, bleed: null, items: [] });
+const newPrintJob = () => ({ imgSrc: null, name: null, bytes: null, pages: 0, pageW: 0, pageH: 0, geoms: [], previews: [], layout: null, bleed: null, items: [] });
 export const kinds = Object.fromEntries([...PRINT_MODES, 'gang'].map(m => [m, newPrintJob()]));
 state.job = kinds.cards;
 export function isPrintMode() { return PRINT_MODES.includes(state.mode); }
+// The "Bleed in the PDF" field is shared by the card modes. A bleed read from a job's file (its trim box, cards made
+// from names or pictures) is shown in it but is not the user's own value: a job whose PDF tells nothing gets back
+// the value last typed (not e.g. the 0 mm of winietki without a background), and that is the value saved.
+let typedBleed = null;
+export function showBleed(job) {
+  const f = byId('cBleed');
+  if (job.bleed != null) {
+    if (typedBleed == null) typedBleed = f.value;
+    f.value = job.bleed; f.dataset.keep = typedBleed;
+  } else if (typedBleed != null) { f.value = typedBleed; delete f.dataset.keep; }
+}
+// typed: the user's value from now on, also for the open job
+byId('cBleed').addEventListener('input', () => {
+  const f = byId('cBleed');
+  typedBleed = f.value; delete f.dataset.keep;
+  if (isPrintMode() && state.job.bleed != null && !state.job.imgSrc) state.job.bleed = null;
+});
 // guillotine sheet (also the card deck): chosen under Sheet; print sheets mode stays on 310 × 440
 function gSheetMm() {
   if (state.mode === 'gang') return [310, 440];

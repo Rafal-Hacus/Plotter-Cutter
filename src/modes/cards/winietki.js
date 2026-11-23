@@ -1,13 +1,14 @@
 // Winietki (place cards): many different single-sided cards, from PDFs or from a list of names set on a
 // background, printed with registration marks and cut with straight lines.
 import { PT } from '../../core/matrix.js';
+import { pageGeom } from '../../core/pdfembed.js';
 import { isPdfFile, tick } from '../../core/util.js';
 import { byId, plural, setMsg } from '../../dom.js';
 import { buildNameCardsPdf, parseNames } from '../../lib/namecards.js';
 import { ensureLibs, pdfSource } from '../../lib/pdf.js';
 import { readCardImage } from './images.js';
-import { isPrintMode, kinds } from './job.js';
-import { updateCardInfo } from './load.js';
+import { isPrintMode, kinds, showBleed } from './job.js';
+import { renderShown, updateCardInfo } from './load.js';
 import { syncOptionRows } from '../../option-rows.js';
 import { renderPreview, schedule } from '../../pipeline.js';
 import { applyOptionValues, readOpts, saveOpts } from '../../settings.js';
@@ -188,18 +189,14 @@ async function winIngest(items, bytes, fileName, { labels = null, bleed = null }
   const pdf = await window.pdfjsLib.getDocument(pdfSource(bytes.slice())).promise;
   const lib = await window.PDFLib.PDFDocument.load(bytes, { ignoreEncryption: true });
   for (let i = 0; i < pdf.numPages; i++) {
-    const lp = lib.getPage(i), mb = lp.getMediaBox(), tb = lp.getTrimBox();
+    const g = pageGeom(lib.getPage(i));
     if (!items.length) { // the first card sets the size and the bleed
-      job.pageW = mb.width / PT; job.pageH = mb.height / PT; job.mbx = mb.x; job.mby = mb.y; job.bleed = null;
-      if (bleed != null) job.bleed = bleed;
-      else if (tb.width < mb.width - 0.5 && tb.height < mb.height - 0.5) job.bleed = Math.round((mb.width - tb.width) / 2 / PT * 100) / 100;
-      if (job.bleed != null) byId('cBleed').value = job.bleed;
+      job.pageW = g.w / PT; job.pageH = g.h / PT;
+      job.bleed = bleed != null ? bleed : g.bleed;
+      if (state.mode === 'winietka') showBleed(job);
     }
-    const pg = await pdf.getPage(i + 1), vp = pg.getViewport({ scale: 6 / PT });
-    const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
-    await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-    items.push({ name: labels ? labels[i] : pdf.numPages > 1 ? `${fileName} p.${i + 1}` : fileName, bytes, page: i, w: mb.width, h: mb.height, mbx: mb.x, mby: mb.y, preview: cv.toDataURL('image/jpeg', 0.85) });
-    cv.width = cv.height = 1;
+    const preview = await renderShown(await pdf.getPage(i + 1), g, 6, 'image/jpeg', 0.85);
+    items.push({ name: labels ? labels[i] : pdf.numPages > 1 ? `${fileName} p.${i + 1}` : fileName, bytes, page: i, w: g.w, h: g.h, geom: g, preview });
     if (i % 20 === 19) await tick();
   }
 }

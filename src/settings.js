@@ -89,20 +89,22 @@ const STORE_KEY = 'stickerSheet.opts.v2';
 // every option field as { id: value } (checkboxes as booleans, the rest as the field's text)
 export function optionValues() {
   const o = {};
-  for (const id of OPT_IDS) { const e = byId(id); o[id] = e.type === 'checkbox' ? e.checked : e.value; }
+  // (data-keep: the value to save while the field shows one read from a file, see showBleed)
+  for (const id of OPT_IDS) { const e = byId(id); o[id] = e.type === 'checkbox' ? e.checked : e.dataset.keep ?? e.value; }
   return o;
 }
 export function saveOpts() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(optionValues())); } catch (e) { /* storage unavailable */ }
 }
-const SANE = { bladeOffset: [2, '0.35'], overcut: [5, '0.5'] };
+// (a duplex printer's back side or a start dot is off by a few mm: a shift of more than 10 mm either way is a slip)
+const SANE = { bladeOffset: [2, '0.35'], overcut: [5, '0.5'], cOffX: [10, '0'], cOffY: [10, '0'], cShiftX: [10, '0'], cShiftY: [10, '0'] };
 export function loadOpts() {
   try {
     const o = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
     if (o && typeof o === 'object') {
       // values kept from an earlier visit that can only be a slip (a size typed into the blade offset makes every
       // corner a swing of centimetres and every line land off its place) go back to their standard values
-      for (const [id, [max, def]] of Object.entries(SANE)) if (parseFloat(o[id]) > max) o[id] = def;
+      for (const [id, [max, def]] of Object.entries(SANE)) if (Math.abs(parseFloat(o[id])) > max) o[id] = def;
       applyOptionValues(o);
     }
   } catch (e) { /* storage unavailable, or not what we saved */ }
