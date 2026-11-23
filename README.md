@@ -4,7 +4,8 @@ Print-and-cut sheet builder for a Skycut plotter with SignCut-style registration
 kiss and die (easy-peel) cut lines, business cards, vouchers, card decks, Morgana CardXtra, guillotine sheets,
 vinyl and pen cutting, SVG to PLT, and a PLT modifier.
 
-Everything runs in the browser. Nothing is uploaded; the page loads nothing from other sites.
+Everything runs in the browser; the page loads nothing from other sites. Only what you choose to keep (saved
+settings, the background library, your fonts) is stored on the app's own server.
 
 ## Running in Portainer
 
@@ -62,11 +63,12 @@ docker compose -f docker-compose.yml -f compose.build.yaml up -d --build
 
 Open http://localhost:8080 (or the computer's address on your network) and sign in.
 
-- Saved settings live in the `plotter-data` Docker volume (`/data/presets.json`), so they survive updates and
-  restarts. Back them up with:
+- Saved settings (`/data/presets.json`), the background library (`backgrounds.json`, `backgrounds/`), your fonts
+  (`fonts.json`, `fonts/`) and the login (`auth.json`) live in the `plotter-data` Docker volume, so they survive
+  updates and restarts. Back up the whole folder with:
 
   ```bash
-  docker compose cp plotter-cutter:/data/presets.json ./presets-backup.json
+  docker compose cp plotter-cutter:/data ./plotter-data-backup
   ```
 
 - Changing the password signs everyone out. Wrong passwords lock an address out for 15 minutes after 5 tries.
