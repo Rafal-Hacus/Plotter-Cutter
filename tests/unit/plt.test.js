@@ -35,6 +35,30 @@ describe('writePlt', () => {
   });
 });
 
+describe('writePlt cut order', () => {
+  // strokes of a PLT in sheet mm, without the start arrow
+  const strokes = t => {
+    const out = [];
+    for (const m of moves(t)) { if (m.pen === 'U') out.push([]); out[out.length - 1].push(toSheet(m)); }
+    return out.filter(s => s.length > 1).slice(1);
+  };
+  const sq = (x, y, s) => [[x, y], [x + s, y], [x + s, y + s], [x, y + s]];
+  it('cuts a hole before the outline around it, even when the outline is nearer the knife', () => {
+    // the knife starts by the bottom-right mark: the big frame's corner is nearest, its hole far up the sheet
+    const frame = sq(150, 250, 150), hole = sq(160, 260, 20), other = sq(20, 20, 30);
+    const s = strokes(writePlt(FRAME, OPTS, [other, frame, hole]));
+    const hit = (st, l) => st.every(p => l.some(q => Math.hypot(q[0] - p[0], q[1] - p[1]) < 1e-9));
+    const order = s.map(st => [other, frame, hole].findIndex(l => hit(st, l)));
+    expect(order.indexOf(2)).toBeLessThan(order.indexOf(1));
+    expect(order.sort()).toEqual([0, 1, 2]);
+  });
+  it('nested three deep: innermost first', () => {
+    const a = sq(100, 100, 100), b = sq(110, 110, 80), c = sq(120, 120, 20);
+    const s = strokes(writePlt(FRAME, OPTS, [a, b, c]));
+    expect(s.map(st => Math.round(Math.max(...st.map(p => p[0])) - Math.min(...st.map(p => p[0]))))).toEqual([20, 80, 100]);
+  });
+});
+
 describe('writePlt without registration marks', () => {
   it('writes a plain header, no start-arrow cut, the origin at the start point', () => {
     const sq = [[100, 100], [150, 100], [150, 130], [100, 130]];
