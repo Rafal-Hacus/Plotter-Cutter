@@ -224,22 +224,42 @@ test('guillotine: a /Rotate page with printer’s marks prints turned like the p
   noProblems(problems);
 });
 
-test('the bleed of winietki from names (0 mm) is not taken over by a card PDF without a trim box, nor saved', async ({ page }) => {
-  const doc = await PDFDocument.create();
-  doc.addPage([94 * PT, 54 * PT]).drawRectangle({ x: 0, y: 0, width: 94 * PT, height: 54 * PT, color: rgb(0, 0, 1) });
+// one page w x h mm; trim: [bleed] for a trim box that much inside, 0 for a trim box that is the whole page (as
+// Canva writes it), null for no trim box
+async function onePage(w, h, trim) {
+  const doc = await PDFDocument.create(), p = doc.addPage([w * PT, h * PT]);
+  p.drawRectangle({ x: 0, y: 0, width: w * PT, height: h * PT, color: rgb(0, 0, 1) });
+  if (trim != null) p.setTrimBox(trim * PT, trim * PT, (w - 2 * trim) * PT, (h - 2 * trim) * PT);
+  return { name: 'card.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await doc.save()) };
+}
+test('the bleed comes from the file only: never from the job before, a reload, or winietki from names', async ({ page }) => {
   const problems = await openApp(page);
   await mode(page, 'guillotine');
-  await setField(page, 'cBleed', '2');
+  // a card job with 3 mm bleed first, then the Canva A6 invite (trim box = media box): no bleed, the whole A6
+  await page.setInputFiles('#cardFile', await onePage(96, 56, 3));
+  await expect(page.locator('#cardInfo')).toContainText('90 × 50 mm copy + 3 mm bleed, single-sided');
+  await page.setInputFiles('#cardFile', await onePage(105, 148, 0));
+  await expect(page.locator('#cardInfo')).toContainText('105 × 148 mm copy + 0 mm bleed (the trim box is the whole page)');
+  await page.reload();
+  await mode(page, 'guillotine');
+  await page.setInputFiles('#cardFile', await onePage(105, 148, 0));
+  await expect(page.locator('#cardInfo')).toContainText('105 × 148 mm copy + 0 mm bleed');
+  // no trim box: a standard size plus a little is read as that size with bleed, anything else is the card as it is
   await mode(page, 'winietka');
   await setField(page, 'winSrc', 'names');
   await setField(page, 'winNames', 'Anna\nBartek');
   await expect(page.locator('#cardInfo')).toContainText('+ 0 mm bleed');
   await mode(page, 'guillotine');
-  await page.setInputFiles('#cardFile', { name: 'notrim.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await doc.save()) });
-  await expect(page.locator('#cardInfo')).toContainText('90 × 50 mm copy + 2 mm bleed (from the setting');
+  await page.setInputFiles('#cardFile', await onePage(94, 54, null));
+  await expect(page.locator('#cardInfo')).toContainText('90 × 50 mm copy + 2 mm bleed (the PDF has no trim box: taken as 90 × 50 mm plus the bleed, from its size)');
+  await page.setInputFiles('#cardFile', await onePage(100, 70, null));
+  await expect(page.locator('#cardInfo')).toContainText('100 × 70 mm copy + 0 mm bleed (the PDF has no trim box, so the whole page is taken as the card');
+  // typed: used for this file
+  await setField(page, 'cBleed', '1');
+  await expect(page.locator('#cardInfo')).toContainText('98 × 68 mm copy + 1 mm bleed (as typed');
   await mode(page, 'winietka');
   await expect(page.locator('#cBleed')).toHaveValue('0');
-  await page.waitForFunction(() => /"cBleed":"2"/.test(localStorage.getItem('stickerSheet.opts.v2') || ''));
+  await page.waitForFunction(() => /"cBleed":"1"/.test(localStorage.getItem('stickerSheet.opts.v2') || ''));
   noProblems(problems);
 });
 

@@ -40,15 +40,16 @@ const meet = (a, b) => {
 //   When there is a smaller trim box the box is the trim plus the narrowest bleed around it, so the trim is always
 //   in the middle (a trim box off centre would otherwise put every cut off the card).
 // rot: the page's /Rotate (0, 90, 180, 270: clockwise, as a viewer turns it); w, h: the box as shown, in points;
-// bleed: mm around the trim, or null when the page has no trim box smaller than the box.
+// bleed: mm around the trim (0 when the trim box is the whole page, as Canva writes a page without bleed), or null
+// when the page has no trim box at all.
 export function pageGeom(page) {
-  const mb = page.getMediaBox(), bb = meet(page.getBleedBox(), mb), tb = page.getTrimBox();
-  let box = bb.width > 1 && bb.height > 1 ? bb : mb, bleed = null;
-  if (tb.width < box.width - 0.5 && tb.height < box.height - 0.5) {
+  const mb = page.getMediaBox(), bb = meet(page.getBleedBox(), mb), tb = page.getTrimBox(), hasTrim = !!page.node.TrimBox();
+  let box = bb.width > 1 && bb.height > 1 ? bb : mb, bleed = hasTrim ? 0 : null;
+  if (hasTrim && tb.width < box.width - 0.5 && tb.height < box.height - 0.5) {
     const s = Math.max(0, Math.min(tb.x - box.x, tb.y - box.y, box.x + box.width - tb.x - tb.width, box.y + box.height - tb.y - tb.height));
     box = { x: tb.x - s, y: tb.y - s, width: tb.width + 2 * s, height: tb.height + 2 * s };
     bleed = Math.round(s / PT * 100) / 100;
-  }
+  } else if (hasTrim) { const t = meet(tb, box); if (t.width > 1 && t.height > 1) box = t; } // no bleed: the trim is the card
   const rot = pageView(page).rot, turned = rot % 180 !== 0;
   return { box, rot, w: turned ? box.height : box.width, h: turned ? box.width : box.height, bleed };
 }

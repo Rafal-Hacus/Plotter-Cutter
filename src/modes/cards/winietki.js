@@ -8,7 +8,7 @@ import { buildNameCardsPdf, parseNames } from '../../lib/namecards.js';
 import { ensureLibs, pdfSource } from '../../lib/pdf.js';
 import { readCardImage } from './images.js';
 import { isPrintMode, kinds, showBleed } from './job.js';
-import { renderShown, updateCardInfo } from './load.js';
+import { pdfBleed, renderShown, updateCardInfo } from './load.js';
 import { syncOptionRows } from '../../option-rows.js';
 import { renderPreview, schedule } from '../../pipeline.js';
 import { applyOptionValues, readOpts, saveOpts } from '../../settings.js';
@@ -192,7 +192,7 @@ async function winIngest(items, bytes, fileName, { labels = null, bleed = null }
     const g = pageGeom(lib.getPage(i));
     if (!items.length) { // the first card sets the size and the bleed
       job.pageW = g.w / PT; job.pageH = g.h / PT;
-      job.bleed = bleed != null ? bleed : g.bleed;
+      job.bleedFrom = bleed != null ? null : pdfBleed(g); job.bleed = bleed != null ? bleed : job.bleedFrom.bleed;
       if (state.mode === 'winietka') showBleed(job);
     }
     const preview = await renderShown(await pdf.getPage(i + 1), g, 6, 'image/jpeg', 0.85);

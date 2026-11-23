@@ -5,13 +5,13 @@ import { state } from '../../state.js';
 // The card modes each keep their own PDF job, so switching between them loses nothing. state.job is the open one's.
 export const PRINT_MODES = ['cards', 'vouchers', 'winietka', 'guillotine', 'deck', 'morgana'];
 // items: the cards of a winietki job (one PDF page each); imgSrc: the pictures a job was made from, if any
-const newPrintJob = () => ({ imgSrc: null, name: null, bytes: null, pages: 0, pageW: 0, pageH: 0, geoms: [], previews: [], layout: null, bleed: null, items: [] });
+const newPrintJob = () => ({ imgSrc: null, name: null, bytes: null, pages: 0, pageW: 0, pageH: 0, geoms: [], previews: [], layout: null, bleed: null, bleedFrom: null, items: [] });
 export const kinds = Object.fromEntries([...PRINT_MODES, 'gang'].map(m => [m, newPrintJob()]));
 state.job = kinds.cards;
 export function isPrintMode() { return PRINT_MODES.includes(state.mode); }
-// The "Bleed in the PDF" field is shared by the card modes. A bleed read from a job's file (its trim box, cards made
-// from names or pictures) is shown in it but is not the user's own value: a job whose PDF tells nothing gets back
-// the value last typed (not e.g. the 0 mm of winietki without a background), and that is the value saved.
+// The "Bleed in the PDF" field is shared by the card modes. A loaded PDF's bleed comes from the file only (see
+// pdfBleed), never from the job before: it is shown in the field but is not the user's own value, which stays
+// what is saved and what a mode without a file (or cards stretched from pictures) starts from.
 let typedBleed = null;
 export function showBleed(job) {
   const f = byId('cBleed');
@@ -20,11 +20,11 @@ export function showBleed(job) {
     f.value = job.bleed; f.dataset.keep = typedBleed;
   } else if (typedBleed != null) { f.value = typedBleed; delete f.dataset.keep; }
 }
-// typed: the user's value from now on, also for the open job
+// typed: the bleed of the open PDF from now on (until a file is loaded again), and the user's value
 byId('cBleed').addEventListener('input', () => {
   const f = byId('cBleed');
   typedBleed = f.value; delete f.dataset.keep;
-  if (isPrintMode() && state.job.bleed != null && !state.job.imgSrc) state.job.bleed = null;
+  if (isPrintMode() && state.job.bytes && !state.job.imgSrc) { state.job.bleed = Math.max(0, parseFloat(f.value) || 0); state.job.bleedFrom = { how: 'typed' }; }
 });
 // guillotine sheet (also the card deck): chosen under Sheet; print sheets mode stays on 310 × 440
 function gSheetMm() {

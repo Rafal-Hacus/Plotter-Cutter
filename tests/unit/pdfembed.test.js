@@ -62,6 +62,11 @@ describe('pageGeom', () => {
     const g = pageGeom(await page(() => {}));
     expect(g).toMatchObject({ box: { x: 0, y: 0, width: 300, height: 200 }, rot: 0, w: 300, h: 200, bleed: null });
   });
+  it('a trim box that is the whole page (Canva without bleed): no bleed, not unknown', async () => {
+    const g = pageGeom(await page(p => p.setTrimBox(0, 0, 300, 200)));
+    expect(g.bleed).toBe(0);
+    expect(g.box).toEqual({ x: 0, y: 0, width: 300, height: 200 });
+  });
   it('a file exported with marks: the bleed box, not the media box with the slug', async () => {
     const g = pageGeom(await page(p => { p.setBleedBox(20, 20, 260, 160); p.setTrimBox(20 + 2 * PT, 20 + 2 * PT, 260 - 4 * PT, 160 - 4 * PT); }));
     expect(g.bleed).toBe(2);
