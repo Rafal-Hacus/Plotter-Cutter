@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createApp, loadConfig } from '../../server/index.js';
 import { hashPassword, verifyPassword, sessionSigner, parseCookies } from '../../server/auth.js';
-import { openStore, validatePreset } from '../../server/store.js';
+import { openStore, validatePreset, MODES } from '../../server/store.js';
 
 const PASSWORD = 'correct horse battery';
 let base, server, dir, staticDir;
@@ -327,6 +327,17 @@ describe('config and crypto', () => {
     const s = sessionSigner('s', 'h');
     expect(s.verify(s.sign('shop', 60)).u).toBe('shop');
     expect(s.verify(s.sign('shop', -1))).toBeNull();
+  });
+  it('settings can be saved in every mode of the app, with every option field', () => {
+    const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8');
+    const modes = [...new Set([...html.matchAll(/data-mode="([a-z]+)"/g)].map(m => m[1]))];
+    expect(modes.length).toBeGreaterThan(10);
+    for (const mode of modes) expect(MODES, `mode ${mode}`).toContain(mode);
+    // the option fields the app saves (src/settings.js needs a page, so they are read from its text)
+    const OPT_IDS = [...readFileSync(new URL('../../src/settings.js', import.meta.url), 'utf8').match(/OPT_IDS = \[([^\]]+)\]/)[1].matchAll(/'(\w+)'/g)].map(m => m[1]);
+    expect(OPT_IDS.length).toBeGreaterThan(100);
+    const settings = Object.fromEntries(OPT_IDS.map(id => [id, '1']));
+    expect(Object.keys(validatePreset({ name: 'all', mode: 'roll', settings }).settings)).toHaveLength(OPT_IDS.length);
   });
   it('validatePreset trims names and keeps only plain values', () => {
     expect(validatePreset({ name: '  A   b ', mode: 'cards', settings: { x: '1', y: true, z: 2 } })).toEqual({ name: 'A b', mode: 'cards', settings: { x: '1', y: true, z: 2 } });
