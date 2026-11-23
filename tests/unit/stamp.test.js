@@ -111,6 +111,16 @@ describe('richOutlines', () => {
     expect(real.w).toBeGreaterThan(plain.w);
     expect(faux.w).toBeGreaterThan(plain.w);
   });
+  it('names the letters the font has no glyph for (they would be missing from the stamp), not spaces or invisible ones', async () => {
+    const { missingChars } = await import('../../src/core/stamptext.js');
+    const script = fontkit.create(readFileSync('node_modules/@expo-google-fonts/great-vibes/400Regular/GreatVibes_400Regular.ttf'));
+    const lines = [line([{ text: 'Żółw → ok­​\t' }]), line([{ text: 'ul. → ✓', bold: true }])];
+    expect(missingChars(lines, () => ({ font: script }))).toBe('→✓');
+    expect(missingChars(lines, () => ({ font: regular }))).toBe('✓');
+    // bold runs are checked in the bold face
+    expect(missingChars(lines, b => ({ font: b ? script : regular }))).toBe('→✓');
+    expect(missingChars([line([{ text: 'Zázólc' }])], () => ({ font: regular }))).toBe(''); // decomposed accents
+  });
   it('slants a made-up italic, underlines, and sizes each line', async () => {
     const { richOutlines } = await import('../../src/core/stamptext.js');
     const one = r => bbox(richOutlines([line([{ text: 'I', ...r }])], (b, i) => ({ font: regular, fauxItalic: i })));

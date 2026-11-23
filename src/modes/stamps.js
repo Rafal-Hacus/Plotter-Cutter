@@ -5,7 +5,7 @@
 import { packRoll } from '../core/rollpack.js';
 import { sanitize } from '../core/sanitize.js';
 import { bbox, buildStamp, splitPasses, stampMargins, strokeToShapes, union } from '../core/stamp.js';
-import { richOutlines } from '../core/stamptext.js';
+import { missingChars, richOutlines } from '../core/stamptext.js';
 import { DEFAULT_FAMILY, addFontFiles, cssFamily, families, fontResolver, loadLibrary, onFontsChanged, ownFamilies, removeFamily } from '../stampfonts.js';
 import { SHAPES, expandUses, flattenPath, num, parseSvg } from '../core/svg.js';
 import { BED, buildXsFiles } from '../core/xs.js';
@@ -92,6 +92,7 @@ async function artOf(it, W, H, opts) {
   if (!lines.length) throw new Error('Type the text of the stamp.');
   // the layout is in em of 10 pt; set as typed (pt), it is turned into mm, else the stamp fits it to its size
   const fontFor = await fontResolver(it.font), at = sp => richOutlines(lines, fontFor, { spacing: sp });
+  it.missing = missingChars(lines, fontFor);
   const mm = rings => (it.exact ? rings.map(r => r.map(([x, y]) => [x * EM_MM, y * EM_MM])) : rings);
   const s0 = it.spacing / 100, art = at(s0);
   if (!it.spread || lines.length < 2) return mm(art);
@@ -201,7 +202,8 @@ function list() {
       // the editor's font follows the stamp's font where the browser has it (only a guide: the stamp is drawn exactly)
       const edited = () => { it.html = ed.innerHTML; it.lines = parseEditor(ed); it.name = trimLines(it.lines).map(l => l.runs.map(r => r.text).join('')).find(t => t.trim()) || 'Stamp'; dn.textContent = it.name; schedule(); };
       ed.addEventListener('input', edited);
-      ed.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData.getData('text/plain') || '').replace(/\r\n?/g, '\n')); });
+      // as plain text; Word's line break (Shift+Enter) comes as a vertical tab, which the browser would drop
+      ed.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData.getData('text/plain') || '').replace(/\r\n?|[\v\f\u2028\u2029]/g, '\n')); });
       for (const b of li.querySelectorAll('.steditbar button')) {
         b.addEventListener('mousedown', e => e.preventDefault()); // keep the selection in the editor
         b.addEventListener('click', () => {
@@ -291,6 +293,10 @@ function status(it) {
     if (m.cutX || m.cutY) {
       const o = stampOpts(readOpts(), it);
       st.textContent += ` The distance set (${[m.cutX ? `${r2(o.marginX)} mm` : '', m.cutY ? `${r2(o.marginY)} mm` : ''].filter(Boolean).join(' / ')}) is more than a quarter of the stamp, so it was made smaller: check “Text to cut” here and under Layout of a stamp.`;
+      st.classList.add('warn');
+    }
+    if (it.kind === 'text' && it.missing) {
+      st.textContent += ` The font has no ${[...it.missing].map(c => `“${c}”`).join(' ')}: ${[...it.missing].length > 1 ? 'they are' : 'it is'} left out of the stamp. Choose another font (or bold / italic).`;
       st.classList.add('warn');
     }
     if (it.kind === 'text') {
