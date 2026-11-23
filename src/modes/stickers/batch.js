@@ -1,6 +1,5 @@
 // Sticker print PDFs: one sheet, or a batch of as many sheets as the copies need with one pair of PLTs per
 // distinct sheet.
-import { embedPages } from '../../core/pdfembed.js';
 import { PT, apply, mul } from '../../core/matrix.js';
 import { loadImg, sizedSvg } from '../../core/svg.js';
 import { asciiOnly, tick } from '../../core/util.js';
@@ -61,7 +60,10 @@ async function drawVectorStickers(page, out, L, Hpt, cache) {
     if (!cache.has(key)) {
       if (!cache.docs) cache.docs = new Map();
       if (!cache.docs.has(c.pdf)) cache.docs.set(c.pdf, await PDFDocument.load(c.pdf, { ignoreEncryption: true }));
-      cache.set(key, (await embedPages(out, cache.docs.get(c.pdf), [c.page]))[0]);
+      // the page as pdf.js drew it (its crop box, which c.w x c.h and the cut lines are measured in), not its media box:
+      // a page cropped inside a bigger media box would land off its cut line by the difference
+      const pg = cache.docs.get(c.pdf).getPage(c.page);
+      cache.set(key, await out.embedPage(pg, { left: c.mbx, bottom: c.mby, right: c.mbx + c.w, top: c.mby + c.h }));
     }
     const emb = cache.get(key);
     if (!names.has(key)) names.set(key, page.node.newXObject(`V${key}`, emb.ref));
