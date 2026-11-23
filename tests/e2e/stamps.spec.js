@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { inflateRawSync } from 'node:zlib';
 import { PDFDocument } from 'pdf-lib';
-import { download, fixture, mode, noProblems, openApp, setField } from './helpers.js';
+import { download, fixture, mode, noProblems, openApp, setField, SERVER_URL } from './helpers.js';
 
 const PT = 72 / 25.4;
 
@@ -131,7 +131,7 @@ test('pieczątki: bold / italic / underline / line size in the editor, another f
 
 test('pieczątki: your font files are kept on the server and offered in every stamp', async ({ page }) => {
   page.on('pageerror', e => { throw e; });
-  await page.goto('http://localhost:4174/');
+  await page.goto(SERVER_URL);
   await page.fill('#u', 'shop'); await page.fill('#p', 'e2e password 123'); await page.click('button[type=submit]');
   await expect(page.locator('#secPresets')).toBeVisible();
   await mode(page, 'stamps');

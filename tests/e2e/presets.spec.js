@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { setField, mode } from './helpers.js';
+import { setField, mode, SERVER_URL } from './helpers.js';
 
 // Against the real server (login + saved settings), see playwright.config.js
-const SERVER = 'http://localhost:4174/';
+const SERVER = SERVER_URL;
 test.describe.configure({ mode: 'serial' });
 
 async function signIn(page) {

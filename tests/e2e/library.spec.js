@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { setField, mode, makePng } from './helpers.js';
+import { setField, mode, makePng, SERVER_URL } from './helpers.js';
 
 // Against the real server (login + library), see playwright.config.js
-const SERVER = 'http://localhost:4174/';
+const SERVER = SERVER_URL;
 
 test('background library: add a background with its card settings, then one click brings both back', async ({ page }) => {
   const errors = [];

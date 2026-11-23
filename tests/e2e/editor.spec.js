@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openApp, noProblems, setField, mode, fixture } from './helpers.js';
+import { openApp, noProblems, setField, mode, fixture, SERVER_URL } from './helpers.js';
 
 // A square picture (like a ChatGPT image) made into a portrait print with bleed, in Print sheets.
 const pngSize = async (page, sel) => page.evaluate(async sel => {
@@ -34,7 +34,7 @@ test('edit picture: AI fills the rest of the page (runs the real model in the br
   const errors = [];
   page.on('pageerror', e => errors.push(e.message));
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
-  await page.goto('http://localhost:4174/');
+  await page.goto(SERVER_URL);
   await page.fill('#u', 'shop'); await page.fill('#p', 'e2e password 123'); await page.click('button[type=submit]');
   await expect(page.locator('#secPresets')).toBeVisible();
   await mode(page, 'gang');
