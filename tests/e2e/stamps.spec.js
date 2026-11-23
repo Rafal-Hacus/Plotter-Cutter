@@ -215,6 +215,23 @@ test('pieczątki: a size typed in pt is the size the letters come out (the stamp
   noProblems(problems);
 });
 
+test('pieczątki: adding or removing a stamp keeps the others’ status and picture in the list', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'stamps');
+  await page.click('#stAddText');
+  const first = page.locator('#stList li').nth(0);
+  await expect(first.locator('.stst')).toContainText('48 × 19 mm');
+  await page.click('#stAddText');
+  await expect(page.locator('#count')).toHaveText('2 stamps on the bed');
+  await expect(first.locator('.stst')).toContainText('48 × 19 mm');
+  await expect(first.locator('.thumb svg')).toHaveCount(1);
+  await page.locator('#stList li').nth(1).locator('.remove').click();
+  await expect(page.locator('#count')).toHaveText('1 stamp on the bed');
+  await expect(first.locator('.stst')).toContainText('48 × 19 mm');
+  await expect(first.locator('.thumb svg')).toHaveCount(1);
+  noProblems(problems);
+});
+
 test('pieczątki: text pasted from Word keeps its line breaks, and letters the font lacks are named, not silently left out', async ({ page }) => {
   const problems = await openApp(page);
   await mode(page, 'stamps');

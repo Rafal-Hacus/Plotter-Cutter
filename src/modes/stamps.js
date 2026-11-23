@@ -265,8 +265,9 @@ function list() {
     const rm = q('.remove'); rm.setAttribute('aria-label', `Remove ${it.name}`);
     rm.addEventListener('click', () => { stamps.items.splice(stamps.items.indexOf(it), 1); list(); schedule(); });
     it.li = li;
-    syncRow(it, li); status(it);
+    syncRow(it, li);
     ul.appendChild(li);
+    status(it); // (once in the page: status skips a row that is not)
   }
 }
 function syncRow(it, li) {
