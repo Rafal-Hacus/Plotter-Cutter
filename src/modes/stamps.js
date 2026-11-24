@@ -4,8 +4,8 @@
 // project (.xs) with the laser settings of the stamp project, one group per stamp (core/xs.js).
 import { packRoll } from '../core/rollpack.js';
 import { sanitize } from '../core/sanitize.js';
-import { bbox, buildStamp, stampMargins, strokeToShapes, union } from '../core/stamp.js';
-import { richOutlines } from '../core/stamptext.js';
+import { bbox, buildStamp, splitPasses, stampMargins, strokeToShapes, union } from '../core/stamp.js';
+import { missingChars, richOutlines } from '../core/stamptext.js';
 import { DEFAULT_FAMILY, addFontFiles, cssFamily, families, fontResolver, loadLibrary, onFontsChanged, ownFamilies, removeFamily } from '../stampfonts.js';
 import { SHAPES, expandUses, flattenPath, num, parseSvg } from '../core/svg.js';
 import { BED, buildXsFiles } from '../core/xs.js';
@@ -17,10 +17,11 @@ import { schedule } from '../pipeline.js';
 import { readOpts } from '../settings.js';
 import { state } from '../state.js';
 import { applyView } from '../viewport.js';
-import { registerMode } from './registry.js';
+import { itemFiles, registerJob, registerMode } from './registry.js';
 // Wagraf self-inking stamps: imprint sizes from the Wagraf catalogue
 export const STAMP_SIZES = { b1s: ['Wagraf B1s', 28, 12], b2: ['Wagraf B2', 39, 15], b3: ['Wagraf B3', 48, 19], b4: ['Wagraf B4', 59, 25] };
 const LAYER_FILL = { red: '#ff8080', blue: '#5078ff' };
+const SLOPE_FILL = ['#f25c5c', '#e03535', '#c41f1f', '#a30f0f'];
 const stamps = { items: [], placed: [], tooBig: [] };
 let nextId = 1;
 
@@ -91,6 +92,7 @@ async function artOf(it, W, H, opts) {
   if (!lines.length) throw new Error('Type the text of the stamp.');
   // the layout is in em of 10 pt; set as typed (pt), it is turned into mm, else the stamp fits it to its size
   const fontFor = await fontResolver(it.font), at = sp => richOutlines(lines, fontFor, { spacing: sp });
+  it.missing = missingChars(lines, fontFor);
   const mm = rings => (it.exact ? rings.map(r => r.map(([x, y]) => [x * EM_MM, y * EM_MM])) : rings);
   const s0 = it.spacing / 100, art = at(s0);
   if (!it.spread || lines.length < 2) return mm(art);
@@ -110,7 +112,7 @@ const EM_MM = 10 * 25.4 / 72;
 function stampOpts(o, it) {
   // the stamp's own distance from the text to the cut, else the one under Layout of a stamp
   const own = v => (v === '' || v == null || !isFinite(v) ? null : Math.max(0, +v));
-  return { marginX: own(it.mx) ?? o.stMarginX, marginY: own(it.my) ?? o.stMarginY, textGrow: own(it.rim) ?? o.stShoulder, shoulderScale: own(it.rim) == null && o.stShoulderScale, outerGrow: o.stEdge, shape: it.shape, radius: it.radius, fit: !(it.kind === 'text' && it.exact), scale: (it.scale || 100) / 100 };
+  return { marginX: own(it.mx) ?? o.stMarginX, marginY: own(it.my) ?? o.stMarginY, textGrow: own(it.rim) ?? o.stShoulder, shoulderScale: own(it.rim) == null && o.stShoulderScale, outerGrow: o.stEdge, slopeSteps: o.stSlope, slopeWidth: o.stSlopeWidth, shape: it.shape, radius: it.radius, fit: !(it.kind === 'text' && it.exact), scale: (it.scale || 100) / 100 };
 }
 // the stamp builder in a background thread (falls back to this thread if workers can't start)
 let worker = null, nextJob = 1;
@@ -200,7 +202,8 @@ function list() {
       // the editor's font follows the stamp's font where the browser has it (only a guide: the stamp is drawn exactly)
       const edited = () => { it.html = ed.innerHTML; it.lines = parseEditor(ed); it.name = trimLines(it.lines).map(l => l.runs.map(r => r.text).join('')).find(t => t.trim()) || 'Stamp'; dn.textContent = it.name; schedule(); };
       ed.addEventListener('input', edited);
-      ed.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData.getData('text/plain') || '').replace(/\r\n?/g, '\n')); });
+      // as plain text; Word's line break (Shift+Enter) comes as a vertical tab, which the browser would drop
+      ed.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData.getData('text/plain') || '').replace(/\r\n?|[\v\f\u2028\u2029]/g, '\n')); });
       for (const b of li.querySelectorAll('.steditbar button')) {
         b.addEventListener('mousedown', e => e.preventDefault()); // keep the selection in the editor
         b.addEventListener('click', () => {
@@ -218,7 +221,14 @@ function list() {
       document.addEventListener('selectionchange', () => { if (ed.contains(document.getSelection().anchorNode)) showPt(); });
       pt.addEventListener('mousedown', () => { ptLines = selectedLines(ed); });
       pt.addEventListener('focus', () => { if (!ptLines) ptLines = selectedLines(ed); });
-      pt.addEventListener('input', () => { const v = parseFloat(pt.value); if (!(v > 0)) return; for (const blk of ptLines || selectedLines(ed)) setPt(blk, v); edited(); });
+      // a size typed in pt means that size: the stamp is then set as typed, not fitted (fitted, the pt sizes only set the
+      // lines' proportions and 8 pt came out as big as the stamp allows)
+      pt.addEventListener('input', () => {
+        const v = parseFloat(pt.value); if (!(v > 0)) return;
+        for (const blk of ptLines || selectedLines(ed)) setPt(blk, v);
+        if (!it.exact) { it.exact = true; q('.stexact').value = 'exact'; }
+        edited();
+      });
       pt.addEventListener('blur', () => { ptLines = null; showPt(); });
       let ptLines = null;
       showPt();
@@ -255,14 +265,16 @@ function list() {
     const rm = q('.remove'); rm.setAttribute('aria-label', `Remove ${it.name}`);
     rm.addEventListener('click', () => { stamps.items.splice(stamps.items.indexOf(it), 1); list(); schedule(); });
     it.li = li;
-    syncRow(it, li); status(it);
+    syncRow(it, li);
     ul.appendChild(li);
+    status(it); // (once in the page: status skips a row that is not)
   }
 }
 function syncRow(it, li) {
   li.querySelector('.stcustom').hidden = it.size !== 'custom';
   li.querySelector('.stradius').hidden = it.shape !== 'round';
 }
+const MIN_READABLE_PT = 6;
 function status(it) {
   if (!it.li || !it.li.isConnected) return;
   const st = it.li.querySelector('.stst'), [W, H] = sizeOf(it), r = it.result;
@@ -274,10 +286,19 @@ function status(it) {
     // the distances from the text to the cut it used, and a warning when one was too big for the stamp
     const m = r.margins || { x: 0, y: 0 }, r2 = v => num(Math.round(v * 100) / 100);
     st.textContent += ` Text to cut ${r2(m.x)} mm at the sides, ${r2(m.y)} mm top and bottom; rim around the letters ${r2(r.shoulder ?? 0.2)} mm${it.rim == null ? (readOpts().stShoulderScale ? ' (automatic, thinner for small letters)' : ' (the general rim)') : ''}.`;
+    if (it.shape === 'round' && r.radii && Math.min(...r.radii) < Math.min(it.radius, W / 2, H / 2) - 0.005) st.textContent += ` Corners rounded less than set (${r.radii.map(r2).join(' / ')} mm) so the cut stays clear of the letters.`;
+    if (r.slope && r.slope.length) {
+      const o = readOpts(), p = splitPasses(5, r.slope.length + 1);
+      st.textContent += ` Sloped sides: ${r.slope.length + 1} steps over ${r2(o.stSlopeWidth)} mm from the rim (passes ${p.join(' + ')}).`;
+    }
     const rimEl = it.li.querySelector('.strim'); if (rimEl) rimEl.placeholder = r2(r.shoulder ?? 0.2);
     if (m.cutX || m.cutY) {
       const o = stampOpts(readOpts(), it);
       st.textContent += ` The distance set (${[m.cutX ? `${r2(o.marginX)} mm` : '', m.cutY ? `${r2(o.marginY)} mm` : ''].filter(Boolean).join(' / ')}) is more than a quarter of the stamp, so it was made smaller: check “Text to cut” here and under Layout of a stamp.`;
+      st.classList.add('warn');
+    }
+    if (it.kind === 'text' && it.missing) {
+      st.textContent += ` The font has no ${[...it.missing].map(c => `“${c}”`).join(' ')}: ${[...it.missing].length > 1 ? 'they are' : 'it is'} left out of the stamp. Choose another font (or bold / italic).`;
       st.classList.add('warn');
     }
     if (it.kind === 'text') {
@@ -286,6 +307,8 @@ function status(it) {
       const lo = Math.min(...pts), hi = Math.max(...pts);
       st.textContent += ` Letters ${lo === hi ? r1(lo) : `${r1(lo)}–${r1(hi)}`} pt.`;
       if (r.shrunk && it.exact) { st.textContent += ' The sizes set don’t fit the stamp: the text was made smaller to stay inside it (the cut is never bigger than the stamp).'; st.classList.add('warn'); }
+      // laser rubber fills in small letters: below about 6 pt they don't read on the stamp (a warning, not a stop)
+      if (Math.round(lo * 10) / 10 < MIN_READABLE_PT) { st.textContent += ` Letters under ${MIN_READABLE_PT} pt (${r1(lo)} pt here) won’t read well on rubber: they fill in. Make the line bigger, the text shorter or the stamp larger.`; st.classList.add('warn'); }
     }
   }
   const th = it.li.querySelector('.thumb');
@@ -417,7 +440,7 @@ async function addSvgs(files) {
       if (!/\.svg$/i.test(f.name) && f.type !== 'image/svg+xml') throw new Error('not an SVG');
       const svg = svgArt(await f.text());
       if (!svg.rings.length) throw new Error(svg.texts ? 'it only has text: convert the text to outlines (paths) first' : 'nothing filled or stroked in it');
-      stamps.items.push(newItem('svg', { svg, name: f.name }));
+      stamps.items.push(newItem('svg', { svg, name: f.name, src: f, part: 0 }));
     } catch (e) { failed.push(`${f.name}: ${e.message || e}.`); }
   }
   state.loadError = failed.join(' ');
@@ -429,8 +452,8 @@ const ringsD = rings => rings.map(r => `M${r.map(p => `${num(p[0])},${num(p[1])}
 // one stamp as it will be engraved (mirrored), in its own mm; mode 'thumb' for the list
 function stampSvg(r, mode) {
   const e = bbox(r.red.concat([r.cut])), pad = 0.5;
-  // the red (deep) layer drawn over the blue one, as xTool Studio shows them
-  const g = `<g transform="matrix(-1 0 0 1 ${num(e.x0 + e.x1)} 0)"><path d="${ringsD(r.blue)}" fill="${LAYER_FILL.blue}" fill-rule="evenodd"/><path d="${ringsD(r.red)}" fill="${LAYER_FILL.red}" fill-rule="evenodd"/><path d="${ringsD([r.cut])}" fill="none" stroke="#000" stroke-width="0.15"/></g>`;
+  // the red (deep) layer drawn over the blue one, as xTool Studio shows them; the slope's steps darker as they go deeper
+  const g = `<g transform="matrix(-1 0 0 1 ${num(e.x0 + e.x1)} 0)"><path d="${ringsD(r.blue)}" fill="${LAYER_FILL.blue}" fill-rule="evenodd"/><path d="${ringsD(r.red)}" fill="${LAYER_FILL.red}" fill-rule="evenodd"/>${(r.slope || []).map((rings, i) => `<path d="${ringsD(rings)}" fill="${SLOPE_FILL[i] || SLOPE_FILL[SLOPE_FILL.length - 1]}" fill-rule="evenodd"/>`).join('')}<path d="${ringsD([r.cut])}" fill="none" stroke="#000" stroke-width="0.15"/></g>`;
   if (mode === 'thumb') return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${num(e.x0 - pad)} ${num(e.y0 - pad)} ${num(e.w + 2 * pad)} ${num(e.h + 2 * pad)}" style="max-width:100%;max-height:100%">${g}</svg>`;
   return g;
 }
@@ -475,7 +498,7 @@ async function coverPng() {
 export async function buildStampsXs() {
   const list_ = stamps.placed.map(pl => {
     const r = pl.it.result;
-    return { x: pl.x, y: pl.y, parts: { blue: r.blue, red: r.red, black: [r.cut] } };
+    return { x: pl.x, y: pl.y, parts: { blue: r.blue, red: r.red, slope: r.slope || [], black: [r.cut] } };
   });
   let cover = null;
   try { cover = await coverPng(); } catch { /* the project is fine without a cover */ }
@@ -563,3 +586,34 @@ byId('stSvgFile').addEventListener('change', e => { const files = Array.from(e.t
 
 list();
 registerMode('stamps', { compute, renderPreview, renderStats, onDrop: addSvgs });
+
+/* ---------- the job kept in the browser (see jobstore.js): every stamp's text and settings, the SVGs as loaded ---------- */
+const STAMP_FIELDS = ['kind', 'name', 'html', 'lines', 'font', 'spacing', 'spread', 'exact', 'size', 'w', 'h', 'copies', 'shape', 'radius', 'mx', 'my', 'rim', 'scale'];
+registerJob('stamps', {
+  modes: ['stamps'], label: 'Pieczątki',
+  serialize() {
+    if (!stamps.items.length) return null;
+    const { files, at } = itemFiles(stamps.items);
+    const items = stamps.items.map(it => {
+      const s = {};
+      for (const k of STAMP_FIELDS) if (it[k] !== undefined) s[k] = it[k];
+      if (it.kind === 'svg') s.f = at(it);
+      return s;
+    });
+    return { files, state: { items }, count: items.length };
+  },
+  async restore(saved, files) {
+    stamps.items = [];
+    const failed = [];
+    for (const s of saved.items) {
+      if (s.kind !== 'svg') { stamps.items.push(newItem('text', s)); continue; }
+      // an SVG stamp: its file read the way a new one is
+      const f = files[s.f];
+      try { stamps.items.push(newItem('svg', { ...s, svg: svgArt(await f.text()), src: f, part: 0 })); }
+      catch (e) { failed.push(`${f ? f.name : 'SVG'}: ${e.message || e}.`); }
+    }
+    state.loadError = failed.join(' ');
+    list(); schedule();
+  },
+  clear() { stamps.items = []; stamps.placed = []; stamps.tooBig = []; list(); schedule(); }
+});

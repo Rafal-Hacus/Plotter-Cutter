@@ -6,13 +6,15 @@ import { bbox } from '../../core/stamp.js';
 import { num } from '../../core/svg.js';
 import { isPdfFile, tick } from '../../core/util.js';
 import { EMPTY_LIST, setMsg, ui } from '../../dom.js';
+import { bladeNote, pdfCheck, pltCheck } from '../../export/check.js';
 import { ensureLibs, pdfSource } from '../../lib/pdf.js';
-import { registerMode } from '../registry.js';
+import { itemFiles, matchItems, registerJob, registerMode } from '../registry.js';
 import { prepareDesign, processDesign } from './design.js';
 import { renderStickerPreview, renderStickerStats } from './render.js';
 import { addRow, updateRow } from './rows.js';
 import { isMarkless } from '../vinyl.js';
 import { nestAll } from '../../nest.js';
+import { planSheets } from './plan.js';
 import { renderStats, schedule } from '../../pipeline.js';
 import { designs, state } from '../../state.js';
 import { templateSheet } from '../../template.js';
@@ -39,10 +41,30 @@ async function computeStickers(o, stale) {
   await tick();
   const lay = ready.length ? await nestAll(ready, sheet, o, stale) : null;
   if (stale()) return false;
-  state.layout = lay;
+  // typed copies: how many sheets the order needs, as the batch export plans them
+  let plan = null;
+  const typed = ready.filter(d => d.qty != null);
+  if (lay && typed.length) {
+    if (o.batchMix && typed.every(d => (lay.counts.get(d.id) || 0) >= d.qty)) plan = { groups: [{ designs: typed, pieces: typed.reduce((s, d) => s + d.qty, 0), sheets: 1, overs: 0 }] };
+    else {
+      renderStats('Planning the sheets…');
+      try { plan = await planSheets(ready, sheet, o, { cancelled: stale, limit: 5000 }); }
+      catch (e) { plan = { error: e.message || String(e) }; }
+      if (stale()) return false;
+    }
+  }
+  state.layout = lay; state.plan = plan;
   designs.forEach(updateRow);
 }
-registerMode('stickers', { compute: computeStickers, renderPreview: renderStickerPreview, renderStats: renderStickerStats, onDrop: addFiles });
+// what the print PDF and the PLTs will carry
+function stickerExportCheck(o) {
+  const L = state.layout, t = state.template;
+  if (!L || !L.items.length || !t) return null;
+  const sheet = [t.wMm, t.hMm];
+  return [pdfCheck({ pages: 1, page: sheet, extra: `artwork at 300 dpi, ${L.items.length} stickers` }),
+    t.marks ? pltCheck(o, [['kiss', o.kissForce], ['die', o.dieForce]], { sheet, pieces: L.items.length }) : '', t.marks ? bladeNote(o) : ''];
+}
+registerMode('stickers', { compute: computeStickers, renderPreview: renderStickerPreview, renderStats: renderStickerStats, onDrop: addFiles, exportCheck: stickerExportCheck });
 
 /* ---------- stickers from a PDF: the page as artwork, and the kiss cut one of three ways ---------- */
 //   kind 'cut':   the line drawn in the PDF (stroked, not filled: the usual cut line, as for SVGs)
@@ -125,12 +147,18 @@ export async function addFiles(fileList) {
   if (!designs.length) ui.list.innerHTML = '';
   const failed = [];
   for (const f of files) {
+    const before = designs.length;
     try {
       if (isPdfFile(f)) { setMsg(`Reading ${f.name}…`); await addPdfStickers(f); setMsg(''); continue; }
       const d = prepareDesign(await f.text(), f.name);
+      // vinyl: a file added starts at one copy (filling the roll cut one logo 34 times over a metre); empty = fill
+      if (state.mode === 'vinyl') d.qty = 1;
       designs.push(d); addRow(d);
     } catch (e) {
       failed.push(`${f.name}: ${e.message}`);
+    } finally {
+      // the file each design came from (its page in a PDF), for the autosave
+      designs.slice(before).forEach((d, k) => { d.src = f; d.part = k; });
     }
   }
   if (!designs.length) ui.list.innerHTML = EMPTY_LIST;
@@ -139,3 +167,41 @@ export async function addFiles(fileList) {
   schedule();
 }
 ui.files.addEventListener('change', () => { addFiles(ui.files.files); ui.files.value = ''; });
+
+/* ---------- the job kept in the browser (see jobstore.js); the vinyl and pen modes share it ---------- */
+function clearStickers() {
+  designs.length = 0; ui.list.innerHTML = EMPTY_LIST; state.layout = null; state.plan = null; state.vinylLayout = null;
+  schedule();
+}
+registerJob('stickers', {
+  modes: ['stickers', 'vinyl', 'pen'], label: 'Stickers',
+  serialize() {
+    if (!designs.length) return null;
+    const { files, at } = itemFiles(designs);
+    const items = designs.filter(d => d.src).map(d => ({
+      f: at(d), part: d.part, heightMm: d.heightMm, qty: d.qty, mode: d.mode, hEdited: !!d.hEdited, realSized: !!d.realSized,
+      circle: d.circle ? { kind: d.circle.kind, size: d.circle.size, x: d.circle.x, y: d.circle.y } : null
+    }));
+    return { files, state: { items }, count: items.length };
+  },
+  async restore(saved, files) {
+    clearStickers();
+    for (const f of files) await addFiles([f]);
+    const pairs = matchItems(designs, files, saved.items);
+    designs.length = 0;
+    for (const [d, s] of pairs) {
+      const c = d.circle;
+      if (c && s.circle && (c.kind !== s.circle.kind || c.size !== s.circle.size || c.x !== s.circle.x || c.y !== s.circle.y)) {
+        Object.assign(c, s.circle);
+        Object.assign(d, prepareDesign(pdfStickerSvg(c), d.name), { mode: c.kind === 'trace' ? 'trace' : 'cut' });
+      } else if (!c) d.mode = s.mode;
+      Object.assign(d, { heightMm: s.heightMm, qty: s.qty, hEdited: s.hEdited, realSized: s.realSized });
+      designs.push(d);
+    }
+    // the rows again, with the saved values in them
+    ui.list.innerHTML = designs.length ? '' : EMPTY_LIST;
+    for (const d of designs) addRow(d);
+    schedule();
+  },
+  clear: clearStickers
+});

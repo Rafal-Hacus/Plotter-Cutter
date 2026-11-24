@@ -6,7 +6,8 @@ import { closedTip, dragKnife, speedTokens, strokeTokens } from '../core/plt.js'
 import { SHAPES, aiId, flattenPath, num, parseSvg, pathEl } from '../core/svg.js';
 import { tick } from '../core/util.js';
 import { makeZip } from '../core/zip.js';
-import { CUT_RED, byId, saveFile, setMsg, ui } from '../dom.js';
+import { CUT_RED, byId, plural, saveFile, setMsg, ui } from '../dom.js';
+import { bladeNote, pltCheck } from '../export/check.js';
 import { buildCutPdf, pdfClick } from '../export/cut-files.js';
 import { registerMode } from './registry.js';
 import { addFiles } from './stickers/index.js';
@@ -31,6 +32,9 @@ function extractGeometry(d) {
     svg.setAttribute('width', '1000'); svg.setAttribute('height', '1000'); svg.removeAttribute('preserveAspectRatio');
     host.appendChild(svg); document.body.appendChild(host);
     const inv = svg.getScreenCTM().inverse(), out = [];
+    // live text isn't cut at all, and a shape with only a stroke is cut along the middle of the stroke
+    out.texts = Array.from(svg.querySelectorAll('text')).filter(t => !t.closest('defs,clipPath,mask,pattern,symbol,marker') && (t.textContent || '').trim()).length;
+    out.strokes = []; // their stroke widths, in root units
     for (const el of svg.querySelectorAll(SHAPES)) {
       if (el.closest('defs,clipPath,mask,pattern,symbol,marker')) continue;
       const cs = getComputedStyle(el);
@@ -41,6 +45,7 @@ function extractGeometry(d) {
       const gid = ++geoGroup, rule = cs.fillRule === 'evenodd' ? 'evenodd' : 'nonzero';
       const m = inv.multiply(el.getScreenCTM());
       const at = n => parseFloat(el.getAttribute(n)) || 0;
+      if (!fillOn) out.strokes.push((parseFloat(cs.strokeWidth) || 0) * Math.sqrt(Math.abs(m.a * m.d - m.b * m.c)));
       let polys = [];
       const ell = (cx, cy, rx, ry) => { const p = []; for (let k = 0; k < 72; k++) { const a = k / 72 * 2 * Math.PI; p.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)]); } return [{ pts: p, closed: true }]; };
       switch (el.localName) {
@@ -72,15 +77,22 @@ function extractGeometry(d) {
 async function processVinyl(d, o) {
   if (!d.vgeo) d.vgeo = extractGeometry(d);
   const geo = d.vgeo;
-  if (!geo.length) throw new Error('No vector shapes to cut in this file.');
+  if (!geo.length) throw new Error(geo.texts ? 'No vector shapes to cut in this file: its text has to be converted to curves (outlines) first.' : 'No vector shapes to cut in this file.');
   let gx0 = Infinity, gy0 = Infinity, gx1 = -Infinity, gy1 = -Infinity;
   for (const g of geo) for (const [x, y] of g.pts) { gx0 = Math.min(gx0, x); gx1 = Math.max(gx1, x); gy0 = Math.min(gy0, y); gy1 = Math.max(gy1, y); }
   const bw = gx1 - gx0, bh = gy1 - gy0;
   if (!(bh > 0)) throw new Error('The shapes in this file have no height.');
+  // the height is the shapes' (what gets cut), as typed. Until it is typed it starts at the shapes' real size in the
+  // file (the file's height is its page's, blank space included: a logo drawn to size on an A4 page was cut 297 mm
+  // tall, one with a little margin a little too big)
+  // (from the file's own scale: the height may have been set for a sticker's cut line before switching here)
+  d.vShapeH = bh;
+  if (!d.hEdited && !d.realSized) { d.heightMm = d.mmPerUnit * bh; d.realSized = true; }
   const s = d.heightMm / bh, frW = bw * s, frH = d.heightMm;
   const weedEach = o.vWeed === 'each', wm = weedEach ? o.vWeedMargin : 0;
   const pad = o.vGap / 2 + wm + 1.5;
   const Wc = Math.ceil((frW + 2 * pad) / CELL), Hc = Math.ceil((frH + 2 * pad) / CELL);
+  if (Wc * Hc > 16e6) throw new Error(`At ${num(Math.round(frW))} × ${num(Math.round(frH))} mm this is too big to read: set a smaller height.`);
   let ppm = 2;
   for (const p of [10, 6, 4, 2]) if (Wc * Hc * (p * CELL) ** 2 <= 9e6) { ppm = p; break; }
   const f = Math.round(ppm * CELL), w = Wc * f, h = Hc * f, N = w * h;
@@ -120,7 +132,7 @@ async function processVinyl(d, o) {
   for (const r of [0, 90, 180, 270]) { const rb = rotBits(cb, Wc, Hc, r); masks[r] = makeMask(rb.bits, rb.w, rb.h); }
   if (!masks[0]) throw new Error('The shapes came out empty at this size.');
   const pathD = paths.map(p => 'M' + p.pts.map(q => num(q[0]) + ' ' + num(q[1])).join('L') + (p.closed ? 'Z' : '')).join('');
-  return { s, boxW, boxH, frW, frH, masks, paths, pathD, nPaths: geo.length };
+  return { s, boxW, boxH, frW, frH, masks, paths, pathD, nPaths: geo.length, texts: geo.texts || 0, strokes: (geo.strokes || []).filter(w => w * s > 0.5).length };
 }
 // Material area as a nesting grid; packs toward the origin corner (bottom right) by nesting
 // top-left and turning the whole result 180°.
@@ -243,7 +255,7 @@ function vinylUsedLength() {
   return L.L - top;
 }
 function renderVinylStats(busyText) {
-  const n = state.vinylLayout ? state.vinylLayout.items.length : 0;
+  const n = state.vinylLayout ? state.vinylLayout.items.length : 0, o = vOpts();
   ui.dropNote.hidden = designs.length > 0;
   for (const id of ['exVinylSvg', 'exVinylPlt', 'exVinylPdf']) byId(id).disabled = !n || !!busyText;
   if (busyText) { ui.count.textContent = busyText; return; }
@@ -254,7 +266,11 @@ function renderVinylStats(busyText) {
   for (const d of designs) {
     if (!d.vres) continue;
     const got = state.vinylLayout ? state.vinylLayout.counts.get(d.id) || 0 : 0;
-    if (d.qty != null && got < d.qty) notes.push(`Only ${got} of ${d.qty} copies of ${d.name} fit.`);
+    if (d.qty != null && got < d.qty && got > 0 && state.mode === 'vinyl') {
+      // more copies than the material length holds: that many lengths of it, cut one after the other
+      const runs = Math.ceil(d.qty / got), last = d.qty - (runs - 1) * got;
+      notes.push(`${d.name}: ${d.qty} pieces → ${runs} lengths of ${num(o.vLength)} mm (${got} per length, ${last} on the last); this file cuts the first ${got}.`);
+    } else if (d.qty != null && got < d.qty) notes.push(`Only ${got} of ${d.qty} copies of ${d.name} fit.`);
   }
   setMsg(notes.join(' '), false);
 }
@@ -280,7 +296,13 @@ async function computeVinyl(_, stale) {
   state.vinylLayout = lay;
   designs.forEach(updateRow);
 }
-registerMode(['vinyl', 'pen'], { compute: computeVinyl, renderPreview: renderVinylPreview, renderStats: renderVinylStats, onDrop: files => addFiles(files) });
+// what the PLT will carry (the pen: its own force, no blade offset or overcut)
+function vinylExportCheck() {
+  const L = state.vinylLayout, o = vOpts(), pen = state.mode === 'pen';
+  if (!L || !L.items.length) return null;
+  return [pltCheck(o, [[pen ? 'pen' : 'force', o.kissForce]], { sheet: [L.W, Math.ceil(vinylUsedLength())], pieces: plural(L.items.length, 'copy', 'copies'), knife: !pen }), pen ? '' : bladeNote(o)];
+}
+registerMode(['vinyl', 'pen'], { compute: computeVinyl, renderPreview: renderVinylPreview, renderStats: renderVinylStats, onDrop: files => addFiles(files), exportCheck: vinylExportCheck });
 byId('exVinylSvg').addEventListener('click', () => saveFile(`${state.mode === 'pen' ? 'pen' : 'vinyl'}-${state.vinylLayout.items.length}pcs-${state.mode === 'pen' ? 'draw' : 'cut'}.svg`, buildVinylSvg()));
 byId('exVinylPlt').addEventListener('click', () => {
   const base = `${state.mode === 'pen' ? 'pen' : 'vinyl'}-${state.vinylLayout.items.length}pcs`;

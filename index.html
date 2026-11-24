@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="same-origin">
-<title>Sticker sheet builder</title>
+<title>Sticker sheets · Plotter Cutter</title>
 </head>
 <body>
 <div class="app">
   <aside>
     <header>
-      <div class="titlebar"><h1>Sticker sheet builder</h1>
+      <div class="titlebar"><h1 id="appTitle">Sticker sheets</h1>
         <div class="userbox" id="userBox" hidden><span id="userName"></span><button type="button" class="link" id="signOut">Sign out</button></div></div>
-      <p class="lede">Add SVGs, set their height, and get a nested sheet with kiss and die cut lines around every sticker.</p>
+      <p class="lede" id="appLede">Add SVGs or PDFs, set their height, and get a nested sheet with kiss and die cut lines around every sticker.</p>
     </header>
     <p class="securenote" id="secureNote" role="note" hidden></p>
     <section class="presets" id="secPresets" aria-labelledby="h-presets" hidden>
@@ -32,6 +32,7 @@
       <p class="hint">Saves the mode and every setting (cut lines, sheet, layout, cards, PLT…) on the server. Picking one applies it; the default loads when the app opens.</p>
     </section>
     <nav class="modes" aria-label="Mode"><div class="mgroup" role="group" aria-label="Print &amp; cut"><span class="mlabel">Print &amp; cut</span><div class="mbtns"><button type="button" data-mode="stickers" aria-pressed="true">Stickers</button><button type="button" data-mode="cards" aria-pressed="false">Business cards</button><button type="button" data-mode="vouchers" aria-pressed="false">Vouchers</button><button type="button" data-mode="winietka" aria-pressed="false">Winietki</button><button type="button" data-mode="roll" aria-pressed="false">Roll</button></div></div><div class="mgroup" role="group" aria-label="Print for the guillotine"><span class="mlabel">Print for the guillotine</span><div class="mbtns"><button type="button" data-mode="guillotine" aria-pressed="false">Guillotine</button><button type="button" data-mode="deck" aria-pressed="false">Card deck</button><button type="button" data-mode="gang" aria-pressed="false">Print sheets</button><button type="button" data-mode="morgana" aria-pressed="false">Morgana CardXtra</button><button type="button" data-mode="duplex" aria-pressed="false">Duplex test</button></div></div><div class="mgroup" role="group" aria-label="Cut or draw only"><span class="mlabel">Cut or draw only</span><div class="mbtns"><button type="button" data-mode="vinyl" aria-pressed="false">Vinyl</button><button type="button" data-mode="pen" aria-pressed="false">Pen</button><button type="button" data-mode="squares" aria-pressed="false">Squares</button><button type="button" data-mode="svgplt" aria-pressed="false">SVG to PLT</button></div></div><div class="mgroup" role="group" aria-label="Laser (xTool)"><span class="mlabel">Laser (xTool)</span><div class="mbtns"><button type="button" data-mode="stamps" aria-pressed="false">Pieczątki</button></div></div></nav>
+    <div class="tools" role="group" aria-label="Tools"><span class="mlabel">Tools</span><button type="button" id="toolModOpen" aria-haspopup="dialog" aria-controls="toolMod">PLT modifier…</button></div>
 
     <section aria-labelledby="h-stickers" id="secStickers">
       <h2 id="h-stickers">Stickers</h2>
@@ -93,8 +94,8 @@
         <div class="row"><label for="cAlign">Line up the cut by</label><select id="cAlign"><option value="marks">Registration marks (sensor)</option><option value="dot">Start dot, no sensor (like vinyl)</option></select></div>
         <div id="dotRows" hidden>
           <p class="hint">The print gets a small cross-hair dot at the bottom right instead of the registration marks. Put the sheet in the plotter, move the knife tip exactly onto the centre of the dot and set the origin there, then send the PLT. The plotter doesn’t read any marks, so its sensor can’t skew the lines.</p>
-          <div class="row"><label for="cShiftX">Cut shift X (+ moves the cuts right)</label><span class="mm"><input id="cShiftX" type="number" step="0.1" value="0">mm</span></div>
-          <div class="row"><label for="cShiftY">Cut shift Y (+ moves the cuts down)</label><span class="mm"><input id="cShiftY" type="number" step="0.1" value="0">mm</span></div>
+          <div class="row"><label for="cShiftX">Cut shift X (+ moves the cuts right)</label><span class="mm"><input id="cShiftX" type="number" min="-10" max="10" step="0.1" value="0">mm</span></div>
+          <div class="row"><label for="cShiftY">Cut shift Y (+ moves the cuts down)</label><span class="mm"><input id="cShiftY" type="number" min="-10" max="10" step="0.1" value="0">mm</span></div>
         </div>
         <div class="row"><label for="winCopies">Copies of each</label><span class="mm"><input id="winCopies" type="number" min="1" step="1" value="1">pcs</span></div>
         <div class="row"><label for="winSheet">Preview</label><select id="winSheet"><option value="0">Sheet 1</option></select></div>
@@ -125,8 +126,8 @@
         <div class="row"><label for="cPerfGap">Fold perforation: uncut gap</label><span class="mm"><input id="cPerfGap" type="number" min="0.2" step="0.1" value="1">mm</span></div>
         </div>
       </div>
-      <div class="row" id="rowCOffX"><label for="cOffX">Back side shift X</label><span class="mm"><input id="cOffX" type="number" step="0.1" value="0">mm</span></div>
-      <div class="row" id="rowCOffY"><label for="cOffY">Back side shift Y</label><span class="mm"><input id="cOffY" type="number" step="0.1" value="0">mm</span></div>
+      <div class="row" id="rowCOffX"><label for="cOffX">Back side shift X</label><span class="mm"><input id="cOffX" type="number" min="-10" max="10" step="0.1" value="0">mm</span></div>
+      <div class="row" id="rowCOffY"><label for="cOffY">Back side shift Y</label><span class="mm"><input id="cOffY" type="number" min="-10" max="10" step="0.1" value="0">mm</span></div>
       <div id="deckRows" hidden>
         <div class="row" id="rowGEachSets" hidden><label for="gEachSets">Copies of the whole file</label><span class="mm"><input id="gEachSets" type="number" min="1" step="1" value="1">×</span></div>
         <div class="row" id="rowDeckSets"><label for="deckSets">Complete sets</label><span class="mm"><input id="deckSets" type="number" min="1" step="1" value="10">sets</span></div>
@@ -141,10 +142,11 @@
         <div class="row"><label for="gSize">Final size</label><select id="gSize"><option value="orig">As in the PDF</option><option value="A3">A3 (297 × 420)</option><option value="A4">A4 (210 × 297)</option><option value="A5">A5 (148 × 210)</option><option value="A6">A6 (105 × 148)</option><option value="DL">DL (99 × 210)</option><option value="custom">Custom scale</option></select></div>
         <div class="row" id="rowGScale" hidden><label for="gScale">Scale</label><span class="mm"><input id="gScale" type="number" min="5" max="400" step="1" value="100">%</span></div>
         <div class="row"><label for="gAutoGap">Space between copies = 2 × bleed</label><input id="gAutoGap" type="checkbox" checked></div>
+        <div class="row"><label for="gSqueeze">… or narrower (down to 3 mm) when that fits more copies</label><input id="gSqueeze" type="checkbox" checked></div>
         <div class="row" id="rowGSpace"><label for="gSpace">Space between copies</label><span class="mm"><input id="gSpace" type="number" min="0" step="0.5" value="4">mm</span></div>
         <div class="row"><label for="gMarkLen">Crop mark length</label><span class="mm"><input id="gMarkLen" type="number" min="1" step="0.5" value="5">mm</span></div>
         <div class="row"><label for="gMarkOff">Crop mark distance from the cut</label><span class="mm"><input id="gMarkOff" type="number" min="0" step="0.5" value="3">mm</span></div>
-        <div class="row"><label for="gEdge">Unprintable sheet edge</label><span class="mm"><input id="gEdge" type="number" min="0" step="0.5" value="0">mm</span></div>
+        <div class="row"><label for="gEdge">Unprintable sheet edge</label><span class="mm"><input id="gEdge" type="number" min="0" step="0.5" value="3">mm</span></div>
         <p class="hint">With a gap, every copy gets its own cuts (two cuts between neighbours) and keeps its bleed up to half the gap, so an imprecise guillotine cut still lands on artwork. 0 mm means shared single cuts.</p>
       </div>
       <p class="hint" id="cardsCutHint">Cards are cut with the die cut settings. Straight lines need square corners (with a corner radius each card gets its own rectangle). Use the back shift to correct your printer’s duplex misalignment.</p>
@@ -162,7 +164,7 @@
       <h2 id="h-sp">SVG to PLT</h2>
       <p class="hint">Load a finished print-and-cut SVG: registration marks plus cut lines. Marks come from the regmarks layer (scpro2_regmarks), or else from the L-marks in the four corners. Cut lines are stroked shapes without fill; they’re grouped by layer, or by colour if there are no layers, and each group becomes its own PLT, positioned from the marks. Artwork, filled shapes and the print-only layer are ignored, and &lt;use&gt; clones are resolved.</p>
       <div class="actions"><label class="btn primary">Load SVG<input id="spFile" type="file" accept=".svg,image/svg+xml"></label></div>
-      <div class="row" id="rowSpDpi" hidden><label for="spDpi">File units (the SVG has no size)</label><select id="spDpi"><option value="72">pt, 72 per inch (Illustrator, Affinity)</option><option value="96">px, 96 per inch (Inkscape, browsers)</option><option value="25.4">mm</option></select></div>
+      <div class="row" id="rowSpDpi" hidden><label for="spDpi">File units (the SVG has no size)</label><select id="spDpi"><option value="72">pt, 72 per inch (Illustrator)</option><option value="300">300 per inch (Affinity)</option><option value="96">px, 96 per inch (Inkscape, browsers)</option><option value="25.4">mm</option></select></div>
       <div id="spGroups"></div>
       <p class="hint">Overcut, blade offset and speeds come from Cut lines below; force is set per group.</p>
     </section>
@@ -182,15 +184,16 @@
       <p class="hint">Photos and PDFs on 310 × 440 sheets for the guillotine. Every file (every PDF page) is scaled with its proportions kept to the format plus bleed, centred, and turned when its orientation differs. Crop marks and a cut plan included.</p>
       <div class="actions"><label class="btn primary">Add images or PDFs<input id="gangFile" type="file" accept="image/*,.pdf,application/pdf" multiple></label></div>
       <ul class="designs" id="gangList"></ul>
-      <div class="row"><label for="ggFormat">Format</label><select id="ggFormat"><option value="100x150">10 × 15 cm</option><option value="130x180">13 × 18 cm</option><option value="A6">A6</option><option value="A5">A5</option><option value="A4">A4</option><option value="A3">A3</option><option value="DL">DL</option><option value="90x50">90 × 50</option><option value="85x55">85 × 55</option><option value="custom">Custom</option></select></div>
+      <div class="row"><label for="ggFormat">Format</label><select id="ggFormat"><option value="file">As in the file (1:1)</option><option value="100x150">10 × 15 cm</option><option value="130x180">13 × 18 cm</option><option value="A6">A6</option><option value="A5">A5</option><option value="A4">A4</option><option value="A3">A3</option><option value="DL">DL</option><option value="90x50">90 × 50</option><option value="85x55">85 × 55</option><option value="custom">Custom</option></select></div>
       <div class="row" id="rowGGCustom" hidden><label for="ggW">Custom size</label><span class="mm"><input id="ggW" type="number" min="5" step="1" value="100" aria-label="Width">×<input id="ggH" type="number" min="5" step="1" value="150" aria-label="Height">mm</span></div>
       <div class="row"><label for="ggBleed">Bleed</label><span class="mm"><input id="ggBleed" type="number" min="0" step="0.5" value="2">mm</span></div>
       <div class="row"><label for="ggFit">Scaling</label><select id="ggFit"><option value="fill">Fill format + bleed (trims the overflow)</option><option value="fit">Fit whole picture (may leave white)</option></select></div>
       <div class="row"><label for="ggAuto">Space between copies = 2 × bleed</label><input id="ggAuto" type="checkbox" checked></div>
+      <div class="row"><label for="ggSqueeze">… or narrower (down to 3 mm) when that fits more copies</label><input id="ggSqueeze" type="checkbox" checked></div>
       <div class="row" id="rowGGGap" hidden><label for="ggGap">Space between copies</label><span class="mm"><input id="ggGap" type="number" min="0" step="0.5" value="4">mm</span></div>
       <div class="row"><label for="ggMarkLen">Crop mark length</label><span class="mm"><input id="ggMarkLen" type="number" min="1" step="0.5" value="5">mm</span></div>
       <div class="row"><label for="ggMarkOff">Crop mark distance from the cut</label><span class="mm"><input id="ggMarkOff" type="number" min="0" step="0.5" value="3">mm</span></div>
-      <div class="row"><label for="ggEdge">Unprintable sheet edge</label><span class="mm"><input id="ggEdge" type="number" min="0" step="0.5" value="0">mm</span></div>
+      <div class="row"><label for="ggEdge">Unprintable sheet edge</label><span class="mm"><input id="ggEdge" type="number" min="0" step="0.5" value="3">mm</span></div>
       <div class="row"><label for="gangSheet">Preview</label><select id="gangSheet"><option value="0">Sheet 1</option></select></div>
     </section>
 
@@ -226,6 +229,9 @@
       <div class="row"><label for="stSize">Size of new stamps</label><select id="stSize"><option value="b1s">Wagraf B1s (28 × 12 mm)</option><option value="b2">Wagraf B2 (39 × 15 mm)</option><option value="b3" selected>Wagraf B3 (48 × 19 mm)</option><option value="b4">Wagraf B4 (59 × 25 mm)</option><option value="custom">Custom size</option></select></div>
       <div class="row"><label for="stShoulder">Rim around the letters (the deep pass stays this far from them)</label><span class="mm"><input id="stShoulder" type="number" min="0" max="1" step="0.01" value="0.3">mm</span></div>
       <div class="row"><label for="stShoulderScale">Thinner rim for smaller letters</label><input id="stShoulderScale" type="checkbox"></div>
+      <div class="row"><label for="stSlope">Sloped sides on the letters</label><select id="stSlope"><option value="1" selected>Off (straight walls)</option><option value="2">2 steps</option><option value="3">3 steps</option><option value="4">4 steps</option><option value="5">5 steps</option></select></div>
+      <div class="row"><label for="stSlopeWidth">Slope width (from the rim to full depth)</label><span class="mm"><input id="stSlopeWidth" type="number" min="0.1" max="2" step="0.05" value="0.6">mm</span></div>
+      <p class="hint">Sloped sides: the deep pass (5 passes) is split into steps, each engraving a little further from the letters, so the depth grows from the rim outwards and every letter stands on a little mountain instead of a straight wall. Sturdier letters, small text doesn't bend or break off. Each step is a layer of its own in xTool (red, then orange, yellow, green, purple) with its share of the passes (3 steps: 1, 2, 2), so you can tune them there.</p>
       <p class="hint">With “Thinner rim” on, the rim above is for letters the size of the original stamp’s (1.9 mm capitals) and smaller letters get a thinner one in proportion (at least 0.05 mm); off, every stamp gets the rim above. Each stamp can set its own rim too.</p>
       <details class="sub"><summary>Layout of a stamp</summary>
       <div class="row"><label for="stMarginX">Space from the text to the cut, sides</label><span class="mm"><input id="stMarginX" type="number" min="0" max="15" step="0.1" value="2.3">mm</span></div>
@@ -259,6 +265,7 @@
 
     <section aria-labelledby="h-export" class="export" id="secExport">
       <h2 id="h-export">Export</h2>
+      <p class="hint" id="exportCheck" hidden></p>
       <div class="actions" id="cardExports" hidden>
         <button type="button" class="primary" id="exCardPdf" disabled>Print PDF (both sides)</button>
         <button type="button" id="exCardCut" disabled>Cut only SVG</button>
@@ -317,7 +324,7 @@
       </div>
     </section>
 
-    <details class="panel" open>
+    <details class="panel" id="secCut" open>
       <summary><h2 id="h-cut">Cut lines</h2></summary>
       <div class="row"><label for="kiss">Border around artwork (kiss cut)</label><span class="mm"><input id="kiss" type="number" min="0" step="0.5" value="2">mm</span></div>
       <div class="row"><label for="die">Easy-peel margin (die cut)</label><span class="mm"><input id="die" type="number" min="0" step="0.5" value="2">mm</span></div>
@@ -331,7 +338,7 @@
       <p class="hint">Name a layer after a SignCut tool preset (or Tool 1, Tool 2) and SignCut assigns that tool to it.</p>
       </details>
       <details class="sub"><summary>Knife, force and speed (PLT)</summary>
-      <div class="row"><label for="lineW">Cut line width</label><span class="mm"><input id="lineW" type="number" min="0.01" step="0.05" value="0.1">mm</span></div>
+      <div class="row"><label for="lineW">Cut line width</label><span class="mm"><input id="lineW" type="number" min="0.01" max="2" step="0.05" value="0.1">mm</span></div>
       <div class="row"><label for="overcut">Overcut (PLT)</label><span class="mm"><input id="overcut" type="number" min="0" max="5" step="0.1" value="0.5">mm</span></div>
       <div class="row"><label for="bladeOffset">Blade offset (PLT)</label><span class="mm"><input id="bladeOffset" type="number" min="0" max="2" step="0.025" value="0.35">mm</span></div>
       <p class="hint">Set the cutter’s own blade offset to 0 when using this, otherwise corners get compensated twice.</p>
@@ -344,9 +351,9 @@
       </details>
     </details>
 
-    <details class="panel">
+    <details class="panel" id="secLayout">
       <summary><h2 id="h-layout">Layout</h2></summary>
-      <div class="row"><label for="clearance">Clearance from registration marks</label><span class="mm"><input id="clearance" type="number" min="0" step="0.5" value="5">mm</span></div>
+      <div class="row"><label for="clearance">Clearance from registration marks</label><span class="mm"><input id="clearance" type="number" min="0" max="50" step="0.5" value="5">mm</span></div>
       <div class="row"><label for="joinGap">Join cut lines closer than</label><span class="mm"><input id="joinGap" type="number" min="0" step="0.5" value="3">mm</span></div>
       <p class="hint">Outlines closer than this merge into one shape, and narrower gaps and notches get filled in and rounded off. 0 keeps the exact outline.</p>
       <div class="row"><label for="rotate">Rotate stickers to fit more</label><input id="rotate" type="checkbox" checked></div>
@@ -355,7 +362,7 @@
       <div class="row"><label for="quality">Contour detail</label><select id="quality"><option value="standard">Standard (0.1 mm)</option><option value="fine">Fine (0.05 mm)</option></select></div>
     </details>
 
-    <details class="panel">
+    <details class="panel" id="secSheet">
       <summary><h2 id="h-sheet">Sheet and registration marks</h2></summary>
       <div class="row"><label for="sheetSize">Sheet with registration marks</label><select id="sheetSize"><option value="310x440">SRA3 printable 310 × 440</option><option value="320x450">SRA3 full 320 × 450</option><option value="297x420">A3 297 × 420</option><option value="210x297">A4 210 × 297</option><option value="custom">Custom</option></select></div>
       <div class="row" id="rowSheetCustom" hidden><label for="sheetW">Custom sheet</label><span class="mm"><input id="sheetW" type="number" min="60" step="1" value="310" aria-label="Sheet width">×<input id="sheetH" type="number" min="60" step="1" value="440" aria-label="Sheet height">mm</span></div>
@@ -370,19 +377,6 @@
       </div>
     </details>
 
-
-    <details class="panel">
-      <summary><h2 id="h-mod">PLT modifier</h2></summary>
-      <p class="hint">Change force and speed in PLT files you already have, for example when the knife gets blunt halfway through a batch. Load .plt files or a zip of them: each file shows what it is set to now, edit it per file or set all at once. Blade offset and overcut are part of the paths and stay as they are.</p>
-      <div class="actions"><label class="btn">Load PLT files or zip<input id="modFile" type="file" accept=".plt,.zip" multiple></label></div>
-      <div id="modTable"></div>
-      <div class="row"><label for="modForce">Force, all files</label><span class="mm"><input id="modForce" type="number" min="1" max="160" step="1">g</span></div>
-      <div class="row"><label for="modSpeed">Cutting speed, all files</label><span class="mm"><input id="modSpeed" type="number" min="1" max="13" step="1">cm/s</span></div>
-      <div class="row"><label for="modUp">Up-speed, all files</label><span class="mm"><input id="modUp" type="number" min="1" max="13" step="1">cm/s</span></div>
-      <div class="row"><label for="modClean">Fix dense paths (fewer micro-moves)</label><input id="modClean" type="checkbox" checked></div>
-      <div class="row"><label for="modTwice">Cut every line twice</label><input id="modTwice" type="checkbox"></div>
-      <div class="actions"><button type="button" class="primary" id="exMod" disabled>Download modified PLTs (zip)</button></div>
-    </details>
   </aside>
 
   <main id="main">
@@ -395,12 +389,28 @@
         <label id="backToggle" hidden><input type="checkbox" id="showBack">Back side</label>
         <span class="zoom" aria-label="Zoom"><button type="button" id="zOut" aria-label="Zoom out">−</button><span id="zLbl">100%</span><button type="button" id="zIn" aria-label="Zoom in">+</button><button type="button" id="zFit">Fit</button></span>
       </span>
+      <button type="button" class="link" id="jobClear" hidden title="Remove this mode’s files and what was set for them, here and from the browser’s autosave">Clear job</button>
       <span class="msg" id="msg" aria-live="polite"></span>
     </div>
+    <div class="jobrestore" id="jobRestore" role="status" hidden><button type="button" id="jobRestoreBtn">Restore last job</button><span id="jobRestoreInfo"></span><button type="button" class="link" id="jobRestoreNo">Discard it</button></div>
     <div class="stage" id="stage"></div>
-    <div class="drop-note" id="dropNote">Drop SVG files (or PDFs for round stickers) here to start filling the sheet.</div>
+    <div class="drop-note" id="dropNote">Drop SVG or PDF files here to start filling the sheet (a PDF with a CutContour line is cut along that line).</div>
   </main>
 </div>
+<dialog id="toolMod" class="tool" aria-labelledby="h-mod">
+  <header class="toolhead"><h2 id="h-mod">PLT modifier</h2><button type="button" class="link" id="toolModClose">Close</button></header>
+  <div class="toolbody">
+    <p class="hint">Change force and speed in PLT files you already have, for example when the knife gets blunt halfway through a batch. Load .plt files or a zip of them: each file shows what it is set to now, edit it per file or set all at once. Blade offset and overcut are part of the paths and stay as they are.</p>
+    <div class="actions"><label class="btn">Load PLT files or zip<input id="modFile" type="file" accept=".plt,.zip" multiple></label></div>
+    <div id="modTable"></div>
+    <div class="row"><label for="modForce">Force, all files</label><span class="mm"><input id="modForce" type="number" min="1" max="160" step="1">g</span></div>
+    <div class="row"><label for="modSpeed">Cutting speed, all files</label><span class="mm"><input id="modSpeed" type="number" min="1" max="13" step="1">cm/s</span></div>
+    <div class="row"><label for="modUp">Up-speed, all files</label><span class="mm"><input id="modUp" type="number" min="1" max="13" step="1">cm/s</span></div>
+    <div class="row"><label for="modClean">Fix dense paths (fewer micro-moves)</label><input id="modClean" type="checkbox" checked></div>
+    <div class="row"><label for="modTwice">Cut every line twice</label><input id="modTwice" type="checkbox"></div>
+    <div class="actions"><button type="button" class="primary" id="exMod" disabled>Download modified PLTs (zip)</button></div>
+  </div>
+</dialog>
 <dialog id="imgEditor" class="editor" aria-labelledby="edTitle">
   <div class="edwrap">
     <header class="edhead"><h2 id="edTitle">Edit picture</h2><span class="edinfo" id="edInfo"></span><button type="button" class="link" id="edCancel">Close</button></header>

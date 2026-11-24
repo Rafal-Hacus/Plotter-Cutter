@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 export const fixture = name => fileURLToPath(new URL(`../fixtures/${name}`, import.meta.url));
 
 // Open the app and fail the test on any page error, console error or request to another host.
+// the real server (with a login), as playwright.config starts it
+export const SERVER_URL = `http://localhost:${+process.env.E2E_SERVER_PORT || 4174}/`;
 export async function openApp(page) {
   const problems = [];
   page.on('pageerror', e => problems.push(`page error: ${e.message}`));

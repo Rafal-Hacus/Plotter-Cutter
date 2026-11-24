@@ -31,13 +31,10 @@ export function buildExport(kind, L, vec = false) {
       const d = it.d, M = placeMatrix(it), cp = `s${d.id}c${n}-`;
       const art = m => `<g transform="${artTransform(d)}"${d.wrap}>${m.split('__P__').join(cp).split('__D__').join(`s${d.id}-`)}</g>`;
       pr.push(`<g transform="matrix(${M.map(num).join(',')})">`);
-      if (d.res.cutMode) {
-        // cut-line mode: artwork is cropped to the die line plus a little bleed, the rest of the image is dropped
-        pr.push(`<clipPath id="${cp}clip"><path d="${d.res.clipD}"/></clipPath><g clip-path="url(#${cp}clip)">${art(d.markupNoCut)}</g></g>\n`);
-      } else {
-        if (o.borderFill) pr.push(`<path d="${d.res.kissD}" fill="${o.borderColor}"/>`);
-        pr.push(`${art(d.markup)}</g>\n`);
-      }
+      // the artwork is cropped to the die line plus a little bleed, the rest is dropped (in cut-line mode the
+      // image around the cut line; traced, e.g. a white background ignored for the outline)
+      if (!d.res.cutMode && o.borderFill) pr.push(`<path d="${d.res.kissD}" fill="${o.borderColor}"/>`);
+      pr.push(`<clipPath id="${cp}clip"><path d="${d.res.clipD}"/></clipPath><g clip-path="url(#${cp}clip)">${art(d.res.cutMode ? d.markupNoCut : d.markup)}</g></g>\n`);
     });
     pr.push('</g>\n');
   }

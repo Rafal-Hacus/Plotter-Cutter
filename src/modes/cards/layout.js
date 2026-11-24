@@ -51,6 +51,27 @@ export function markSide(L, o, space) {
   const off = Math.max(L.b, Math.min(o.gMarkOff, avail - 1.5)), end = Math.min(off + o.gMarkLen, space);
   return end - off >= 0.5 ? { off, end, printable: Math.max(0, Math.min(end, avail) - off) } : null;
 }
+// The sides whose crop marks print shorter than 3 mm (or not at all): [[side, printable mm], …]. With no unprintable
+// edge set, the marks run off the sheet into the part the printer can't reach and come out as stubs.
+export function shortMarks(L, o) {
+  const sides = [['top', L.sy], ['bottom', G_PAGE.hMm - L.sy - L.totH], ['left', L.sx], ['right', G_PAGE.wMm - L.sx - L.totW]];
+  return sides.map(([name, space]) => { const m = markSide(L, o, space); return [name, m ? m.printable : 0]; }).filter(([, p]) => p < 3);
+}
+export function shortMarksNote(L, o) {
+  const short = shortMarks(L, o);
+  if (!short.length) return '';
+  const none = short.filter(([, p]) => p < 1).map(([n]) => n), stub = short.filter(([, p]) => p >= 1);
+  const list = a => a.length > 1 ? `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}` : a[0], parts = [];
+  if (none.length) parts.push(`Not enough room for printable crop marks at the ${list(none)}.`);
+  if (stub.length) parts.push(`Crop marks at the ${list(stub.map(([n, p]) => `${n} (${mm1(p)} mm)`))} print shorter than 3 mm.`);
+  return `${parts.join(' ')} Use the cut positions below, or set the unprintable edge to what your printer really leaves white.`;
+}
+// The gap the guillotine layout uses, said plainly: narrowed from 2 × bleed to fit more, and how much bleed that leaves
+export function gapNote(L, o, many = 'copies') {
+  if (!L || !L.n || !L.guil) return '';
+  if (L.squeezed) return `Space between ${many} ${mm1(L.gap)} mm, narrowed from 2 × bleed (${mm1(L.squeezed.gap2b)} mm) to fit ${L.n} instead of ${L.squeezed.n2b}: the bleed between ${many} is ${mm1(L.inner)} mm. Untick “… or narrower” for the full gap.`;
+  return `Space between ${many} ${mm1(L.gap)} mm${o.gAuto ? ' (2 × bleed)' : ''}.`;
+}
 export function cropMarks(L, o) { // [[x1,y1,x2,y2]...] in sheet mm
   const x0 = L.sx, y0 = L.sy, x1 = L.sx + L.totW, y1 = L.sy + L.totH, out = [];
   const T = markSide(L, o, y0), B = markSide(L, o, G_PAGE.hMm - y1), Lf = markSide(L, o, x0), R = markSide(L, o, G_PAGE.wMm - x1);
@@ -176,15 +197,18 @@ export function computeCardLayout(sheet, o, job = state.job) {
   // auto: the gap is the two bleeds (after scaling), so the space between the cuts is fully printed; if a narrower
   // gap (not under 3 mm, still two cuts) fits more copies, the widest such gap is used and the inner bleed trimmed to half of it
   let gap = guil ? (o.gAuto ? 2 * b : o.gGap) : o.cGap;
-  let X0, Y0, W, H, e;
+  let X0, Y0, W, H, e, squeezed = null;
   if (guil) {
     // trim + bleed must sit inside the printable sheet; crop marks use whatever room is left
     const ins = o.gMargin + b;
     X0 = ins; Y0 = ins; W = G_PAGE.wMm - 2 * ins; H = G_PAGE.hMm - 2 * ins; e = 0;
-    if (o.gAuto && tw > 0 && th > 0) {
+    if (o.gAuto && o.gSqueeze !== false && tw > 0 && th > 0) {
       const count = g => Math.max(...[[tw, th], [th, tw]].map(([cw, ch]) => Math.max(0, Math.floor((W + g) / (cw + g))) * Math.max(0, Math.floor((H + g) / (ch + g)))));
       let bestG = gap, bestN = count(gap);
+      const at2b = bestN;
       for (let g = gap - 0.5; g >= Math.min(3, gap) - 1e-9; g -= 0.5) { const nn = count(g); if (nn > bestN) { bestN = nn; bestG = g; } }
+      // said next to the layout: the gap used, and how many the full 2 × bleed gap would have fitted
+      if (bestG < gap) squeezed = { gap2b: gap, n2b: at2b };
       gap = bestG;
     }
   } else {
@@ -193,7 +217,7 @@ export function computeCardLayout(sheet, o, job = state.job) {
     X0 = f.x0 * CELL; Y0 = f.y0 * CELL; W = (f.x1 - f.x0 + 1) * CELL; H = (f.y1 - f.y0 + 1) * CELL; e = Math.min(b, gap / 2);
   }
   const inner = Math.min(b, gap / 2), outer = guil ? b : inner;
-  const base = { n: 0, items: [], b, tw, th, e, gap, guil, pw, ph, sc };
+  const base = { n: 0, items: [], b, tw, th, e, gap, guil, pw, ph, sc, squeezed, inner };
   if (tw <= 0 || th <= 0 || W <= 0 || H <= 0) return base;
   let best = null;
   for (const rot of [0, 90]) {

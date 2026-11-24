@@ -2,6 +2,10 @@
 // items: [{ id, w, h }] in mm; opts: { width (usable width), gap (between rectangles), maxLength (0 = no limit),
 // rotate (may turn a rectangle a quarter) }. Returns { sheets: [{ length, places: [{ id, x, y, w, h, rot }] }],
 // tooBig: [ids that fit nowhere] }; x across the roll, y along it, w and h as placed (turned when rot).
+// The skyline places one piece at a time, so its first choices can waste the rest of a row (six 394 x 283 on a 600 mm
+// roll: the first lying, the rest beside it don't fit; standing, two fit in each row). So it is run a few ways (every
+// piece free to turn, or all kept upright / turned / standing / lying, big first by the longer side or by the area)
+// and the shortest layout is kept: fewest sections, then the least roll.
 export function packRoll(items, { width, gap = 0, maxLength = 0, rotate = true } = {}) {
   const W = width + gap, cap = maxLength > 0 ? maxLength + gap : Infinity;
   const fits = (w, h) => w <= W + 1e-9 && h <= cap + 1e-9;
@@ -11,8 +15,28 @@ export function packRoll(items, { width, gap = 0, maxLength = 0, rotate = true }
     if (fits(w, h) || (rotate && fits(h, w))) todo.push({ ...it, gw: w, gh: h });
     else tooBig.push(it.id);
   }
-  // big first: the longer side, then the area
-  todo.sort((a, b) => Math.max(b.gw, b.gh) - Math.max(a.gw, a.gh) || b.gw * b.gh - a.gw * a.gh);
+  const used = r => r.reduce((a, s) => a + s.length, 0);
+  let best = null;
+  for (const turn of rotate ? ['free', 'asis', 'turned', 'tall', 'wide'] : ['asis']) {
+    for (const order of ['side', 'area']) {
+      const sheets = skyline(todo, { W, gap, cap, fits, turn, order });
+      if (!best || sheets.length < best.length || (sheets.length === best.length && used(sheets) < used(best) - 1e-6)) best = sheets;
+    }
+  }
+  return { sheets: best, tooBig };
+}
+// one skyline packing. turn: 'free' (each piece placed the way that ends lowest), 'asis', 'turned', 'tall' (the long
+// side along the roll), 'wide' (across), each falling back to the other way when the piece doesn't fit so;
+// order: big first by the longer side ('side') or by the area
+function skyline(items, { W, gap, cap, fits, turn, order }) {
+  const ways = it => {
+    if (turn === 'free') return Math.abs(it.gw - it.gh) > 1e-9 && fits(it.gh, it.gw) ? [false, true] : [false];
+    const want = turn === 'asis' ? false : turn === 'turned' ? true : turn === 'tall' ? it.gw > it.gh : it.gh > it.gw;
+    return [fits(...(want ? [it.gh, it.gw] : [it.gw, it.gh])) ? want : !want];
+  };
+  const todo = items.map(it => ({ ...it, ways: ways(it) }));
+  const side = a => Math.max(a.gw, a.gh), area = a => a.gw * a.gh;
+  todo.sort(order === 'side' ? (a, b) => side(b) - side(a) || area(b) - area(a) : (a, b) => area(b) - area(a) || side(b) - side(a));
   const sheets = [];
   while (todo.length) {
     let sky = [{ x: 0, y: 0, w: W }];
@@ -20,7 +44,7 @@ export function packRoll(items, { width, gap = 0, maxLength = 0, rotate = true }
     for (let i = 0; i < todo.length;) {
       const it = todo[i];
       let best = null;
-      for (const rot of rotate && Math.abs(it.gw - it.gh) > 1e-9 ? [false, true] : [false]) {
+      for (const rot of it.ways) {
         const w = rot ? it.gh : it.gw, h = rot ? it.gw : it.gh;
         for (let s = 0; s < sky.length; s++) {
           const x = sky[s].x;
@@ -52,11 +76,12 @@ export function packRoll(items, { width, gap = 0, maxLength = 0, rotate = true }
     if (!places.length) break; // (can't happen: everything left fits an empty sheet)
     sheets.push({ length: Math.max(...places.map(p => p.y + p.h)), places });
   }
-  return { sheets, tooBig };
+  return sheets;
 }
 
-// "…_301x376mm_3szt.pdf": 3 copies (also "3 pcs", "3pc", "3 copies"; the size's "301x376" is not a count)
+// "…_301x376mm_3szt.pdf": 3 copies (also "3_szt", "3-szt", "3 sztuk", "3egz", "3 pcs", "3pc", "3 copies"; the
+// size's "301x376" is not a count)
 export function copiesFromName(name) {
-  const m = /(?:^|[^a-z0-9.])(\d{1,4})\s*(?:szt|pcs|pc|copies)(?![a-z])/i.exec(name.replace(/\.pdf$/i, ''));
+  const m = /(?:^|[^a-z0-9.])(\d{1,4})[\s_-]*(?:szt|sztuk|sztuki|egz|pcs|pc|copies)(?![a-z])/i.exec(name.replace(/\.pdf$/i, ''));
   return m ? Math.max(1, +m[1]) : 1;
 }

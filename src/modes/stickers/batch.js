@@ -1,6 +1,5 @@
 // Sticker print PDFs: one sheet, or a batch of as many sheets as the copies need with one pair of PLTs per
 // distinct sheet.
-import { embedPages } from '../../core/pdfembed.js';
 import { PT, apply, mul } from '../../core/matrix.js';
 import { loadImg, sizedSvg } from '../../core/svg.js';
 import { asciiOnly, tick } from '../../core/util.js';
@@ -8,9 +7,10 @@ import { makeZip } from '../../core/zip.js';
 import { byId, saveFile, setMsg } from '../../dom.js';
 import { buildPlt } from '../../export/files.js';
 import { drawShapes, printPage } from '../../export/pdf-draw.js';
-import { ensureLibs } from '../../lib/pdf.js';
+import { embedSans, ensureLibs } from '../../lib/pdf.js';
 import { buildExport, exportName, stickerLoops, vecCircle } from './export.js';
-import { nestAll, placeMatrix } from '../../nest.js';
+import { placeMatrix } from '../../nest.js';
+import { planSheets } from './plan.js';
 import { readOpts } from '../../settings.js';
 import { designs, state } from '../../state.js';
 import { templateShapes, templateSheet } from '../../template.js';
@@ -19,29 +19,7 @@ import { templateShapes, templateSheet } from '../../template.js';
 async function planBatch(o) {
   const ready = designs.filter(d => d.res && d.qty !== 0);
   if (!ready.length) throw new Error('Add some stickers first.');
-  const sheet = await templateSheet(o), sheets = [];
-  const remaining = new Map(ready.filter(d => d.qty != null).map(d => [d, d.qty]));
-  // designs without copies fill whatever space the counted ones leave on every sheet
-  const fills = ready.filter(d => d.qty == null), fillers = () => fills.map(d => Object.assign(Object.create(d), { qty: null }));
-  const groups = o.batchMix ? [[...remaining.keys()]] : [...remaining.keys()].map(d => [d]);
-  for (const g of groups) {
-    while (g.some(d => remaining.get(d) > 0)) {
-      const list = g.filter(d => remaining.get(d) > 0).map(d => Object.assign(Object.create(d), { qty: remaining.get(d) }));
-      const lay = await nestAll([...list, ...fillers()], sheet, o, () => false);
-      const placed = g.reduce((s, d) => s + ((lay && lay.counts.get(d.id)) || 0), 0);
-      if (!lay || !placed) throw new Error(`${list[0].name} doesn’t fit on a sheet.`);
-      for (const d of g) remaining.set(d, remaining.get(d) - (lay.counts.get(d.id) || 0));
-      sheets.push(lay);
-      if (sheets.length > 200) throw new Error('More than 200 sheets; check the copies.');
-    }
-  }
-  // only fill designs (nothing counted): one full sheet each
-  if (!remaining.size) for (const d of fills) {
-    const lay = await nestAll([Object.assign(Object.create(d), { qty: null })], sheet, o, () => false);
-    if (!lay || !lay.items.length) throw new Error(`${d.name} doesn’t fit on a sheet.`);
-    sheets.push(lay);
-  }
-  return sheets;
+  return (await planSheets(ready, await templateSheet(o), o)).sheets;
 }
 const sheetSummary = lay => {
   const per = new Map();
@@ -61,7 +39,10 @@ async function drawVectorStickers(page, out, L, Hpt, cache) {
     if (!cache.has(key)) {
       if (!cache.docs) cache.docs = new Map();
       if (!cache.docs.has(c.pdf)) cache.docs.set(c.pdf, await PDFDocument.load(c.pdf, { ignoreEncryption: true }));
-      cache.set(key, (await embedPages(out, cache.docs.get(c.pdf), [c.page]))[0]);
+      // the page as pdf.js drew it (its crop box, which c.w x c.h and the cut lines are measured in), not its media box:
+      // a page cropped inside a bigger media box would land off its cut line by the difference
+      const pg = cache.docs.get(c.pdf).getPage(c.page);
+      cache.set(key, await out.embedPage(pg, { left: c.mbx, bottom: c.mby, right: c.mbx + c.w, top: c.mby + c.h }));
     }
     const emb = cache.get(key);
     if (!names.has(key)) names.set(key, page.node.newXObject(`V${key}`, emb.ref));
@@ -74,7 +55,8 @@ async function drawVectorStickers(page, out, L, Hpt, cache) {
       loop.forEach((q, i) => { const [x, y] = apply(S, q); ops.push(i ? lineTo(x, y) : moveTo(x, y)); });
       ops.push(closePath());
     }
-    ops.push(clip(), endPath(), concatTransformationMatrix(...M), drawObject(names.get(key)), popGraphicsState());
+    if (r.clipLoops.length) ops.push(clip(), endPath()); // ('W n' with no path is not valid PDF)
+    ops.push(concatTransformationMatrix(...M), drawObject(names.get(key)), popGraphicsState());
     page.pushOperators(...ops);
   }
 }
@@ -109,9 +91,9 @@ async function buildBatch() {
   const o = readOpts(), t = state.template;
   setMsg('Planning the sheets…');
   await ensureLibs();
-  const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+  const { PDFDocument, rgb } = window.PDFLib;
   const sheets = await planBatch(o);
-  const pdf = await PDFDocument.create(), font = await pdf.embedFont(StandardFonts.Helvetica);
+  const pdf = await PDFDocument.create(), font = await embedSans(pdf);
   const marks = templateShapes(), files = [], date = new Date().toISOString().slice(0, 10), total = sheets.length;
   // identical sheets (same stickers in the same places) share one pair of PLTs: A, B, C…
   const pltOf = new Map(), sheetPlt = [], vcache = new Map();

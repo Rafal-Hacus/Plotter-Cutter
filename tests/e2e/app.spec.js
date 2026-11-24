@@ -39,7 +39,7 @@ test('vinyl and pen modes cut the shapes as drawn', async ({ page }) => {
   const problems = await openApp(page);
   await mode(page, 'vinyl');
   await page.setInputFiles('#files', [fixture('star.svg')]);
-  await expect(page.locator('#count')).toHaveText(/\d+ copies on the vinyl/);
+  await expect(page.locator('#count')).toHaveText('1 copy on the vinyl'); // (a vinyl file starts at 1 copy)
   noProblems(problems);
 });
 
@@ -63,7 +63,7 @@ test('vinyl: a shape too big for the material with a weeding box around everythi
   await mode(page, 'vinyl');
   await setField(page, 'vWeed', 'all');
   await page.setInputFiles('#files', [fixture('star.svg')]);
-  await expect(page.locator('#count')).toHaveText(/\d+ copies on the vinyl/);
+  await expect(page.locator('#count')).toHaveText('1 copy on the vinyl'); // (a vinyl file starts at 1 copy)
   await page.fill('#list .h', '400'); // wider than the 300 mm material
   await expect(page.locator('#count')).toHaveText('0 copies on the vinyl');
   await expect(page.locator('#msg')).not.toContainText('undefined');
@@ -85,11 +85,20 @@ test('a blade offset or overcut saved far too big (a size typed into it) goes ba
   const problems = await openApp(page);
   await setField(page, 'bladeOffset', '26');
   await setField(page, 'overcut', '40');
+  // the same for the clearance from the marks (120 mm left 6 stickers of 88), the blank strip, the line width, the stamp rim
+  await setField(page, 'clearance', '120');
+  await setField(page, 'sheetFeedMm', '500');
+  await setField(page, 'lineW', '26');
+  await setField(page, 'stShoulder', '5');
   await setField(page, 'kissForce', '1');
-  await page.waitForFunction(() => /"bladeOffset":"26"/.test(localStorage.getItem('stickerSheet.opts.v2') || ''));
+  await page.waitForFunction(() => /"bladeOffset":"26".*"stShoulder":"5"/.test(localStorage.getItem('stickerSheet.opts.v2') || ''));
   await page.reload();
   await expect(page.locator('#bladeOffset')).toHaveValue('0.35');
   await expect(page.locator('#overcut')).toHaveValue('0.5');
+  await expect(page.locator('#clearance')).toHaveValue('5');
+  await expect(page.locator('#sheetFeedMm')).toHaveValue('60');
+  await expect(page.locator('#lineW')).toHaveValue('0.1');
+  await expect(page.locator('#stShoulder')).toHaveValue('0.3');
   await expect(page.locator('#kissForce')).toHaveValue('1'); // (other settings are kept)
   noProblems(problems);
 });

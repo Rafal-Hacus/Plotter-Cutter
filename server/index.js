@@ -33,7 +33,7 @@ export function loadConfig(env = process.env) {
     username: env.AUTH_USERNAME || 'admin', passwordHash, authDisabled,
     // kept only to derive a stable session key (the stored hash gets a new random salt on every start)
     password: password || null,
-    sessionSecret: env.SESSION_SECRET || null, sessionDays: Math.max(1, +(env.SESSION_DAYS || 30)),
+    sessionSecret: env.SESSION_SECRET || null, sessionDays: Math.max(1, +env.SESSION_DAYS || 30),
     cookieSecure: bool(env.COOKIE_SECURE), trustProxy: bool(env.TRUST_PROXY)
   };
 }
@@ -89,9 +89,14 @@ export async function createApp(cfg) {
   const loginPage = readFileSync(join(HERE, 'login.html'), 'utf8');
   const maxAge = cfg.sessionDays * 86400;
 
-  const clientIp = req => (cfg.trustProxy && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress || '?';
+  // Behind a proxy: the address the proxy itself put last. The ones before it come from the browser, which can
+  // send any X-Forwarded-For it likes (a new one per try would get round the lockout).
+  const forwarded = (req, name) => String(req.headers[name] || '').split(',').map(s => s.trim()).filter(Boolean);
+  const clientIp = req => (cfg.trustProxy && forwarded(req, 'x-forwarded-for').at(-1)) || req.socket.remoteAddress || '?';
+  // the cookie is HTTPS-only with COOKIE_SECURE, and also when the trusted proxy says the browser came over HTTPS
+  const secure = req => cfg.cookieSecure || (cfg.trustProxy && forwarded(req, 'x-forwarded-proto')[0] === 'https');
   const userOf = req => cfg.authDisabled ? 'local' : creds ? (signer.verify(parseCookies(req.headers.cookie)[COOKIE]) || {}).u || null : null;
-  const cookie = (value, age) => `${COOKIE}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}${cfg.cookieSecure ? '; Secure' : ''}`;
+  const cookie = (req, value, age) => `${COOKIE}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${age}${secure(req) ? '; Secure' : ''}`;
 
   const headers = (res, csp) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -119,7 +124,8 @@ export async function createApp(cfg) {
   const sameOrigin = req => {
     const o = req.headers.origin || req.headers.referer;
     if (!o) return true; // not a browser cross-site request (curl, scripts with the cookie)
-    try { return new URL(o).host === req.headers.host; } catch { return false; }
+    // (a proxy that passes its own address as Host names the browser's one in X-Forwarded-Host)
+    try { const h = new URL(o).host; return h === req.headers.host || (cfg.trustProxy && h === forwarded(req, 'x-forwarded-host')[0]); } catch { return false; }
   };
 
   async function api(req, res, path, user) {
@@ -211,7 +217,7 @@ export async function createApp(cfg) {
       setupCode = null;
       signer = makeSigner();
       console.log(`Login created for "${username}" (stored in ${authFile}).`);
-      res.setHeader('Set-Cookie', cookie(signer.sign(username, maxAge), maxAge));
+      res.setHeader('Set-Cookie', cookie(req, signer.sign(username, maxAge), maxAge));
       return redirect(res, './');
     }
     if (path === '/setup') return redirect(res, './');
@@ -233,7 +239,7 @@ export async function createApp(cfg) {
         const okPass = verifyPassword(form.get('password') || '', creds.passwordHash); // always run, so timing doesn't reveal the user name
         if (!(okUser && okPass)) { limiter.fail(ip); return redirect(res, limiter.blocked(ip) ? 'login?e=locked' : 'login?e=1'); }
         limiter.succeed(ip);
-        res.setHeader('Set-Cookie', cookie(signer.sign(creds.username, maxAge), maxAge));
+        res.setHeader('Set-Cookie', cookie(req, signer.sign(creds.username, maxAge), maxAge));
         return redirect(res, './');
       }
       return send(res, 405, 'Method not allowed');
@@ -241,7 +247,7 @@ export async function createApp(cfg) {
     if (path === '/logout') {
       if (req.method !== 'POST') return send(res, 405, 'Method not allowed');
       if (!sameOrigin(req)) return send(res, 403, 'Cross-site request refused.');
-      res.setHeader('Set-Cookie', cookie('', 0));
+      res.setHeader('Set-Cookie', cookie(req, '', 0));
       return redirect(res, 'login');
     }
 
@@ -265,7 +271,8 @@ export async function createApp(cfg) {
       if (!res.headersSent) json(res, 500, { error: 'Server error.' }); else res.end();
     });
   });
-  server.requestTimeout = 60_000;
+  // long enough to upload a 40 MB background over a slow line (5 minutes: 1.5 Mbit/s)
+  server.requestTimeout = 300_000;
   server.headersTimeout = 20_000;
   return { server, store, library, fonts, setupCode: () => setupCode, login: () => creds && creds.username };
 }

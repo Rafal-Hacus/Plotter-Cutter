@@ -34,6 +34,49 @@ export function readViewBox(root) {
   if (wl && hl && wl.unit !== '%' && hl.unit !== '%' && wl.n > 0 && hl.n > 0) return { x: 0, y: 0, w: wl.n * PX_PER[wl.unit], h: hl.n * PX_PER[hl.unit] };
   return null;
 }
+// The program that wrote an SVG, from its marks in the file: what a px (or a plain number) is in it.
+// Illustrator: 72 per inch; Affinity: 300 (the shop's export setting); Inkscape 0.92 and later and most others: 96; older Inkscape: 90.
+export function svgGenerator(text) {
+  const s = String(text || '');
+  if (/Generator:\s*Adobe Illustrator|ns\.adobe\.com\/AdobeIllustrator|&ns_ai;/i.test(s)) return { name: 'Illustrator', dpi: 72, sure: true };
+  const tag = (s.match(/<svg[\s>][^>]*>/) || [''])[0];
+  // Illustrator's own root attributes: x="0px" y="0px" and enable-background (older versions), data-name (newer)
+  if (/\sx="0px"/.test(tag) || /\sdata-name="/.test(tag) || /\senable-background="new /.test(tag)) return { name: 'Illustrator', dpi: 72, sure: true };
+  if (/inkscape:version=|xmlns:inkscape=|sodipodi:docname=|xmlns:sodipodi=/.test(s)) {
+    const v = s.match(/inkscape:version="(\d+)\.(\d+)/);
+    return { name: 'Inkscape', dpi: v && +v[1] === 0 && +v[2] < 92 ? 90 : 96, sure: !!v };
+  }
+  // Affinity (xmlns:affinity in Affinity, xmlns:serif in Affinity Designer/Publisher 1 and 2, which nothing else
+  // writes) puts its export resolution into the viewBox with width/height 100%: the shop exports at 300 dpi
+  if (/xmlns:serif="http:\/\/www\.serif\.com|xmlns:affinity="https?:\/\/www\.affinity\.studio/.test(s)) return { name: 'Affinity', dpi: 300, sure: true };
+  return { name: null, dpi: 96, sure: false };
+}
+// The real size of an SVG in mm: physical units as given; px and plain numbers by the program that wrote it; a file
+// with no size (or a size in %) by its viewBox, the same way. note says how it was read when it isn't in mm/cm/in/pt
+// (guessed: the program isn't known for sure). ok is false for a file with no size and no viewBox, and for absurd
+// sizes (over 5 m, or under 0.5 mm: wrong units).
+export const MAX_REAL_MM = 5000, MIN_REAL_MM = 0.5;
+export function svgRealSize(root, vb, text) {
+  if (!vb) return { wMm: null, hMm: null, ok: false, guessed: true, note: null, dpi: null, generator: null };
+  const gen = svgGenerator(text), pxMm = 25.4 / gen.dpi;
+  const read = a => { const l = parseLen(root.getAttribute(a)); return l && l.n > 0 && l.unit !== '%' ? l : null; };
+  const wl = read('width'), hl = read('height');
+  const mmOf = l => MM_PER[l.unit] ? l.n * MM_PER[l.unit] : l.n * pxMm;
+  let wMm, hMm;
+  if (wl && hl) { wMm = mmOf(wl); hMm = mmOf(hl); }
+  else if (hl) { hMm = mmOf(hl); wMm = hMm * vb.w / vb.h; }
+  else if (wl) { wMm = mmOf(wl); hMm = wMm * vb.h / vb.w; }
+  else { wMm = vb.w * pxMm; hMm = vb.h * pxMm; }
+  const physical = !!(wl || hl) && [wl, hl].filter(Boolean).every(l => MM_PER[l.unit]);
+  let note = null, guessed = false;
+  if (!physical) {
+    const what = wl || hl ? 'px' : 'the viewBox (no size in the file)';
+    guessed = !gen.sure;
+    note = gen.sure ? `size read from ${what} at ${gen.dpi} dpi (${gen.name} file)` : `size guessed from ${what} at ${gen.dpi} dpi${gen.name ? ` (${gen.name} file)` : ''}: check`;
+  }
+  const ok = isFinite(wMm) && isFinite(hMm) && Math.max(wMm, hMm) <= MAX_REAL_MM && hMm >= MIN_REAL_MM;
+  return { wMm, hMm, ok, guessed, note, dpi: physical ? null : gen.dpi, generator: gen.name };
+}
 // Illustrator-style layer id: space -> _, other symbols -> _xHH_ (how scpro2_printonly became scpro2_x5F_printonly).
 export const aiId = name => {
   let out = '';

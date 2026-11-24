@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { setField, mode } from './helpers.js';
+import { setField, mode, SERVER_URL } from './helpers.js';
 
 // Against the real server (login + saved settings), see playwright.config.js
-const SERVER = 'http://localhost:4174/';
+const SERVER = SERVER_URL;
 test.describe.configure({ mode: 'serial' });
 
 async function signIn(page) {
@@ -75,6 +75,39 @@ test('save settings, pick them again, make them the default, delete them', async
   await expect(page.locator('#presetMsg')).toHaveText('Deleted “Morgana 85 × 55”.');
   await expect(page.locator('#presetSel option')).toHaveCount(1);
   expect(errors).toEqual([]);
+});
+
+test('settings save in Roll too; saved settings with a slip in them (26 mm blade offset) load with the standard value', async ({ page }) => {
+  await signIn(page);
+  await mode(page, 'roll');
+  await setField(page, 'rollW', '1600');
+  await page.click('#presetSave');
+  await page.fill('#presetName', 'Roll 1600');
+  await page.click('#presetNameOk');
+  await expect(page.locator('#presetMsg')).toHaveText('Saved “Roll 1600”.');
+  // settings saved before the limits existed
+  const settings = await page.evaluate(async () => {
+    const r = await fetch('api/presets/' + (await (await fetch('api/presets')).json()).presets.find(p => p.name === 'Roll 1600').id);
+    return (await r.json()).settings;
+  });
+  await page.evaluate(async s => {
+    const r = await fetch('api/presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Old stickers', mode: 'stickers', settings: { ...s, bladeOffset: '26', clearance: '120', kissForce: '77' } }) });
+    if (!r.ok) throw new Error(await r.text());
+  }, settings);
+  await page.reload();
+  await expect(page.locator('#secPresets')).toBeVisible();
+  await page.selectOption('#presetSel', { label: 'Old stickers' });
+  await expect(page.locator('.modes button[data-mode="stickers"]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#bladeOffset')).toHaveValue('0.35');
+  await expect(page.locator('#clearance')).toHaveValue('5');
+  await expect(page.locator('#kissForce')).toHaveValue('77');
+  await expect(page.locator('#rollW')).toHaveValue('1600');
+  for (const name of ['Old stickers', 'Roll 1600']) {
+    await page.selectOption('#presetSel', { label: name });
+    page.once('dialog', d => d.accept());
+    await page.click('#presetDelete');
+    await expect(page.locator('#presetMsg')).toHaveText(`Deleted “${name}”.`);
+  }
 });
 
 test('signing out goes back to the login page', async ({ page }) => {

@@ -6,6 +6,7 @@ import { placeMatrix } from '../../nest.js';
 import { readOpts } from '../../settings.js';
 import { designs, state } from '../../state.js';
 import { applyView } from '../../viewport.js';
+import { planText } from './plan.js';
 
 export function renderStickerPreview() {
   state.previewFrame = null;
@@ -24,9 +25,7 @@ export function renderStickerPreview() {
     for (const d of new Set(state.layout.items.map(it => it.d))) {
       const r = d.res;
       const im = `<image href="${r.cutMode ? d.urlNoCut : d.url}" x="${num(r.offX)}" y="${num(r.offY)}" width="${num(r.artW)}" height="${num(r.artH)}" preserveAspectRatio="none"/>`;
-      p.push(r.cutMode
-        ? `<g id="pv${d.id}"><clipPath id="pvc${d.id}"><path d="${r.clipD}"/></clipPath><g clip-path="url(#pvc${d.id})">${im}</g></g>`
-        : `<g id="pv${d.id}">${im}</g>`);
+      p.push(`<g id="pv${d.id}"><clipPath id="pvc${d.id}"><path d="${r.clipD}"/></clipPath><g clip-path="url(#pvc${d.id})">${im}</g></g>`);
     }
     p.push('</defs>');
   }
@@ -58,14 +57,20 @@ export function renderStickerStats(busyText) {
   ui.exPlt.disabled = !total || !!busyText || !(state.template && state.template.marks);
   if (busyText) { ui.count.textContent = busyText; return; }
   ui.count.textContent = !designs.length ? 'Empty sheet' : total === 1 ? '1 sticker on the sheet' : `${total} stickers on the sheet`;
-  const notes = [];
+  const notes = [], plans = [];
+  const plan = state.plan && state.plan.groups, planned = new Set(plan ? plan.flatMap(g => g.designs) : []);
   if (state.layout) {
     for (const d of ready) {
       const got = state.layout.counts.get(d.id) || 0;
-      if (d.qty != null && got < d.qty) notes.push(`Only ${got} of ${d.qty} copies of ${d.name} fit.`);
+      // more copies than one sheet holds: the order goes over several sheets (the batch export), not a warning
+      if (d.qty != null && got < d.qty && !(got > 0 && planned.has(d))) notes.push(`Only ${got} of ${d.qty} copies of ${d.name} fit.`);
       if (d.qty == null && got === 0) notes.push(`${d.name} is too big for the free area.`);
     }
   }
-  ui.msg.textContent = notes.join(' ');
+  if (plan) {
+    for (const g of plan) plans.push(`${plan.length > 1 || g.designs.length === 1 ? `${g.designs.map(d => d.name).join(', ')}: ` : ''}${planText(g)}.`);
+    if (plan.some(g => g.sheets > 1)) plans.push('“Batch: print PDF + PLTs” makes all the sheets.');
+  }
+  ui.msg.textContent = notes.concat(plans).join(' ');
   ui.msg.className = 'msg' + (notes.length ? ' warn' : '');
 }

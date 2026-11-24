@@ -6,7 +6,9 @@
 //        margins: fitted to it, or set smaller (scale, sizes in pt), and made smaller when asked for more;
 //   blue (fill engraving, the finishing pass): the cut shape with the artwork left out, so the letters stay raised;
 //   red  (fill engraving, the deep pass): the cut shape grown by `outerGrow` (0.8 mm: the edge is engraved past the
-//        cut) with the artwork grown by `textGrow` (0.2 mm: a shoulder under the letters) left out.
+//        cut) with the artwork grown by `textGrow` (0.2 mm: a shoulder under the letters) left out;
+//   slope (optional): further deep-pass layers, each leaving out the artwork grown a little more, so the deep pass is
+//        split into steps and the letters stand on a sloped shoulder.
 // Both engraving layers are compound paths filled even-odd: the artwork is unioned first so every letter is one
 // clean outline (its counters are holes, engraved like the background).
 // Units: mm, y down; rings are arrays of [x, y], closed implicitly.
@@ -39,6 +41,19 @@ export function strokeToShapes(lines, w, closed) {
   co.Execute(sol, w / 2 * S);
   return fromC(sol);
 }
+// a minus b (non-zero filling), as rings for an even-odd fill
+export function difference(a, b) {
+  const c = new ClipperLib.Clipper(), sol = new ClipperLib.Paths(), nz = ClipperLib.PolyFillType.pftNonZero;
+  c.AddPaths(toC(a), ClipperLib.PolyType.ptSubject, true);
+  c.AddPaths(toC(b), ClipperLib.PolyType.ptClip, true);
+  c.Execute(ClipperLib.ClipType.ctDifference, sol, nz, nz);
+  return fromC(sol);
+}
+// n passes shared by `steps` layers, the fewest on the first (the one nearest the letters): 5 over 3 is 1, 2, 2
+export function splitPasses(n, steps) {
+  const k = Math.max(1, Math.min(n, steps)), base = Math.floor(n / k), rem = n - base * k;
+  return Array.from({ length: k }, (_, i) => base + (i >= k - rem ? 1 : 0));
+}
 export function bbox(rings) {
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const r of rings) for (const [x, y] of r) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
@@ -52,12 +67,29 @@ export function convexHull(points) {
   for (let i = P.length - 1; i >= 0; i--) { const p = P[i]; while (up.length >= 2 && cross(up[up.length - 2], up[up.length - 1], p) <= 0) up.pop(); up.push(p); }
   return lo.slice(0, -1).concat(up.slice(0, -1));
 }
+// r: one radius, or one per corner [top left, top right, bottom right, bottom left]
 function roundedRect(x, y, w, h, r) {
-  r = Math.max(0, Math.min(r, w / 2, h / 2));
-  if (!r) return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
-  const pts = [], corner = (cx, cy, a0) => { const n = Math.max(6, Math.ceil(r * 8)); for (let i = 0; i <= n; i++) { const a = a0 + Math.PI / 2 * i / n; pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); } };
-  corner(x + w - r, y + r, -Math.PI / 2); corner(x + w - r, y + h - r, 0); corner(x + r, y + h - r, Math.PI / 2); corner(x + r, y + r, Math.PI);
+  const [tl, tr, br, bl] = (Array.isArray(r) ? r : [r, r, r, r]).map(v => Math.max(0, Math.min(v || 0, w / 2, h / 2)));
+  const pts = [], corner = (cx, cy, a0, r) => {
+    if (!r) { pts.push([cx, cy]); return; }
+    const n = Math.max(6, Math.ceil(r * 8));
+    for (let i = 0; i <= n; i++) { const a = a0 + Math.PI / 2 * i / n; pts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]); }
+  };
+  corner(x + w - tr, y + tr, -Math.PI / 2, tr); corner(x + w - br, y + h - br, 0, br); corner(x + bl, y + h - bl, Math.PI / 2, bl); corner(x + tl, y + tl, Math.PI, tl);
   return pts;
+}
+// The radius of each corner of a rounded W x H [top left, top right, bottom right, bottom left]: as set, but no
+// bigger than lets every point of the artwork stay at least `clear` inside the corner's arc (a big radius on a
+// stamp whose text fills it would cut through the letters). A point u, v from the corner's two edges (both at least
+// `clear`) stays clear of the arc of radius r while r <= (u + v - clear) + sqrt(2 (u - clear) (v - clear)).
+export function cornerRadii(rings, W, H, r, clear = 0) {
+  const lim = [r, r, r, r].map(v => Math.max(0, Math.min(v, W / 2, H / 2)));
+  const most = (u, v) => { const a = Math.max(0, u - clear), b = Math.max(0, v - clear); return a + b + clear + Math.sqrt(2 * a * b); };
+  for (const ring of rings) for (const [x, y] of ring) {
+    lim[0] = Math.min(lim[0], most(x, y)); lim[1] = Math.min(lim[1], most(W - x, y));
+    lim[2] = Math.min(lim[2], most(W - x, H - y)); lim[3] = Math.min(lim[3], most(x, H - y));
+  }
+  return lim;
 }
 // W x H with each corner cut off at 45 degrees as far as possible while every point of the artwork stays at least
 // (mx + my) / sqrt 2 from the cut (the distance a box mx x my has along a 45-degree edge): straight top, bottom
@@ -81,7 +113,7 @@ export function letterHeight(rings) {
 // the letters of the stamp made in xTool Studio: 1.92 mm (75th percentile), with a 0.2 mm shoulder
 export const REF_LETTER = 1.92;
 // as measured in the stamp made in xTool Studio: 38 x 19 mm, text 33.37 x 17.39 mm, red edge and letter shoulder
-export const STAMP_DEFAULTS = { marginX: 2.3, marginY: 0.8, textGrow: 0.2, outerGrow: 0.8, shoulderScale: true };
+export const STAMP_DEFAULTS = { marginX: 2.3, marginY: 0.8, textGrow: 0.2, outerGrow: 0.8, shoulderScale: true, slopeSteps: 1, slopeWidth: 0.6 };
 
 // The distances from the text to the cut a W x H stamp uses: as set, but at most a quarter of the stamp each
 export const stampMargins = (W, H, marginX, marginY) => ({ mx: Math.min(Math.max(0, marginX), W * 0.25), my: Math.min(Math.max(0, marginY), H * 0.25) });
@@ -108,9 +140,10 @@ export function buildStamp(art, W, H, opts = {}) {
   // the laser can show; letters' curves come in many tiny pieces, and every polygon step below scales with them)
   let A = union(art.map(r => simplifyLoop(r.map(([x, y]) => [x * k + dx, y * k + dy]), o.detail)));
   if (!A.length) throw new Error('Nothing to engrave: the stamp is empty.');
-  let cut;
+  let cut, radii = null;
   if (o.shape === 'rect') cut = roundedRect(0, 0, W, H, 0);
-  else if (o.shape === 'round') cut = roundedRect(0, 0, W, H, o.radius);
+  // the corners rounded as set, each only as far as the letters allow (never through them)
+  else if (o.shape === 'round') cut = roundedRect(0, 0, W, H, radii = cornerRadii(A, W, H, Math.max(0, +o.radius || 0), Math.min(mx, my)));
   else {
     // as in the stamp made in xTool Studio: the stamp's rectangle with its four corners cut off at 45 degrees, each
     // as far as the text allows, keeping the distance from it (a 45-degree edge mx + my from the text's corner)
@@ -120,6 +153,11 @@ export function buildStamp(art, W, H, opts = {}) {
   // the shoulder (the rim left around the letters by the deep pass): set for letters the size of the original
   // stamp's; smaller letters get a narrower one in proportion, so small text doesn't drown in its rim
   const shoulder = o.shoulderScale ? Math.max(Math.min(0.05, o.textGrow), Math.min(o.textGrow, o.textGrow * letterHeight(A) / REF_LETTER)) : o.textGrow;
-  const red = [...offset([cut], o.outerGrow, 'miter'), ...offset(A, shoulder, 'round')];
-  return { art: A, cut, blue, red, scale: k, shrunk, shoulder, W, H, margins: { x: mx, y: my, cutX: mx < o.marginX, cutY: my < o.marginY } };
+  const outer = offset([cut], o.outerGrow, 'miter'), red = [...outer, ...offset(A, shoulder, 'round')];
+  // a sloped shoulder (slopeSteps > 1): the deep pass split into steps, each engraving only further from the letters
+  // (the letters grown by the rim, then by slopeWidth / (steps - 1) more each step), so the depth grows with the
+  // distance and every letter stands on a little mountain instead of a straight wall. `slope`: the layers after red.
+  const steps = Math.max(1, Math.min(5, Math.round(o.slopeSteps) || 1)), slope = [];
+  for (let s = 1; s < steps; s++) slope.push(difference(outer, offset(A, shoulder + o.slopeWidth * s / (steps - 1), 'round')));
+  return { art: A, cut, blue, red, slope, radii, scale: k, shrunk, shoulder, W, H, margins: { x: mx, y: my, cutX: mx < o.marginX, cutY: my < o.marginY } };
 }

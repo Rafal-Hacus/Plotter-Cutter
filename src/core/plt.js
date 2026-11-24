@@ -124,6 +124,27 @@ export function pltValues(text) { // current force / speed / up-speed in the hea
   const get = pf => { const tk = head.find(x => new RegExp(`^${pf}\\d+$`).test(x)); return tk ? +tk.slice(2) : null; };
   return { force: get('FS'), speed: get('VS'), up: get('US') };
 }
+// For each closed outline, the outlines that lie inside it (its box strictly inside, and a point of it inside).
+export function containment(loops) {
+  const box = loops.map(l => l.reduce((b, [x, y]) => [Math.min(b[0], x), Math.min(b[1], y), Math.max(b[2], x), Math.max(b[3], y)], [Infinity, Infinity, -Infinity, -Infinity]));
+  const within = (p, l) => {
+    let c = false;
+    for (let i = 0, j = l.length - 1; i < l.length; j = i++) {
+      const a = l[i], b = l[j];
+      if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) + a[0]) c = !c;
+    }
+    return c;
+  };
+  return loops.map((outer, o) => {
+    const B = box[o], inner = [];
+    loops.forEach((l, i) => {
+      const b = box[i];
+      if (i === o || b[0] < B[0] || b[1] < B[1] || b[2] > B[2] || b[3] > B[3] || (b[0] === B[0] && b[1] === B[1] && b[2] === B[2] && b[3] === B[3])) return;
+      if (within(l[0], outer) || within(l[l.length >> 1], outer)) inner.push(i);
+    });
+    return inner;
+  });
+}
 // Skycut PLT in the same shape SignCut writes it: 40 units/mm, origin at the centre of the bottom-right
 // registration mark, X running up the sheet (feed), Y running left.
 // frame: centre lines of the registration marks in sheet mm { top, bottom, left, right }.
@@ -175,12 +196,17 @@ export function writePlt(frame, opts, sheetLoops, openLines = [], ...laterLines)
       cx = r[r.length - 1][0]; cy = r[r.length - 1][1];
     }
   }
-  // then the outlines, nearest first, each started at its vertex closest to the knife
-  const todo = loops.slice();
+  // then the outlines, nearest first, each started at its vertex closest to the knife; an outline inside another
+  // one (a hole, a shape cut out of a piece) goes before it: once the outer cut is through, the piece can move
+  const holds = containment(loops), waiting = holds.map(h => h.length), around = loops.map(() => []);
+  holds.forEach((h, o) => { for (const i of h) around[i].push(o); });
+  const todo = loops.map((l, i) => i);
   while (todo.length) {
-    let bi = 0, bv = 0, bd = Infinity;
-    todo.forEach((l, i) => l.forEach((q, j) => { const d = (q[0] - cx) ** 2 + (q[1] - cy) ** 2; if (d < bd) { bd = d; bi = i; bv = j; } }));
-    const l = todo.splice(bi, 1)[0], r = l.slice(bv).concat(l.slice(0, bv));
+    let bi = -1, bv = 0, bd = Infinity;
+    todo.forEach((k, i) => { if (!waiting[k]) loops[k].forEach((q, j) => { const d = (q[0] - cx) ** 2 + (q[1] - cy) ** 2; if (d < bd) { bd = d; bi = i; bv = j; } }); });
+    if (bi < 0) bi = 0; // (can't happen: containment has no cycles)
+    const k = todo.splice(bi, 1)[0], l = loops[k], r = l.slice(bv).concat(l.slice(0, bv));
+    for (const o of around[k]) waiting[o]--;
     emit(closedTip(r, oc), true);
     cx = r[0][0]; cy = r[0][1];
   }

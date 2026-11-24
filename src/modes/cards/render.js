@@ -3,8 +3,8 @@ import { CELL } from '../../core/geometry.js';
 import { mul } from '../../core/matrix.js';
 import { SLOT_RE, mm1, num } from '../../core/svg.js';
 import { CUT_RED, byId, fillSheetPicker, plural, setMsg, ui } from '../../dom.js';
-import { G_PAGE, KIND, M_TPL, deckLike, deckPer, pageDims } from './job.js';
-import { backClip, backMarks, backRect, backT, cardCuts, cardFoldLines, cardGridLines, cardTrim, cropMarks, deckCard, deckPlan, dotCut, gridCut, markSide, perfDie, sheetMirror, startDotSvg, winItem, winPlan } from './layout.js';
+import { G_PAGE, KIND, M_TPL, deckLike, deckPer, pageDims, pageScale } from './job.js';
+import { backClip, backMarks, backRect, backT, cardCuts, cardFoldLines, cardGridLines, cardTrim, cropMarks, deckCard, deckPlan, dotCut, gapNote, gridCut, perfDie, shortMarksNote, sheetMirror, startDotSvg, winItem, winPlan } from './layout.js';
 import { updateCardInfo } from './load.js';
 import { readOpts } from '../../settings.js';
 import { state } from '../../state.js';
@@ -113,9 +113,9 @@ function deckNotes(o, notes) {
 }
 // guillotine: where the crop marks can't be printed, and the cut positions
 function guillotineNotes(o, L, notes) {
-  const sides = [['top', L.sy], ['bottom', G_PAGE.hMm - L.sy - L.totH], ['left', L.sx], ['right', G_PAGE.wMm - L.sx - L.totW]];
-  const weak = sides.filter(([, space]) => { const m = markSide(L, o, space); return !m || m.printable < 1; }).map(([name]) => name);
-  if (weak.length) notes.push(`Not enough room for printable crop marks at the ${weak.join(' and ')}; use the cut positions below or lower the unprintable edge if your printer allows.`);
+  notes.push(gapNote(L, o, KIND[state.mode].many));
+  const marks = shortMarksNote(L, o);
+  if (marks) notes.push(marks);
   notes.push(`Cuts from the left edge: ${L.cutsX.map(mm1).join(', ')} mm. From the top: ${L.cutsY.map(mm1).join(', ')} mm.`);
 }
 export function renderCardStats(busyText) {
@@ -136,11 +136,14 @@ export function renderCardStats(busyText) {
       const c = cardCuts(), cuts = c.v.length + c.h.length + c.dashes.length;
       notes.push(`Perforated die cut: ${cuts} cuts with ${num(o.cTie)} mm bridges ${o.cTiePlace === 'corners' ? `${num(o.cTieInset)} mm from the corners` : 'along the edges'}, so the sheet holds together without a mat.`);
     }
-    if (job.pages > 1 && (o.cOffX || o.cOffY)) notes.push(`The back side is shifted by X ${num(o.cOffX)} mm, Y ${num(o.cOffY)} mm (Back side shift).`);
+    if (job.pages > 1 && (o.cOffX || o.cOffY)) notes.push(`The back side is shifted by X ${num(o.cOffX)} mm, Y ${num(o.cOffY)} mm (Back side shift)${Math.max(Math.abs(o.cOffX), Math.abs(o.cOffY)) > 10 ? '. That is more than a printer’s back side is ever off: check it (a value over 10 mm is not kept for the next visit)' : ''}.`);
     if (job.pages < 2 && state.mode !== 'winietka') notes.push('The PDF has one page, so the sheet is single-sided.');
     if (n && state.mode === 'winietka') winietkiNotes(o, n, notes);
     if (n && deckLike()) deckNotes(o, notes);
     if (n && (state.mode === 'guillotine' || state.mode === 'deck')) guillotineNotes(o, L, notes);
+    // Final size is a saved setting: say plainly when it changes the size of what is printed
+    const sc = pageScale(o);
+    if (Math.abs(sc - 1) > 0.001) notes.unshift(`Final size ${o.gSize === 'custom' ? `${num(o.gScale)} %` : o.gSize}: every ${K.one} is printed at ${num(Math.round(sc * 1000) / 10)} % (${mm1(L.tw)} × ${mm1(L.th)} mm), not at the PDF’s ${mm1(L.tw / sc)} × ${mm1(L.th / sc)} mm. Choose “As in the PDF” to print it 1:1.`);
   }
   setMsg(notes.join(' '), !n && !!job.bytes);
   updateCardInfo();

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { inflateRawSync } from 'node:zlib';
 import { PDFDocument } from 'pdf-lib';
-import { download, fixture, mode, noProblems, openApp, setField } from './helpers.js';
+import { download, fixture, mode, noProblems, openApp, setField, SERVER_URL } from './helpers.js';
 
 const PT = 72 / 25.4;
 
@@ -42,11 +42,15 @@ test('pieczątki: a text stamp (B3) and an SVG stamp, saved as an xTool project 
   await logo.locator('.stshape').selectOption('rect');
   await expect(logo.locator('.stst')).toContainText('59 × 25 mm: text 54.4 × 16.2 mm, cut 59 × 25 mm.');
   await expect(page.locator('#count')).toHaveText('3 stamps on the bed');
-  // the stamp's size typed as the general distance to the cut by mistake: a warning, and one click back
+  // the stamp's size typed as the general distance to the cut by mistake: over the field's 15 mm, so the field is
+  // red with the range, nothing is exported, and one click back
   await page.locator('details:has(#stMarginX) summary').click();
   await setField(page, 'stMarginX', 48);
-  await expect(logo.locator('.stst')).toContainText('is more than a quarter of the stamp');
+  await expect(page.locator('#stMarginX')).toHaveClass(/bad/);
+  await expect(page.locator('#msg')).toContainText('0–15 mm');
+  await expect(page.locator('#exStampsXs')).toHaveClass(/numblock/);
   await page.click('#stLayoutReset');
+  await expect(page.locator('#stMarginX')).not.toHaveClass(/bad/);
   await expect(page.locator('#stMarginX')).toHaveValue('2.3');
   await expect(logo.locator('.stst')).toContainText('Text to cut 2.3 mm at the sides, 0 mm top and bottom; rim around the letters 0.3 mm (the general rim).');
   await expect(logo.locator('.stst')).not.toContainText('quarter');
@@ -131,7 +135,7 @@ test('pieczątki: bold / italic / underline / line size in the editor, another f
 
 test('pieczątki: your font files are kept on the server and offered in every stamp', async ({ page }) => {
   page.on('pageerror', e => { throw e; });
-  await page.goto('http://localhost:4174/');
+  await page.goto(SERVER_URL);
   await page.fill('#u', 'shop'); await page.fill('#p', 'e2e password 123'); await page.click('button[type=submit]');
   await expect(page.locator('#secPresets')).toBeVisible();
   await mode(page, 'stamps');
@@ -165,5 +169,93 @@ test('pieczątki: the xTool file is made on a plain http page too (no crypto.ran
   await expect(page.locator('#count')).toHaveText('1 stamp on the bed');
   const files = unzipDeflated(await download(page, 'exStampsXs'));
   expect(Object.keys(files)).toContain('vectors/svg/index.json');
+  noProblems(problems);
+});
+
+test('pieczątki: sloped sides: the deep pass split into steps, each a layer of its own further from the letters', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'stamps');
+  await page.click('#stAddText');
+  const text = page.locator('#stList li').nth(0);
+  await text.locator('.steditor').evaluate(ed => { ed.innerHTML = '<div style="text-align: center;" data-size="1">Usługi ogólnobudowlane</div><div style="text-align: center;" data-size="1">tel. 600 000 000</div>'; ed.dispatchEvent(new Event('input')); });
+  await expect(text.locator('.stst')).toContainText('48 × 19 mm');
+  await expect(text.locator('.stst')).not.toContainText('Sloped');
+  await setField(page, 'stSlope', '3');
+  await expect(text.locator('.stst')).toContainText('Sloped sides: 3 steps over 0.6 mm from the rim (passes 1 + 2 + 2).');
+  const files = unzipDeflated(await download(page, 'exStampsXs'));
+  const J = re => JSON.parse(files[Object.keys(files).find(n => re.test(n))].toString());
+  const ds = J(/displays-0\.json$/).displays, canvas = J(/^canvases\/[^/]+\.json$/), dev = J(/devices\/device-MP2-1\.json$/), prof = J(/^profiles\.json$/);
+  // blue, red, orange, yellow, black
+  expect(Object.keys(canvas.layerData)).toEqual(['#2366ff', '#fe0002', '#ff8c00', '#ffd400', '#000000']);
+  expect(ds.map(d => d.layerTag).sort()).toEqual(['#000000', '#2366ff', '#fe0002', '#ff8c00', '#ffd400']);
+  // each layer's passes: red 1, the steps 2 and 2 (5 in all, as before), same power and speed
+  const profiles = prof.profiles || prof, binding = Object.values(dev.processing)[0].modes.LASER_PLANE.bindings || [];
+  const passesOf = tag => {
+    const id = ds.find(d => d.layerTag === tag).id, b = binding.find(x => x.displayIds.includes(id));
+    return (profiles[b.baseProfileId] || Object.values(profiles).flat().find(p => p.id === b.baseProfileId)).values;
+  };
+  expect([passesOf('#fe0002').repeat, passesOf('#ff8c00').repeat, passesOf('#ffd400').repeat]).toEqual([1, 2, 2]);
+  expect(passesOf('#ffd400').power).toBe(35);
+  // each step reaches less close to the letters: its area is smaller than the one before
+  const area = tag => { const d = ds.find(x => x.layerTag === tag); return d.width * d.height; };
+  expect(area('#ff8c00')).toBeGreaterThan(0);
+  noProblems(problems);
+});
+
+test('pieczątki: a size typed in pt is the size the letters come out (the stamp switches to “as set”)', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'stamps');
+  await page.click('#stAddText');
+  const li = page.locator('#stList li').nth(0);
+  await li.locator('.steditor').evaluate(ed => { ed.innerHTML = '<div style="text-align: center;" data-pt="10">HHHH</div>'; ed.dispatchEvent(new Event('input')); });
+  await expect(li.locator('.stexact')).toHaveValue('fit');
+  // select the line, type 8 pt
+  await li.locator('.steditor').evaluate(ed => { const r = document.createRange(); r.selectNodeContents(ed); const s = getSelection(); s.removeAllRanges(); s.addRange(r); });
+  await li.locator('.stpt').fill('8');
+  await expect(li.locator('.stexact')).toHaveValue('exact');
+  await expect(li.locator('.stst')).toContainText('Letters 8 pt.');
+  // 8 pt Arial-like capitals: 8 x 0.3528 mm x 0.69 (cap height) = 1.9 mm
+  await expect(li.locator('.stst')).toContainText('× 1.9 mm, cut 48 × 19 mm.');
+  noProblems(problems);
+});
+
+test('pieczątki: adding or removing a stamp keeps the others’ status and picture in the list', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'stamps');
+  await page.click('#stAddText');
+  const first = page.locator('#stList li').nth(0);
+  await expect(first.locator('.stst')).toContainText('48 × 19 mm');
+  await page.click('#stAddText');
+  await expect(page.locator('#count')).toHaveText('2 stamps on the bed');
+  await expect(first.locator('.stst')).toContainText('48 × 19 mm');
+  await expect(first.locator('.thumb svg')).toHaveCount(1);
+  await page.locator('#stList li').nth(1).locator('.remove').click();
+  await expect(page.locator('#count')).toHaveText('1 stamp on the bed');
+  await expect(first.locator('.stst')).toContainText('48 × 19 mm');
+  await expect(first.locator('.thumb svg')).toHaveCount(1);
+  noProblems(problems);
+});
+
+test('pieczątki: text pasted from Word keeps its line breaks, and letters the font lacks are named, not silently left out', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'stamps');
+  await page.click('#stAddText');
+  const li = page.locator('#stList li').nth(0), ed = li.locator('.steditor');
+  await ed.evaluate(e => { e.innerHTML = '<div style="text-align: center;" data-pt="10"><br></div>'; e.dispatchEvent(new Event('input')); });
+  await ed.locator('div').first().click();
+  // Word's plain text: CRLF between paragraphs, a vertical tab for a line break (Shift+Enter)
+  await ed.evaluate(e => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', 'Firma\r\nul. Długa 1' + String.fromCharCode(11) + '00-001 Warszawa');
+    e.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await expect(ed.locator('div')).toHaveCount(3);
+  await expect(ed.locator('div').nth(2)).toHaveText('00-001 Warszawa');
+  await expect(li.locator('.stst')).toContainText('48 × 19 mm');
+  await expect(li.locator('.stst')).not.toContainText('The font has no');
+  // a symbol the script font doesn't have: the stamp says so
+  await ed.evaluate(e => { e.innerHTML = '<div style="text-align: center;" data-pt="10">Tel. ☎ 600 000 000</div>'; e.dispatchEvent(new Event('input')); });
+  await li.locator('.stfont').selectOption('greatVibes');
+  await expect(li.locator('.stst')).toContainText('The font has no “☎”: it is left out of the stamp.');
   noProblems(problems);
 });

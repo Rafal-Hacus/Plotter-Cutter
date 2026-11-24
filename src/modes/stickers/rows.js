@@ -16,22 +16,49 @@ function thumbSvg(d) {
   const im = `<image href="${r.cutMode ? d.urlNoCut : d.url}" x="${num(r.offX)}" y="${num(r.offY)}" width="${num(r.artW)}" height="${num(r.artH)}" preserveAspectRatio="none"/>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${num(r.boxW)} ${num(r.boxH)}">${r.cutMode ? `<clipPath id="tc${d.id}"><path d="${r.clipD}"/></clipPath><g clip-path="url(#tc${d.id})">${im}</g>` : im}<path d="${r.dieD}" fill="none" stroke="${CUT_RED}" stroke-width="1" stroke-dasharray="2 1.2" vector-effect="non-scaling-stroke"/><path d="${r.kissD}" fill="none" stroke="${CUT_RED}" stroke-width="1" vector-effect="non-scaling-stroke"/></svg>`;
 }
+// The height that puts the design at its real size in the file, for what the height applies to: the shapes in vinyl
+// and pen (known once they are read), the cut line in cut mode, else the whole artwork. null if not known (yet).
+export function realHeight(d) {
+  if (!d.fileMm || !d.mmPerUnit) return null;
+  if (isMarkless()) return d.vShapeH ? d.mmPerUnit * d.vShapeH : null;
+  return d.mmPerUnit * ((d.mode === 'cut' && d.cutBox) || d.vb).h;
+}
+// what the file says it measures, next to the height, and how that was read when it wasn't in mm
+function fileSizeText(d) {
+  if (!d.fileMm) return 'file: no usable size';
+  return `file ${mm1(d.fileMm.w)} × ${mm1(d.fileMm.h)} mm${d.sizeNote ? ` · ${d.sizeNote}` : ''}`;
+}
 export function updateRow(d) {
   if (!d.ui) return;
   d.ui.thumb.innerHTML = thumbSvg(d);
+  // the height may have been set for the design (vinyl starts at the shapes' real size): show it, unless being typed
+  const hIn = d.ui.li && d.ui.li.querySelector('.h');
+  if (hIn && document.activeElement !== hIn) hIn.value = mm1(d.heightMm);
+  if (d.ui.fsize) {
+    d.ui.fsize.textContent = fileSizeText(d);
+    d.ui.fsize.classList.toggle('warn', !!d.sizeGuessed);
+    const rh = realHeight(d);
+    d.ui.real.hidden = !d.fileMm;
+    d.ui.real.title = rh ? `Height back to ${mm1(rh)} mm, the size in the file` : 'Height back to the size in the file';
+  }
   const st = d.ui.status;
+  // a file with no usable size of its own: said first, whatever the mode
+  const sizeWarn = !d.fileMm && d.sizeNote ? d.sizeNote + '. ' : '';
   if (isMarkless()) {
     st.classList.toggle('err', !!d.verr);
     if (d.verr) { st.textContent = d.verr; return; }
     if (d.busy || !d.vres) { st.textContent = 'Reading the shapes…'; return; }
     const r = d.vres, n = state.vinylLayout ? state.vinylLayout.counts.get(d.id) || 0 : 0;
-    st.textContent = `${state.mode === 'pen' ? 'Drawing' : 'Cut'} ${mm1(r.frW)} × ${mm1(r.frH)} mm, ${r.nPaths} paths. ${n === 1 ? `1 on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.` : `${n} on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.`}${vOpts().vMirror ? ' Mirrored.' : ''}`;
+    st.textContent = `${sizeWarn}${state.mode === 'pen' ? 'Drawing' : 'Cut'} ${mm1(r.frW)} × ${mm1(r.frH)} mm, ${r.nPaths} paths. ${n === 1 ? `1 on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.` : `${n} on the ${state.mode === 'pen' ? 'sheet' : 'vinyl'}.`}${vOpts().vMirror ? ' Mirrored.' : ''}`;
+    if (r.texts) st.textContent += ` ${r.texts} text ${r.texts === 1 ? 'element is' : 'elements are'} left out: convert text to curves (outlines) in the SVG.`;
+    if (r.strokes && state.mode !== 'pen') st.textContent += ` ${r.strokes === 1 ? '1 shape is' : `${r.strokes} shapes are`} only a thick stroke: the knife follows the middle of the stroke, not its edges. Convert strokes to outlines to cut them as drawn.`;
     return;
   }
   st.classList.toggle('err', !!d.error);
   if (d.error) { st.textContent = d.error; return; }
   if (d.busy || !d.res) { st.textContent = 'Tracing outline…'; return; }
   const r = d.res, bits = [];
+  if (sizeWarn) bits.push(sizeWarn.trim());
   bits.push(`${r.cutMode ? 'Cut line' : 'Art'} ${mm1(r.frW)} × ${mm1(r.frH)} mm, die cut ${mm1(r.cutW)} × ${mm1(r.cutH)} mm.`);
   if (state.layout) { const n = state.layout.counts.get(d.id) || 0; bits.push(n === 1 ? '1 on the sheet.' : `${n} on the sheet.`); }
   const c = d.circle;
@@ -52,7 +79,8 @@ export function addRow(d) {
   li.innerHTML = `<div class="thumb"></div>
     <div><div class="dname"></div>
       <div class="fields">
-        <label class="hl">Height, mm<input type="number" min="5" step="0.5" class="h"></label>
+        <label class="hl">Height, mm<input type="number" min="1" step="0.5" class="h"></label>
+        <div class="realsz"><span class="fsize"></span><button type="button" class="link real">real size</button></div>
         <label>Copies<input type="number" min="0" step="1" placeholder="Fill" class="q"></label>
         <label class="ksel">Kiss cut<select class="m"><option value="trace">Trace artwork</option><option value="cut">Cut line from file</option></select></label>
       </div>
@@ -67,7 +95,7 @@ export function addRow(d) {
   li.querySelector('.dname').textContent = d.name;
   li.querySelector('.dname').title = d.name;
   const hIn = li.querySelector('.h'), qIn = li.querySelector('.q'), rm = li.querySelector('.remove');
-  hIn.value = mm1(d.heightMm);
+  hIn.value = mm1(d.heightMm); qIn.value = d.qty == null ? '' : d.qty;
   rm.setAttribute('aria-label', `Remove ${d.name}`);
   const mIn = li.querySelector('.m');
   mIn.value = d.mode;
@@ -99,11 +127,26 @@ export function addRow(d) {
       else { d.ui.status.textContent = 'No clear circle found; set the size and position by hand.'; }
     });
   }
+  // the height applies to the cut line in cut mode and to the artwork otherwise: switching keeps the sticker's
+  // scale (the artwork's size on the sheet), so the height is worked out again for what it now applies to
+  const frameH = () => ((d.mode === 'cut' && d.cutBox) || d.vb).h;
   mIn.addEventListener('change', () => {
-    if (c) { c.kind = mIn.value; li.querySelector('.circ').hidden = c.kind !== 'round'; setHl(); rebuildCircle(d); return; }
-    d.mode = mIn.value; setHl(); schedule();
+    const perUnit = d.heightMm / frameH();
+    if (c) { c.kind = mIn.value; li.querySelector('.circ').hidden = c.kind !== 'round'; rebuildCircle(d); }
+    else d.mode = mIn.value;
+    d.heightMm = perUnit * frameH(); hIn.value = mm1(d.heightMm);
+    setHl(); schedule();
   });
-  hIn.addEventListener('input', () => { const v = parseFloat(hIn.value); if (isFinite(v) && v >= 5) { d.heightMm = v; schedule(); } });
+  hIn.addEventListener('input', () => { const v = parseFloat(hIn.value); if (isFinite(v) && v >= 1) { d.heightMm = v; d.hEdited = true; schedule(); } });
+  li.querySelector('.real').addEventListener('click', () => {
+    const rh = realHeight(d);
+    d.hEdited = false;
+    // in vinyl and pen before the shapes are read: they start at their real size once read
+    if (rh == null) { d.realSized = false; schedule(); return; }
+    // (vinyl and pen start again at the shapes' real size when switched to: the height here is the sticker's)
+    d.heightMm = rh; d.realSized = isMarkless(); hIn.value = mm1(d.heightMm);
+    schedule();
+  });
   qIn.addEventListener('input', () => { const v = parseInt(qIn.value, 10); d.qty = (qIn.value === '' || !isFinite(v)) ? null : Math.max(0, v); schedule(); });
   rm.addEventListener('click', () => {
     const i = designs.indexOf(d); if (i >= 0) designs.splice(i, 1);
@@ -111,7 +154,7 @@ export function addRow(d) {
     if (!designs.length) ui.list.innerHTML = EMPTY_LIST;
     schedule();
   });
-  d.ui = { li, thumb: li.querySelector('.thumb'), status: li.querySelector('.status') };
+  d.ui = { li, thumb: li.querySelector('.thumb'), status: li.querySelector('.status'), fsize: li.querySelector('.fsize'), real: li.querySelector('.real') };
   ui.list.appendChild(li);
   updateRow(d);
 }

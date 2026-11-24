@@ -1,5 +1,5 @@
 // Print PDFs and the cut SVG of the card modes.
-import { embedPages } from '../../core/pdfembed.js';
+import { embedPages, shownMatrix } from '../../core/pdfembed.js';
 import { PT, mul } from '../../core/matrix.js';
 import { SLOT_RE, aiId, num, pathEl } from '../../core/svg.js';
 import { tick } from '../../core/util.js';
@@ -13,7 +13,11 @@ import { state } from '../../state.js';
 import { templateShapes } from '../../template.js';
 
 // card page points -> card mm (y down from the bleed corner), at the scale the job prints at
-const cardToMm = L => [L.sc / PT, 0, 0, -L.sc / PT, 0, L.ph]; // the embedded page (from its corner, y up) -> card mm
+const cardToMm = L => [L.sc / PT, 0, 0, -L.sc / PT, 0, L.ph]; // the page as shown (from its corner, y up) -> card mm
+// an embedded page of the job (form points) -> card mm: turned by its /Rotate first
+const pageToMm = (L, g) => g ? mul(cardToMm(L), shownMatrix(g)) : cardToMm(L);
+// the part of each page that is embedded (see pageGeom)
+const boxes = (job, idx) => idx.map(i => job.geoms && job.geoms[i] ? job.geoms[i].box : null);
 
 // Front and back of one sheet of identical cards.
 export async function buildCardsPdf() {
@@ -22,11 +26,11 @@ export async function buildCardsPdf() {
   const o = readOpts(), job = state.job, L = job.layout, pg = pageDims();
   const guil = state.mode === 'guillotine', morg = state.mode === 'morgana';
   const src = await PDFDocument.load(job.bytes, { ignoreEncryption: true }), out = await PDFDocument.create();
-  const [frontSide, backSide] = await embedPages(out, src, job.pages > 1 ? [0, 1] : [0]);
-  const Wpt = pg.wMm * PT, Hpt = pg.hMm * PT, F = sheetToPdf(Hpt), G = cardToMm(L);
+  const idx = job.pages > 1 ? [0, 1] : [0], [frontSide, backSide] = await embedPages(out, src, idx, boxes(job, idx));
+  const Wpt = pg.wMm * PT, Hpt = pg.hMm * PT, F = sheetToPdf(Hpt), geoms = job.geoms || [];
   // each copy is clipped to its own rect on the sheet (trim plus the bleed it may keep), then drawn
   const place = (page, side, back) => {
-    const name = page.node.newXObject('Card', side.ref);
+    const name = page.node.newXObject('Card', side.ref), G = pageToMm(L, geoms[back ? 1 : 0]);
     for (const it of L.items) drawClipped(page, name, back ? backClip(it, o) : it.clip, mul(F, mul(back ? backT(it, o) : it.T, G)), Hpt);
   };
   // the black mark the CardXtra reads
@@ -64,8 +68,8 @@ export async function buildDeckPdf() {
   const { PDFDocument } = window.PDFLib;
   const o = readOpts(), job = state.job, L = job.layout, dk = deckPlan(o), pg = pageDims(), per = deckPer();
   const src = await PDFDocument.load(job.bytes, { ignoreEncryption: true }), out = await PDFDocument.create();
-  const sides = await embedPages(out, src, Array.from({ length: job.pages }, (_, i) => i));
-  const Wpt = pg.wMm * PT, Hpt = pg.hMm * PT, F = sheetToPdf(Hpt), G = cardToMm(L), marks = cropMarks(L, o);
+  const all = Array.from({ length: job.pages }, (_, i) => i), sides = await embedPages(out, src, all, boxes(job, all));
+  const Wpt = pg.wMm * PT, Hpt = pg.hMm * PT, F = sheetToPdf(Hpt), Gs = all.map(i => pageToMm(L, job.geoms && job.geoms[i])), marks = cropMarks(L, o);
   for (let i = 0; i < dk.sheets; i++) {
     setMsg(`Sheet ${i + 1} of ${dk.sheets}…`);
     await tick();
@@ -75,7 +79,7 @@ export async function buildDeckPdf() {
         const c = deckCard(dk, i, j), pi = c == null ? -1 : per * c + (back ? 1 : 0);
         if (pi < 0 || pi >= job.pages) return; // empty slot, or the blank back of an odd last page
         if (!names.has(pi)) names.set(pi, page.node.newXObject(`P${pi}`, sides[pi].ref));
-        drawClipped(page, names.get(pi), back ? backClip(it, o) : it.clip, mul(F, mul(back ? backT(it, o) : it.T, G)), Hpt);
+        drawClipped(page, names.get(pi), back ? backClip(it, o) : it.clip, mul(F, mul(back ? backT(it, o) : it.T, Gs[pi])), Hpt);
       });
       if (!back || o.gMarksBack) drawCropMarks(page, back ? backMarks(L, o) : marks, Hpt);
     }
@@ -95,7 +99,7 @@ export async function buildWinietkaPdf() {
     if (!embedded.has(k)) {
       const it = job.items[k];
       if (!docs.has(it.bytes)) docs.set(it.bytes, await PDFDocument.load(it.bytes, { ignoreEncryption: true }));
-      embedded.set(k, (await embedPages(out, docs.get(it.bytes), [it.page]))[0]);
+      embedded.set(k, (await embedPages(out, docs.get(it.bytes), [it.page], [it.geom && it.geom.box]))[0]);
     }
     return embedded.get(k);
   };
@@ -109,8 +113,8 @@ export async function buildWinietkaPdf() {
       if (k == null) continue;
       const it = job.items[k], slot = L.items[j];
       if (!names.has(k)) names.set(k, page.node.newXObject(`W${k}`, (await embed(k)).ref));
-      // card page points -> slot mm (y down); a card of another size is stretched to the slot
-      const sx = L.pw / it.w, sy = L.ph / it.h, G = [sx, 0, 0, -sy, 0, L.ph];
+      // card page points (turned by its /Rotate) -> slot mm (y down); a card of another size is stretched to the slot
+      const sx = L.pw / it.w, sy = L.ph / it.h, G = mul([sx, 0, 0, -sy, 0, L.ph], it.geom ? shownMatrix(it.geom) : [1, 0, 0, 1, 0, 0]);
       drawClipped(page, names.get(k), slot.clip, mul(F, mul(slot.T, G)), Hpt);
     }
   }

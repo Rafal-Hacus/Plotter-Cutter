@@ -28,6 +28,20 @@ describe('packRoll', () => {
     const r = packRoll([{ id: 'a', w: 500, h: 200 }], { width: 300 });
     expect(r.sheets[0].places[0]).toMatchObject({ rot: true, w: 200, h: 500 });
   });
+  it('is never longer than plain rows of identical pieces (the first piece lying must not waste every row)', () => {
+    // six 394 x 283 on 600 mm: lying, one per row (6 x 285); standing, two per row (3 x 396)
+    const six = packRoll(Array.from({ length: 6 }, (_, i) => ({ id: i, w: 394, h: 283 })), { width: 600, gap: 2 });
+    expect(six.sheets[0].length).toBeLessThanOrEqual(3 * 396 - 2 + 1e-6);
+    let seed = 7;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const rows = (W, w, h, n) => { const c = Math.floor((W + 2) / (w + 2)); return c ? Math.ceil(n / c) * (h + 2) - 2 : Infinity; };
+    for (let t = 0; t < 300; t++) {
+      const W = [600, 1000, 1330][t % 3], w = 30 + Math.floor(rnd() * 600), h = 30 + Math.floor(rnd() * 600), n = 1 + Math.floor(rnd() * 30);
+      if (Math.min(w, h) > W) continue;
+      const { sheets } = packRoll(Array.from({ length: n }, (_, i) => ({ id: i, w, h })), { width: W, gap: 2 });
+      expect(sheets[0].length, `${n} of ${w} x ${h} on ${W}`).toBeLessThanOrEqual(Math.min(rows(W, w, h, n), rows(W, h, w, n)) + 1e-6);
+    }
+  });
   it('splits into sheets of at most maxLength', () => {
     const { sheets } = packRoll(Array.from({ length: 6 }, (_, i) => ({ id: i, w: 100, h: 100 })), { width: 100, gap: 0, maxLength: 250 });
     expect(sheets.map(s => s.places.length)).toEqual([2, 2, 2]);
@@ -41,5 +55,12 @@ describe('copiesFromName', () => {
     expect(copiesFromName('zakaz_ogloszen_250x60mm_10szt.pdf')).toBe(10);
     expect(copiesFromName('label 80x30 4 pcs.pdf')).toBe(4);
     expect(copiesFromName('sign_301x376mm.pdf')).toBe(1);
+    // the other ways the shop writes it
+    expect(copiesFromName('tablica_200x300mm_3_szt.pdf')).toBe(3);
+    expect(copiesFromName('tablica_200x300mm_3-szt.pdf')).toBe(3);
+    expect(copiesFromName('tablica 200x300 5 sztuk.pdf')).toBe(5);
+    expect(copiesFromName('tablica_200x300mm_4egz.pdf')).toBe(4);
+    expect(copiesFromName('tablica_200x300mm_2szt (1).pdf')).toBe(2);
+    expect(copiesFromName('nr3_szt.pdf')).toBe(1);
   });
 });
