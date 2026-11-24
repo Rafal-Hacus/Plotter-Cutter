@@ -81,12 +81,14 @@ export function readOpts() {
 // Values that can only be a slip (a size typed into the blade offset makes every corner a swing of centimetres
 // and every line land off its place; a clearance of 120 mm leaves a few stickers on the sheet): kept from an earlier
 // visit or in saved settings, they go back to their standard values. id: [highest real value, standard value]
-const SANE = { bladeOffset: [2, '0.35'], overcut: [5, '0.5'], clearance: [50, '5'], sheetFeedMm: [200, '60'], lineW: [2, '0.1'], stShoulder: [1, '0.3'] };
+const SANE = { bladeOffset: [2, '0.35'], overcut: [5, '0.5'], clearance: [50, '5'], sheetFeedMm: [200, '60'], lineW: [2, '0.1'], stShoulder: [1, '0.3'],
+  // (a duplex printer's back side or a start dot is off by a few mm: more than 10 mm either way is a slip)
+  cOffX: [10, '0'], cOffY: [10, '0'], cShiftX: [10, '0'], cShiftY: [10, '0'] };
 // set the fields from { id: value }; ids that are missing keep their value
 export function applyOptionValues(values, ids = OPT_IDS) {
   for (const id of ids) {
     if (!Object.hasOwn(values, id)) continue;
-    const e = byId(id), v = Object.hasOwn(SANE, id) && parseFloat(values[id]) > SANE[id][0] ? SANE[id][1] : values[id];
+    const e = byId(id), v = Object.hasOwn(SANE, id) && Math.abs(parseFloat(values[id])) > SANE[id][0] ? SANE[id][1] : values[id];
     if (e.type === 'checkbox') e.checked = !!v; else e.value = String(v);
   }
 }
@@ -94,7 +96,8 @@ const STORE_KEY = 'stickerSheet.opts.v2';
 // every option field as { id: value } (checkboxes as booleans, the rest as the field's text)
 export function optionValues() {
   const o = {};
-  for (const id of OPT_IDS) { const e = byId(id); o[id] = e.type === 'checkbox' ? e.checked : e.value; }
+  // (data-keep: the value to save while the field shows one read from a file, see showBleed)
+  for (const id of OPT_IDS) { const e = byId(id); o[id] = e.type === 'checkbox' ? e.checked : e.dataset.keep ?? e.value; }
   return o;
 }
 export function saveOpts() {

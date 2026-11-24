@@ -4,7 +4,7 @@ import { makeZip } from '../../core/zip.js';
 import { byId, saveFile, setMsg } from '../../dom.js';
 import { buildCutPdf, closedAll, lemurCutSvg, openAll, pdfClick } from '../../export/cut-files.js';
 import { syncImgRows } from './images.js';
-import { KIND, PRINT_MODES, deckLike, deckPer, isPrintMode, kinds } from './job.js';
+import { KIND, PRINT_MODES, deckLike, deckPer, isPrintMode, kinds, showBleed } from './job.js';
 import { cardCuts, cardPlt, computeCardLayout, deckPlan, dotCut, winPlan } from './layout.js';
 import { loadCardFile, updateCardInfo } from './load.js';
 import { buildCardCutSvg, buildCardsPdf, buildDeckPdf, buildWinietkaPdf } from './pdf.js';
@@ -42,7 +42,7 @@ export function enterCardMode(m) {
   byId('rowCFlip').hidden = plainSheet || win;
   if (win) { winList(); syncWinRows(); if (winNamesOn() && !state.job.items.length) winNamesChanged(); }
   syncImgRows();
-  if (state.job.bleed != null) byId('cBleed').value = state.job.bleed;
+  showBleed(state.job);
   updateCardInfo();
   syncGRows();
 }
