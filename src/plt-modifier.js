@@ -58,3 +58,8 @@ byId('exMod').addEventListener('click', () => {
     if (notes.length) setMsg(notes.join('; ') + '.');
   } catch (err) { setMsg(`Couldn’t modify: ${err.message || err}`, true); }
 });
+// a tool of its own, not a setting of any mode: opened from Tools in the side panel
+const dlg = byId('toolMod');
+byId('toolModOpen').addEventListener('click', () => dlg.showModal());
+byId('toolModClose').addEventListener('click', () => dlg.close());
+dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
