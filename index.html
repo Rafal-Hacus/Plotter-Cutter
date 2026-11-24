@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="same-origin">
-<title>Sticker sheet builder</title>
+<title>Sticker sheets · Plotter Cutter</title>
 </head>
 <body>
 <div class="app">
   <aside>
     <header>
-      <div class="titlebar"><h1>Sticker sheet builder</h1>
+      <div class="titlebar"><h1 id="appTitle">Sticker sheets</h1>
         <div class="userbox" id="userBox" hidden><span id="userName"></span><button type="button" class="link" id="signOut">Sign out</button></div></div>
-      <p class="lede">Add SVGs, set their height, and get a nested sheet with kiss and die cut lines around every sticker.</p>
+      <p class="lede" id="appLede">Add SVGs or PDFs, set their height, and get a nested sheet with kiss and die cut lines around every sticker.</p>
     </header>
     <p class="securenote" id="secureNote" role="note" hidden></p>
     <section class="presets" id="secPresets" aria-labelledby="h-presets" hidden>
@@ -32,6 +32,7 @@
       <p class="hint">Saves the mode and every setting (cut lines, sheet, layout, cards, PLT…) on the server. Picking one applies it; the default loads when the app opens.</p>
     </section>
     <nav class="modes" aria-label="Mode"><div class="mgroup" role="group" aria-label="Print &amp; cut"><span class="mlabel">Print &amp; cut</span><div class="mbtns"><button type="button" data-mode="stickers" aria-pressed="true">Stickers</button><button type="button" data-mode="cards" aria-pressed="false">Business cards</button><button type="button" data-mode="vouchers" aria-pressed="false">Vouchers</button><button type="button" data-mode="winietka" aria-pressed="false">Winietki</button><button type="button" data-mode="roll" aria-pressed="false">Roll</button></div></div><div class="mgroup" role="group" aria-label="Print for the guillotine"><span class="mlabel">Print for the guillotine</span><div class="mbtns"><button type="button" data-mode="guillotine" aria-pressed="false">Guillotine</button><button type="button" data-mode="deck" aria-pressed="false">Card deck</button><button type="button" data-mode="gang" aria-pressed="false">Print sheets</button><button type="button" data-mode="morgana" aria-pressed="false">Morgana CardXtra</button><button type="button" data-mode="duplex" aria-pressed="false">Duplex test</button></div></div><div class="mgroup" role="group" aria-label="Cut or draw only"><span class="mlabel">Cut or draw only</span><div class="mbtns"><button type="button" data-mode="vinyl" aria-pressed="false">Vinyl</button><button type="button" data-mode="pen" aria-pressed="false">Pen</button><button type="button" data-mode="squares" aria-pressed="false">Squares</button><button type="button" data-mode="svgplt" aria-pressed="false">SVG to PLT</button></div></div><div class="mgroup" role="group" aria-label="Laser (xTool)"><span class="mlabel">Laser (xTool)</span><div class="mbtns"><button type="button" data-mode="stamps" aria-pressed="false">Pieczątki</button></div></div></nav>
+    <div class="tools" role="group" aria-label="Tools"><span class="mlabel">Tools</span><button type="button" id="toolModOpen" aria-haspopup="dialog" aria-controls="toolMod">PLT modifier…</button></div>
 
     <section aria-labelledby="h-stickers" id="secStickers">
       <h2 id="h-stickers">Stickers</h2>
@@ -320,7 +321,7 @@
       </div>
     </section>
 
-    <details class="panel" open>
+    <details class="panel" id="secCut" open>
       <summary><h2 id="h-cut">Cut lines</h2></summary>
       <div class="row"><label for="kiss">Border around artwork (kiss cut)</label><span class="mm"><input id="kiss" type="number" min="0" step="0.5" value="2">mm</span></div>
       <div class="row"><label for="die">Easy-peel margin (die cut)</label><span class="mm"><input id="die" type="number" min="0" step="0.5" value="2">mm</span></div>
@@ -347,7 +348,7 @@
       </details>
     </details>
 
-    <details class="panel">
+    <details class="panel" id="secLayout">
       <summary><h2 id="h-layout">Layout</h2></summary>
       <div class="row"><label for="clearance">Clearance from registration marks</label><span class="mm"><input id="clearance" type="number" min="0" max="50" step="0.5" value="5">mm</span></div>
       <div class="row"><label for="joinGap">Join cut lines closer than</label><span class="mm"><input id="joinGap" type="number" min="0" step="0.5" value="3">mm</span></div>
@@ -358,7 +359,7 @@
       <div class="row"><label for="quality">Contour detail</label><select id="quality"><option value="standard">Standard (0.1 mm)</option><option value="fine">Fine (0.05 mm)</option></select></div>
     </details>
 
-    <details class="panel">
+    <details class="panel" id="secSheet">
       <summary><h2 id="h-sheet">Sheet and registration marks</h2></summary>
       <div class="row"><label for="sheetSize">Sheet with registration marks</label><select id="sheetSize"><option value="310x440">SRA3 printable 310 × 440</option><option value="320x450">SRA3 full 320 × 450</option><option value="297x420">A3 297 × 420</option><option value="210x297">A4 210 × 297</option><option value="custom">Custom</option></select></div>
       <div class="row" id="rowSheetCustom" hidden><label for="sheetW">Custom sheet</label><span class="mm"><input id="sheetW" type="number" min="60" step="1" value="310" aria-label="Sheet width">×<input id="sheetH" type="number" min="60" step="1" value="440" aria-label="Sheet height">mm</span></div>
@@ -373,19 +374,6 @@
       </div>
     </details>
 
-
-    <details class="panel">
-      <summary><h2 id="h-mod">PLT modifier</h2></summary>
-      <p class="hint">Change force and speed in PLT files you already have, for example when the knife gets blunt halfway through a batch. Load .plt files or a zip of them: each file shows what it is set to now, edit it per file or set all at once. Blade offset and overcut are part of the paths and stay as they are.</p>
-      <div class="actions"><label class="btn">Load PLT files or zip<input id="modFile" type="file" accept=".plt,.zip" multiple></label></div>
-      <div id="modTable"></div>
-      <div class="row"><label for="modForce">Force, all files</label><span class="mm"><input id="modForce" type="number" min="1" max="160" step="1">g</span></div>
-      <div class="row"><label for="modSpeed">Cutting speed, all files</label><span class="mm"><input id="modSpeed" type="number" min="1" max="13" step="1">cm/s</span></div>
-      <div class="row"><label for="modUp">Up-speed, all files</label><span class="mm"><input id="modUp" type="number" min="1" max="13" step="1">cm/s</span></div>
-      <div class="row"><label for="modClean">Fix dense paths (fewer micro-moves)</label><input id="modClean" type="checkbox" checked></div>
-      <div class="row"><label for="modTwice">Cut every line twice</label><input id="modTwice" type="checkbox"></div>
-      <div class="actions"><button type="button" class="primary" id="exMod" disabled>Download modified PLTs (zip)</button></div>
-    </details>
   </aside>
 
   <main id="main">
@@ -403,9 +391,23 @@
     </div>
     <div class="jobrestore" id="jobRestore" role="status" hidden><button type="button" id="jobRestoreBtn">Restore last job</button><span id="jobRestoreInfo"></span><button type="button" class="link" id="jobRestoreNo">Discard it</button></div>
     <div class="stage" id="stage"></div>
-    <div class="drop-note" id="dropNote">Drop SVG files (or PDFs for round stickers) here to start filling the sheet.</div>
+    <div class="drop-note" id="dropNote">Drop SVG or PDF files here to start filling the sheet (a PDF with a CutContour line is cut along that line).</div>
   </main>
 </div>
+<dialog id="toolMod" class="tool" aria-labelledby="h-mod">
+  <header class="toolhead"><h2 id="h-mod">PLT modifier</h2><button type="button" class="link" id="toolModClose">Close</button></header>
+  <div class="toolbody">
+    <p class="hint">Change force and speed in PLT files you already have, for example when the knife gets blunt halfway through a batch. Load .plt files or a zip of them: each file shows what it is set to now, edit it per file or set all at once. Blade offset and overcut are part of the paths and stay as they are.</p>
+    <div class="actions"><label class="btn">Load PLT files or zip<input id="modFile" type="file" accept=".plt,.zip" multiple></label></div>
+    <div id="modTable"></div>
+    <div class="row"><label for="modForce">Force, all files</label><span class="mm"><input id="modForce" type="number" min="1" max="160" step="1">g</span></div>
+    <div class="row"><label for="modSpeed">Cutting speed, all files</label><span class="mm"><input id="modSpeed" type="number" min="1" max="13" step="1">cm/s</span></div>
+    <div class="row"><label for="modUp">Up-speed, all files</label><span class="mm"><input id="modUp" type="number" min="1" max="13" step="1">cm/s</span></div>
+    <div class="row"><label for="modClean">Fix dense paths (fewer micro-moves)</label><input id="modClean" type="checkbox" checked></div>
+    <div class="row"><label for="modTwice">Cut every line twice</label><input id="modTwice" type="checkbox"></div>
+    <div class="actions"><button type="button" class="primary" id="exMod" disabled>Download modified PLTs (zip)</button></div>
+  </div>
+</dialog>
 <dialog id="imgEditor" class="editor" aria-labelledby="edTitle">
   <div class="edwrap">
     <header class="edhead"><h2 id="edTitle">Edit picture</h2><span class="edinfo" id="edInfo"></span><button type="button" class="link" id="edCancel">Close</button></header>
