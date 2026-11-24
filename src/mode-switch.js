@@ -58,7 +58,10 @@ const CUT_LEGEND = {
 // panel or a group in it only when something in it is shown. Hidden fields keep their values.
 function showSharedRows(m) {
   for (const [id, modes] of Object.entries(FIELD_MODES)) {
-    const row = byId(id).closest('.row'), hint = row.nextElementSibling;
+    const row = byId(id).closest('.row');
+    let hint = row.nextElementSibling;
+    if (hint && hint.classList.contains('numerr')) hint = hint.nextElementSibling; // a field's message sits between
+
     row.hidden = !modes.includes(m);
     if (hint && hint.classList.contains('hint')) hint.hidden = row.hidden;
   }

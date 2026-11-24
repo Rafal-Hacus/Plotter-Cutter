@@ -105,3 +105,17 @@ test('values typed with a comma are kept over a reload; a bad one comes back red
   await expect(page.locator('#dieForce')).toHaveClass(/bad/);
   noProblems(problems);
 });
+
+test('a wrong value in a field another mode uses (Pen force in Vinyl) is not shown, and holds nothing back', async ({ page }) => {
+  await openApp(page);
+  await mode(page, 'pen');
+  await page.evaluate(() => { const e = document.getElementById('penForce'); e.value = '200'; e.dispatchEvent(new Event('input', { bubbles: true })); });
+  const msg = page.locator('p.numerr', { hasText: 'Pen force' });
+  await expect(msg).toBeVisible();
+  await mode(page, 'vinyl');
+  await expect(msg).toBeHidden();
+  await page.setInputFiles('#files', [svgFile('box.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="20mm" viewBox="0 0 40 20"><rect x="5" y="5" width="20" height="10" fill="#000"/></svg>')]);
+  await expect(page.locator('#exVinylPlt')).not.toHaveClass(/numblock/);
+  await mode(page, 'pen');
+  await expect(msg).toBeVisible();
+});

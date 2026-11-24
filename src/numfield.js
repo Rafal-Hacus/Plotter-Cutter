@@ -60,7 +60,8 @@ function showCheck(e) {
   const [box, m] = msgBox(e);
   const errs = [...box.querySelectorAll('input.num.bad')].map(x => x.dataset.numErr);
   m.textContent = errs.join(' ');
-  m.hidden = !errs.length;
+  // only under a row the open mode shows (a Pen-only field's message stays out of Vinyl)
+  m.hidden = !errs.length || !inUse(box);
   return r.ok;
 }
 
