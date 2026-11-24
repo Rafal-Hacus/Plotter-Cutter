@@ -147,6 +147,7 @@
         <div class="row"><label for="gMarkLen">Crop mark length</label><span class="mm"><input id="gMarkLen" type="number" min="1" step="0.5" value="5">mm</span></div>
         <div class="row"><label for="gMarkOff">Crop mark distance from the cut</label><span class="mm"><input id="gMarkOff" type="number" min="0" step="0.5" value="3">mm</span></div>
         <div class="row"><label for="gEdge">Unprintable sheet edge</label><span class="mm"><input id="gEdge" type="number" min="0" step="0.5" value="3">mm</span></div>
+        <div class="row"><label for="gMarkRoom">Always leave room for crop marks (even when that fits fewer copies)</label><input id="gMarkRoom" type="checkbox"></div>
         <p class="hint">With a gap, every copy gets its own cuts (two cuts between neighbours) and keeps its bleed up to half the gap, so an imprecise guillotine cut still lands on artwork. 0 mm means shared single cuts.</p>
       </div>
       <p class="hint" id="cardsCutHint">Cards are cut with the die cut settings. Straight lines need square corners (with a corner radius each card gets its own rectangle). Use the back shift to correct your printer’s duplex misalignment.</p>
@@ -194,6 +195,7 @@
       <div class="row"><label for="ggMarkLen">Crop mark length</label><span class="mm"><input id="ggMarkLen" type="number" min="1" step="0.5" value="5">mm</span></div>
       <div class="row"><label for="ggMarkOff">Crop mark distance from the cut</label><span class="mm"><input id="ggMarkOff" type="number" min="0" step="0.5" value="3">mm</span></div>
       <div class="row"><label for="ggEdge">Unprintable sheet edge</label><span class="mm"><input id="ggEdge" type="number" min="0" step="0.5" value="3">mm</span></div>
+      <div class="row"><label for="ggMarkRoom">Always leave room for crop marks (even when that fits fewer copies)</label><input id="ggMarkRoom" type="checkbox"></div>
       <div class="row"><label for="gangSheet">Preview</label><select id="gangSheet"><option value="0">Sheet 1</option></select></div>
     </section>
 
