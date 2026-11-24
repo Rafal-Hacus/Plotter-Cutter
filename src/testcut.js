@@ -69,6 +69,6 @@ byId('toolTestClose').addEventListener('click', () => dlg.close());
 byId('exTestCut').addEventListener('click', async () => {
   const msg = byId('testCutMsg');
   msg.textContent = ''; msg.classList.remove('warn');
-  try { saveFile('test-cut.zip', await buildTestCut()); msg.textContent = 'Downloaded test-cut.zip (print PDF, four PLTs, read-me).'; }
+  try { saveFile('test-cut.zip', await buildTestCut(), { plain: true }); msg.textContent = 'Downloaded test-cut.zip (print PDF, four PLTs, read-me).'; }
   catch (e) { msg.textContent = `Couldn’t build the test cut: ${e.message || e}`; msg.classList.add('warn'); }
 });

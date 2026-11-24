@@ -19,7 +19,7 @@ export function setMsg(text, warn) { ui.msg.textContent = text; ui.msg.className
 export function filePurpose(name) {
   const n = name.toLowerCase();
   if (/\.xs$/.test(n)) return 'for the xTool laser';
-  if (/batch/.test(n) && /\.zip$/.test(n)) return 'for the printer and the Skycut cutting machine';
+  if (/(batch|test-cut)/.test(n) && /\.zip$/.test(n)) return 'for the printer and the Skycut cutting machine';
   if (/(podglad|proof)/.test(n)) return 'a proof to check on paper';
   if (/(plt|kiss|die|-cut|-draw)/.test(n)) return 'for the Skycut cutting machine';
   return 'for the printer';
@@ -39,9 +39,10 @@ function savedNote(name, kind) {
   el.hidden = false;
   clearTimeout(savedTimer); savedTimer = setTimeout(() => { el.hidden = true; }, 12000);
 }
-// Offer a file for download. content: a Blob, or text (saved as SVG).
-export function saveFile(name, content) {
-  const kind = name; name = fileNamer(name);
+// Offer a file for download. content: a Blob, or text (saved as SVG). plain: a file not of the open job (a test cut,
+// PLTs modified): no job name in front
+export function saveFile(name, content, { plain = false } = {}) {
+  const kind = name; if (!plain) name = fileNamer(name);
   const blob = content instanceof Blob ? content : new Blob([content], { type: 'image/svg+xml' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = name;

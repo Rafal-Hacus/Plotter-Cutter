@@ -131,3 +131,13 @@ test('restore offer: each mode’s job in words with its own button, the open mo
   await expect(page.locator('#list li.empty')).toHaveText('No stickers yet.');
   noProblems(problems);
 });
+
+test('Tools → Test cut is said on screen too, and keeps its own name (it is not the job)', async ({ page }) => {
+  const problems = await openApp(page);
+  await page.setInputFiles('#files', fixture('star.svg'));
+  await expect(page.locator('#list li.design')).toHaveCount(1);
+  await page.click('#toolTestOpen');
+  expect(await savedName(page, 'exTestCut')).toBe('test-cut.zip');
+  await expect(page.locator('#savedNote')).toHaveText('Saved: test-cut.zip — for the printer and the Skycut cutting machine');
+  noProblems(problems);
+});
