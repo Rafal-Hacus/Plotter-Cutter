@@ -82,7 +82,7 @@ test('an impossible sticker height shows the reason instead of the last layout',
   await typeInto(page, h, '-50');
   await expect(h).toHaveClass(/bad/);
   await expect(page.locator('#count')).toContainText('Not updated');
-  await expect(page.locator('#msg')).toContainText('at least 5');
+  await expect(page.locator('#msg')).toContainText('at least 1');
   await expect(page.locator('#stage')).toHaveClass(/stale/);
   await typeInto(page, h, '40');
   await expect(page.locator('#stage')).not.toHaveClass(/stale/);
