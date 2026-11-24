@@ -12,7 +12,7 @@ import { copiesFromName, packRoll } from '../core/rollpack.js';
 import { aiId, mm1, num, pathEl } from '../core/svg.js';
 import { isPdfFile, tick } from '../core/util.js';
 import { makeZip } from '../core/zip.js';
-import { CUT_RED, byId, fillSheetPicker, plural, saveFile, setMsg, ui } from '../dom.js';
+import { CUT_RED, byId, emptyItem, fillSheetPicker, plural, saveFile, setMsg, ui } from '../dom.js';
 import { bladeNote, pdfCheck, pltCheck } from '../export/check.js';
 import { pltOpts } from '../export/files.js';
 import { drawClipped, svgPathPt } from '../export/pdf-draw.js';
@@ -83,7 +83,7 @@ async function addFiles(fileList) {
 function list() {
   const ul = byId('rollList');
   ul.innerHTML = '';
-  if (!roll.items.length) { ul.innerHTML = '<li class="empty">No files yet.</li>'; return; }
+  if (!roll.items.length) { ul.innerHTML = emptyItem('No files yet.'); return; }
   for (const it of roll.items) {
     const li = document.createElement('li');
     li.className = 'design';
