@@ -564,7 +564,8 @@ onFontsChanged(fontList);
 // the stamps without their own distance to the cut show the general one
 for (const [id, cls] of [['stMarginX', '.stmx'], ['stMarginY', '.stmy']]) byId(id).addEventListener('input', () => { for (const el of document.querySelectorAll(`#stList ${cls}`)) el.placeholder = byId(id).value; });
 // the values of the stamp made in xTool Studio
-const ST_DEFAULTS = { stMarginX: 2.3, stMarginY: 0, stShoulder: 0.3, stEdge: 0.8 };
+// (top and bottom 0.1 mm, not 0: with 0 the cut ran along the tops of the letters and the laser's kerf could nick them)
+const ST_DEFAULTS = { stMarginX: 2.3, stMarginY: 0.1, stShoulder: 0.3, stEdge: 0.8 };
 // once: the values kept from before the standard changed (0.8 mm top and bottom, 0.2 mm rim that thins for small
 // letters) move to the new standard (0 mm, a 0.3 mm rim for all); values you set yourself stay
 try {
@@ -573,6 +574,14 @@ try {
       const set = (id, from, to) => { const e = byId(id); if (e.type === 'checkbox' ? e.checked === from : parseFloat(e.value) === from) { if (e.type === 'checkbox') e.checked = to; else e.value = String(to); e.dispatchEvent(new Event(e.type === 'checkbox' ? 'change' : 'input')); } };
       set('stMarginY', 0.8, 0); set('stShoulder', 0.2, 0.3); set('stShoulderScale', true, false);
       try { localStorage.setItem('pc.stampDefaults.v2', '1'); } catch { /* storage unavailable */ }
+    }, 0);
+  }
+  // and once more: the old standard of 0 mm top and bottom moves to 0.1 mm (a value you set yourself stays)
+  if (!localStorage.getItem('pc.stampDefaults.v3')) {
+    setTimeout(() => {
+      const e = byId('stMarginY');
+      if (parseFloat(e.value) === 0) { e.value = '0.1'; e.dispatchEvent(new Event('input')); }
+      try { localStorage.setItem('pc.stampDefaults.v3', '1'); } catch { /* storage unavailable */ }
     }, 0);
   }
 } catch { /* storage unavailable */ }
