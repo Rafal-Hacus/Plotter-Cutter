@@ -5,6 +5,7 @@ import { enterCardMode } from './modes/cards/index.js';
 import { PRINT_MODES } from './modes/cards/job.js';
 import { syncPerfDie } from './modes/cards/render.js';
 import { updateRow } from './modes/stickers/rows.js';
+import { FIELD_MODES, MODE_META, PANEL_MODES, ROW_PANELS } from './modes/meta.js';
 import { renderPreview, renderStats, schedule } from './pipeline.js';
 import { designs, state } from './state.js';
 
@@ -19,6 +20,7 @@ const SHOWN_IN = {
   secSquares: ['squares'], squaresExports: ['squares'],
   secSvgPlt: ['svgplt'], spExports: ['svgplt'],
   secDuplex: ['duplex'],
+  ...PANEL_MODES,
   backToggle: [...PRINT_MODES.filter(m => m !== 'winietka'), 'duplex']
 };
 // element id -> the modes it is hidden in
@@ -28,21 +30,22 @@ const HIDDEN_IN = { secExport: ['duplex'], lgKissW: ['duplex'] };
 const CUT_LEGEND = {
   stickers: 'Kiss cut', pen: 'Pen line', guillotine: 'Guillotine cut', deck: 'Guillotine cut', gang: 'Guillotine cut', morgana: 'CardXtra cut'
 };
-const DROP_NOTE = {
-  stickers: 'Drop SVG files (or PDFs for round stickers) here to start filling the sheet.',
-  cards: 'Drop the card PDF here (page 1 front, page 2 back).',
-  vouchers: 'Drop the voucher PDF here (page 1 outside, page 2 inside).',
-  winietka: 'Drop the winietki PDFs here (one card per page).',
-  guillotine: 'Drop the PDF here (page 1 front, page 2 back).',
-  morgana: 'Drop the PDF here (page 1 front, page 2 back).',
-  deck: 'Drop the multi-page card PDF here (front, back, front, back…).',
-  gang: 'Drop photos and PDFs here.',
-  roll: 'Drop the PDFs here (signs, labels, banners).',
-  stamps: 'Add a stamp with text, or drop SVG files here.',
-  vinyl: 'Drop SVG files with the shapes to cut.',
-  pen: 'Drop SVG files with the lines to draw.',
-  svgplt: 'Drop the print-and-cut SVG here.'
-};
+
+// The rows of the shared panels (Cut lines, Layout) the mode reads, the hint right after each row with it, and a
+// panel or a group in it only when something in it is shown. Hidden fields keep their values.
+function showSharedRows(m) {
+  for (const [id, modes] of Object.entries(FIELD_MODES)) {
+    const row = byId(id).closest('.row'), hint = row.nextElementSibling;
+    row.hidden = !modes.includes(m);
+    if (hint && hint.classList.contains('hint')) hint.hidden = row.hidden;
+  }
+  const anyRow = el => [...el.querySelectorAll('.row')].some(r => !r.hidden);
+  for (const id of ROW_PANELS) {
+    const panel = byId(id);
+    for (const sub of panel.querySelectorAll('details.sub')) sub.hidden = !anyRow(sub);
+    panel.hidden = !anyRow(panel);
+  }
+}
 
 export function setAppMode(m) {
   state.mode = m;
@@ -52,9 +55,15 @@ export function setAppMode(m) {
   for (const b of document.querySelectorAll('.modes button')) b.setAttribute('aria-pressed', String(b.dataset.mode === m));
   for (const [id, modes] of Object.entries(SHOWN_IN)) byId(id).hidden = !modes.includes(m);
   for (const [id, modes] of Object.entries(HIDDEN_IN)) byId(id).hidden = modes.includes(m);
+  showSharedRows(m);
+  const meta = MODE_META[m];
+  document.title = `${meta.title} · Plotter Cutter`;
+  byId('appTitle').textContent = meta.title;
+  byId('appLede').textContent = meta.lede;
+  if (meta.files) byId('h-stickers').textContent = meta.files;
   byId('h-vinyl').textContent = m === 'pen' ? 'Pen' : 'Vinyl';
   byId('lgKissT').textContent = CUT_LEGEND[m] || 'Cut line';
-  ui.dropNote.textContent = DROP_NOTE[m] || '';
+  ui.dropNote.textContent = meta.drop;
   const printMode = PRINT_MODES.includes(m);
   if (printMode) enterCardMode(m);
   syncPerfDie();

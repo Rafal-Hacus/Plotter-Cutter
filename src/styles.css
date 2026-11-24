@@ -38,6 +38,22 @@ header h1{font-stretch:80%;font-weight:700;font-size:25px;line-height:1.05;margi
 /* cards */
 section,details.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px 14px 10px;box-shadow:var(--shadow)}
 section.export{border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+/* Export stays in view: it sticks to the bottom of the side panel while the settings above it scroll (anything it
+   covers comes out from under it by scrolling on), and scrolls itself when a mode has many buttons */
+section.export{position:sticky;bottom:-44px;z-index:3;flex:none;max-height:min(30vh,270px);padding-top:10px;overflow-y:auto;overscroll-behavior:contain;box-shadow:0 -8px 18px -6px rgba(16,32,26,.22),var(--shadow)}
+section.export>h2{margin-bottom:2px}
+section.export button{font-size:13px;padding:5px 9px}
+section.export .actions{gap:5px;margin:2px 0 4px}
+section.export .xlabel{margin:6px 0 2px}
+/* Tools: things that are not a mode's settings (the PLT modifier), each in a dialog of its own */
+.tools{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:0 2px}
+.tools .mlabel{margin:0}
+.tools button{font-size:13px;padding:5px 10px}
+dialog.tool{width:min(560px,94vw);max-height:90vh;padding:0;border:1px solid var(--line);border-radius:14px;background:var(--card);color:var(--ink)}
+dialog.tool::backdrop{background:rgba(8,16,12,.55)}
+.toolhead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.toolhead h2{margin:0}
+.toolbody{padding:10px 16px 14px}
 h2{font-size:15px;font-weight:650;margin:0 0 8px;display:inline}
 section>h2{display:block}
 details.panel{padding:0}
@@ -133,7 +149,8 @@ body[data-mode="vinyl"] .ksel,body[data-mode="pen"] .ksel,body[data-mode="pen"] 
 .drop-note{position:absolute;left:50%;bottom:28px;transform:translateX(-50%);width:max-content;max-width:calc(100% - 32px);text-align:center;color:#fff;background:rgba(10,24,19,.78);padding:8px 16px;border-radius:999px;font-size:14px;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25)}
 @media (max-width:820px){
   .app{grid-template-columns:1fr;height:auto}
-  aside{border-right:none;border-bottom:1px solid var(--line);padding:16px 16px 28px}
+  aside{border-right:none;border-bottom:1px solid var(--line);padding:16px 16px 28px;overflow:visible}
+  section.export{bottom:0}
   main{min-height:88vh}
   .stage{height:78vh;padding:8px 16px 20px}
   .bar{padding:10px 16px}
