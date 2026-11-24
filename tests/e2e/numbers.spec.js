@@ -54,9 +54,9 @@ test('a force out of range turns the field red with the range, and the PLT is no
   // clicking export writes nothing, and says why
   let got = false; page.on('download', () => { got = true; });
   await page.evaluate(() => document.getElementById('exPlt').click());
-  await page.waitForTimeout(500);
+  await expect(page.locator('#msg')).toContainText('Not exported', { timeout: 15_000 });
+  await page.waitForTimeout(1000); // (a download, if one were made, would have started by now)
   expect(got).toBe(false);
-  await expect(page.locator('#msg')).toContainText('Not exported');
   // a negative die force and a speed of 99: the same
   await typeInto(page, f, '150');
   await expect(f).not.toHaveClass(/bad/);
