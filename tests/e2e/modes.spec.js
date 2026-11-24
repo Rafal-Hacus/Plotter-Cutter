@@ -91,7 +91,7 @@ const pressed = page => page.evaluate(() => [...document.querySelectorAll('.mode
 test('the mode picker: six main choices, a sub-choice that picks the mode, and Tools', async ({ page }) => {
   const problems = await openApp(page);
   await expect(page.locator('.modes .mmain button')).toHaveText(['Stickers', 'Cards & flyers', 'Guillotine', 'Roll', 'Vinyl & pen', 'Pieczątki']);
-  await expect(page.locator('.modes .tools button')).toHaveText(['SVG to PLT', 'Squares', 'Duplex test', 'PLT modifier…']);
+  await expect(page.locator('.modes .tools button')).toHaveText(['SVG to PLT', 'Squares', 'Duplex test', 'PLT modifier…', 'Test cut…']);
   await expect(page.locator('.modes [data-sub]:visible')).toHaveCount(0);
   // every mode of the app is reachable, with the main choice and the sub-choice pressed and its own title
   const reached = [];
@@ -141,7 +141,7 @@ test('the mode picker: six main choices, a sub-choice that picks the mode, and T
   noProblems(problems);
 });
 
-for (const [w, h, max] of [[1400, 900, 190], [390, 844, 190]]) {
+for (const [w, h, max] of [[1400, 900, 210], [390, 844, 210]]) {
   test(`the mode picker is compact and fits at ${w} × ${h}`, async ({ page }) => {
     await page.setViewportSize({ width: w, height: h });
     const problems = await openApp(page);
