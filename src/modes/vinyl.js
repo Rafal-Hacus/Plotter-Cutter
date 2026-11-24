@@ -251,7 +251,7 @@ function vinylUsedLength() {
   return L.L - top;
 }
 function renderVinylStats(busyText) {
-  const n = state.vinylLayout ? state.vinylLayout.items.length : 0;
+  const n = state.vinylLayout ? state.vinylLayout.items.length : 0, o = vOpts();
   ui.dropNote.hidden = designs.length > 0;
   for (const id of ['exVinylSvg', 'exVinylPlt', 'exVinylPdf']) byId(id).disabled = !n || !!busyText;
   if (busyText) { ui.count.textContent = busyText; return; }
@@ -262,7 +262,11 @@ function renderVinylStats(busyText) {
   for (const d of designs) {
     if (!d.vres) continue;
     const got = state.vinylLayout ? state.vinylLayout.counts.get(d.id) || 0 : 0;
-    if (d.qty != null && got < d.qty) notes.push(`Only ${got} of ${d.qty} copies of ${d.name} fit.`);
+    if (d.qty != null && got < d.qty && got > 0 && state.mode === 'vinyl') {
+      // more copies than the material length holds: that many lengths of it, cut one after the other
+      const runs = Math.ceil(d.qty / got), last = d.qty - (runs - 1) * got;
+      notes.push(`${d.name}: ${d.qty} pieces → ${runs} lengths of ${num(o.vLength)} mm (${got} per length, ${last} on the last); this file cuts the first ${got}.`);
+    } else if (d.qty != null && got < d.qty) notes.push(`Only ${got} of ${d.qty} copies of ${d.name} fit.`);
   }
   setMsg(notes.join(' '), false);
 }
