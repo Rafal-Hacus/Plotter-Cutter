@@ -10,7 +10,8 @@ const STROKE_TO = { S: 'n', s: 'n', B: 'f', 'B*': 'f*', b: 'f', 'b*': 'f*' };
 
 // content: Uint8Array of a content stream. isCut(name): whether the colour space resource `name` is a cut colour.
 // Returns { bytes, removed } (bytes is the input itself when nothing was removed).
-export function stripCutStrokes(content, isCut) {
+// opts.fillStroke: drop the stroke of every fill-and-stroke operator (B B* b b*) whatever its colour (and nothing else)
+export function stripCutStrokes(content, isCut, opts = {}) {
   const n = content.length, edits = [];
   let i = 0, lastName = null, cut = false;
   const stack = [];
@@ -53,7 +54,7 @@ export function stripCutStrokes(content, isCut) {
     else if (tok === 'Q') { if (stack.length) cut = stack.pop(); }
     else if (tok === 'CS') cut = !!(lastName && isCut(lastName));
     else if (tok === 'G' || tok === 'RG' || tok === 'K') cut = false;
-    else if (cut && STROKE_TO[tok]) edits.push([i, j, STROKE_TO[tok]]);
+    else if (opts.fillStroke ? /^[Bb]\*?$/.test(tok) : cut && STROKE_TO[tok]) edits.push([i, j, STROKE_TO[tok]]);
     if (!/^[-+.\d]+$/.test(tok)) lastName = null;
     i = j;
   }
@@ -141,4 +142,24 @@ export async function stripCutColour(PDFLib, bytes, cutName) {
   }
   if (!removed) return { bytes, removed: 0 };
   return { bytes: await doc.save({ useObjectStreams: false }), removed };
+}
+
+// The contour drawn as a stroked shape with an invisible fill (as Affinity writes it): its stroke taken out of page
+// `pageIndex`'s own content, so it doesn't print under the kiss cut. Only when that page's content has exactly one
+// fill-and-stroke operator (then it is the contour, which the caller found as the only one); else nothing changes.
+export async function stripFillStroke(PDFLib, bytes, pageIndex) {
+  const { PDFDocument, PDFName, PDFArray, PDFRawStream, PDFRef, decodePDFRawStream } = PDFLib;
+  const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false });
+  const ctx = doc.context, look = o => (o instanceof PDFRef ? ctx.lookup(o) : o), page = doc.getPages()[pageIndex];
+  const contents = page && look(page.node.get(PDFName.of('Contents')));
+  const list = !contents ? [] : contents instanceof PDFArray ? contents.asArray().map(look) : [contents];
+  if (!list.length || !list.every(x => x instanceof PDFRawStream)) return { bytes, removed: 0 };
+  const parts = list.map(x => decodePDFRawStream(x).decode());
+  let o = 0;
+  const all = new Uint8Array(parts.reduce((a, q) => a + q.length + 1, 0));
+  for (const q of parts) { all.set(q, o); o += q.length; all[o++] = 10; }
+  const r = stripCutStrokes(all, () => false, { fillStroke: true });
+  if (r.removed !== 1) return { bytes, removed: 0 };
+  page.node.set(PDFName.of('Contents'), ctx.register(ctx.flateStream(r.bytes, {})));
+  return { bytes: await doc.save({ useObjectStreams: false }), removed: 1 };
 }

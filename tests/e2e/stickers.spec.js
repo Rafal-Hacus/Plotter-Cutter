@@ -229,3 +229,26 @@ test('typed copies nest as densely as Fill: 6 per SRA3 sheet of a 96 x 145 mm st
   await expect(msg).toContainText('500 pieces → 84 sheets (+ 4 overs on the last).');
   noProblems(problems);
 });
+
+test('a PDF whose contour is a stroked shape with an invisible fill (as Affinity writes it) is cut along that line', async ({ page }) => {
+  const problems = await openApp(page);
+  await page.setInputFiles('#files', fixture('sticker-affinity-contour.pdf'));
+  const row = page.locator('#list li.design');
+  await expect(row.locator('.m')).toHaveValue('cut');
+  await expect(row.locator('.status')).toContainText('Kiss cut along the line drawn in the PDF', { timeout: 60_000 });
+  // the contour is 150 × 100 pt (with its 1 pt stroke) = 53 × 35.3 mm
+  await expect(row.locator('.status')).toContainText('Cut line 53 × 35.3 mm');
+  // the outline itself is left out of the print: no dark pixels along it in the picture the sticker prints from
+  await expect(row.locator('.status')).toContainText('The outline is left out of the print.');
+  const dark = await page.evaluate(async () => {
+    const el = document.querySelector('#list .thumb image');
+    const u = decodeURIComponent(el.getAttribute('href') || '').match(/data:image\/jpeg;base64,[A-Za-z0-9+/=]+/)[0], im = new Image();
+    im.src = u; await im.decode();
+    const c = document.createElement('canvas'); c.width = im.width; c.height = im.height; const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+    const d = g.getImageData(0, 0, c.width, c.height).data; let n = 0;
+    for (let k = 0; k < d.length; k += 4) if (d[k] < 80 && d[k + 1] < 80 && d[k + 2] < 80) n++;
+    return n;
+  });
+  expect(dark).toBe(0);
+  noProblems(problems);
+});
