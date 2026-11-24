@@ -21,7 +21,7 @@ import { renderPreview, schedule } from '../pipeline.js';
 import { readOpts } from '../settings.js';
 import { state } from '../state.js';
 import { applyView } from '../viewport.js';
-import { registerMode } from './registry.js';
+import { itemFiles, matchItems, registerJob, registerMode } from './registry.js';
 
 const roll = { items: [], sheets: [], tooBig: [], view: 0 };
 let nextId = 1;
@@ -71,7 +71,7 @@ async function addFiles(fileList) {
     try {
       if (!isPdfFile(f)) throw new Error('not a PDF');
       const copies = copiesFromName(f.name);
-      for (const it of await readPdf(f)) roll.items.push({ id: nextId++, copies, radius: o.rollRadius, cut: it.outer && o.rollOuter ? 'outer' : 'trim', ...it });
+      for (const it of await readPdf(f)) roll.items.push({ id: nextId++, copies, radius: o.rollRadius, cut: it.outer && o.rollOuter ? 'outer' : 'trim', ...it, src: f, part: it.page });
     } catch (e) { failed.push(`${f.name}: ${e.message || e}.`); }
   }
   state.loadError = failed.join(' ');
@@ -299,3 +299,21 @@ function rollExportCheck(o) {
     pltCheck(o, [[force, force === 'die' ? o.dieForce : o.kissForce]], { sheet: [W, used], pieces: N > 1 ? `${pieces} pieces in ${N} PLTs (one per section)` : pieces }), bladeNote(o)];
 }
 registerMode('roll', { compute, renderPreview: renderRollPreview, renderStats: renderRollStats, onDrop: addFiles, exportCheck: rollExportCheck });
+
+/* ---------- the job kept in the browser (see jobstore.js): the PDFs, each piece's copies, corner radius and cut ---------- */
+registerJob('roll', {
+  modes: ['roll'], label: 'Roll',
+  serialize() {
+    if (!roll.items.length) return null;
+    const { files, at } = itemFiles(roll.items);
+    const items = roll.items.map(it => ({ f: at(it), part: it.part, copies: it.copies, radius: it.radius, cut: it.cut }));
+    return { files, state: { items }, count: items.length };
+  },
+  async restore(saved, files) {
+    roll.items = [];
+    await addFiles(files);
+    roll.items = matchItems(roll.items, files, saved.items).map(([it, s]) => Object.assign(it, { copies: s.copies, radius: s.radius, cut: s.cut === 'outer' && !it.outer ? 'trim' : s.cut }));
+    list(); schedule();
+  },
+  clear() { roll.items = []; roll.sheets = []; roll.tooBig = []; list(); schedule(); }
+});

@@ -389,8 +389,10 @@
         <label id="backToggle" hidden><input type="checkbox" id="showBack">Back side</label>
         <span class="zoom" aria-label="Zoom"><button type="button" id="zOut" aria-label="Zoom out">−</button><span id="zLbl">100%</span><button type="button" id="zIn" aria-label="Zoom in">+</button><button type="button" id="zFit">Fit</button></span>
       </span>
+      <button type="button" class="link" id="jobClear" hidden title="Remove this mode’s files and what was set for them, here and from the browser’s autosave">Clear job</button>
       <span class="msg" id="msg" aria-live="polite"></span>
     </div>
+    <div class="jobrestore" id="jobRestore" role="status" hidden><button type="button" id="jobRestoreBtn">Restore last job</button><span id="jobRestoreInfo"></span><button type="button" class="link" id="jobRestoreNo">Discard it</button></div>
     <div class="stage" id="stage"></div>
     <div class="drop-note" id="dropNote">Drop SVG or PDF files here to start filling the sheet (a PDF with a CutContour line is cut along that line).</div>
   </main>

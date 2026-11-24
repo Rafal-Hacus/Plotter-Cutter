@@ -17,7 +17,7 @@ import { schedule } from '../pipeline.js';
 import { readOpts } from '../settings.js';
 import { state } from '../state.js';
 import { applyView } from '../viewport.js';
-import { registerMode } from './registry.js';
+import { itemFiles, registerJob, registerMode } from './registry.js';
 // Wagraf self-inking stamps: imprint sizes from the Wagraf catalogue
 export const STAMP_SIZES = { b1s: ['Wagraf B1s', 28, 12], b2: ['Wagraf B2', 39, 15], b3: ['Wagraf B3', 48, 19], b4: ['Wagraf B4', 59, 25] };
 const LAYER_FILL = { red: '#ff8080', blue: '#5078ff' };
@@ -440,7 +440,7 @@ async function addSvgs(files) {
       if (!/\.svg$/i.test(f.name) && f.type !== 'image/svg+xml') throw new Error('not an SVG');
       const svg = svgArt(await f.text());
       if (!svg.rings.length) throw new Error(svg.texts ? 'it only has text: convert the text to outlines (paths) first' : 'nothing filled or stroked in it');
-      stamps.items.push(newItem('svg', { svg, name: f.name }));
+      stamps.items.push(newItem('svg', { svg, name: f.name, src: f, part: 0 }));
     } catch (e) { failed.push(`${f.name}: ${e.message || e}.`); }
   }
   state.loadError = failed.join(' ');
@@ -586,3 +586,34 @@ byId('stSvgFile').addEventListener('change', e => { const files = Array.from(e.t
 
 list();
 registerMode('stamps', { compute, renderPreview, renderStats, onDrop: addSvgs });
+
+/* ---------- the job kept in the browser (see jobstore.js): every stamp's text and settings, the SVGs as loaded ---------- */
+const STAMP_FIELDS = ['kind', 'name', 'html', 'lines', 'font', 'spacing', 'spread', 'exact', 'size', 'w', 'h', 'copies', 'shape', 'radius', 'mx', 'my', 'rim', 'scale'];
+registerJob('stamps', {
+  modes: ['stamps'], label: 'Pieczątki',
+  serialize() {
+    if (!stamps.items.length) return null;
+    const { files, at } = itemFiles(stamps.items);
+    const items = stamps.items.map(it => {
+      const s = {};
+      for (const k of STAMP_FIELDS) if (it[k] !== undefined) s[k] = it[k];
+      if (it.kind === 'svg') s.f = at(it);
+      return s;
+    });
+    return { files, state: { items }, count: items.length };
+  },
+  async restore(saved, files) {
+    stamps.items = [];
+    const failed = [];
+    for (const s of saved.items) {
+      if (s.kind !== 'svg') { stamps.items.push(newItem('text', s)); continue; }
+      // an SVG stamp: its file read the way a new one is
+      const f = files[s.f];
+      try { stamps.items.push(newItem('svg', { ...s, svg: svgArt(await f.text()), src: f, part: 0 })); }
+      catch (e) { failed.push(`${f ? f.name : 'SVG'}: ${e.message || e}.`); }
+    }
+    state.loadError = failed.join(' ');
+    list(); schedule();
+  },
+  clear() { stamps.items = []; stamps.placed = []; stamps.tooBig = []; list(); schedule(); }
+});

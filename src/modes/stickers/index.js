@@ -8,7 +8,7 @@ import { isPdfFile, tick } from '../../core/util.js';
 import { EMPTY_LIST, setMsg, ui } from '../../dom.js';
 import { bladeNote, pdfCheck, pltCheck } from '../../export/check.js';
 import { ensureLibs, pdfSource } from '../../lib/pdf.js';
-import { registerMode } from '../registry.js';
+import { itemFiles, matchItems, registerJob, registerMode } from '../registry.js';
 import { prepareDesign, processDesign } from './design.js';
 import { renderStickerPreview, renderStickerStats } from './render.js';
 import { addRow, updateRow } from './rows.js';
@@ -147,6 +147,7 @@ export async function addFiles(fileList) {
   if (!designs.length) ui.list.innerHTML = '';
   const failed = [];
   for (const f of files) {
+    const before = designs.length;
     try {
       if (isPdfFile(f)) { setMsg(`Reading ${f.name}…`); await addPdfStickers(f); setMsg(''); continue; }
       const d = prepareDesign(await f.text(), f.name);
@@ -155,6 +156,9 @@ export async function addFiles(fileList) {
       designs.push(d); addRow(d);
     } catch (e) {
       failed.push(`${f.name}: ${e.message}`);
+    } finally {
+      // the file each design came from (its page in a PDF), for the autosave
+      designs.slice(before).forEach((d, k) => { d.src = f; d.part = k; });
     }
   }
   if (!designs.length) ui.list.innerHTML = EMPTY_LIST;
@@ -163,3 +167,41 @@ export async function addFiles(fileList) {
   schedule();
 }
 ui.files.addEventListener('change', () => { addFiles(ui.files.files); ui.files.value = ''; });
+
+/* ---------- the job kept in the browser (see jobstore.js); the vinyl and pen modes share it ---------- */
+function clearStickers() {
+  designs.length = 0; ui.list.innerHTML = EMPTY_LIST; state.layout = null; state.plan = null; state.vinylLayout = null;
+  schedule();
+}
+registerJob('stickers', {
+  modes: ['stickers', 'vinyl', 'pen'], label: 'Stickers',
+  serialize() {
+    if (!designs.length) return null;
+    const { files, at } = itemFiles(designs);
+    const items = designs.filter(d => d.src).map(d => ({
+      f: at(d), part: d.part, heightMm: d.heightMm, qty: d.qty, mode: d.mode, hEdited: !!d.hEdited, realSized: !!d.realSized,
+      circle: d.circle ? { kind: d.circle.kind, size: d.circle.size, x: d.circle.x, y: d.circle.y } : null
+    }));
+    return { files, state: { items }, count: items.length };
+  },
+  async restore(saved, files) {
+    clearStickers();
+    for (const f of files) await addFiles([f]);
+    const pairs = matchItems(designs, files, saved.items);
+    designs.length = 0;
+    for (const [d, s] of pairs) {
+      const c = d.circle;
+      if (c && s.circle && (c.kind !== s.circle.kind || c.size !== s.circle.size || c.x !== s.circle.x || c.y !== s.circle.y)) {
+        Object.assign(c, s.circle);
+        Object.assign(d, prepareDesign(pdfStickerSvg(c), d.name), { mode: c.kind === 'trace' ? 'trace' : 'cut' });
+      } else if (!c) d.mode = s.mode;
+      Object.assign(d, { heightMm: s.heightMm, qty: s.qty, hEdited: s.hEdited, realSized: s.realSized });
+      designs.push(d);
+    }
+    // the rows again, with the saved values in them
+    ui.list.innerHTML = designs.length ? '' : EMPTY_LIST;
+    for (const d of designs) addRow(d);
+    schedule();
+  },
+  clear: clearStickers
+});

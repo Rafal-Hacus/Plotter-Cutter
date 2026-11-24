@@ -156,7 +156,7 @@ byId('winFontFile').addEventListener('change', async e => {
   winNamesChanged();
 });
 // after the cards changed: the job's summary fields, the list, and (when the mode is open) the sheet
-function winSync() {
+export function winSync() {
   const it = job.items;
   job.bytes = it.length ? true : null; job.pages = 1;
   job.previews = it.length ? [it[0].preview] : [];
@@ -196,7 +196,7 @@ async function winIngest(items, bytes, fileName, { labels = null, bleed = null }
       if (state.mode === 'winietka') showBleed(job);
     }
     const preview = await renderShown(await pdf.getPage(i + 1), g, 6, 'image/jpeg', 0.85);
-    items.push({ name: labels ? labels[i] : pdf.numPages > 1 ? `${fileName} p.${i + 1}` : fileName, bytes, page: i, w: g.w, h: g.h, geom: g, preview });
+    items.push({ name: labels ? labels[i] : pdf.numPages > 1 ? `${fileName} p.${i + 1}` : fileName, file: fileName, bytes, page: i, w: g.w, h: g.h, geom: g, preview });
     if (i % 20 === 19) await tick();
   }
 }
