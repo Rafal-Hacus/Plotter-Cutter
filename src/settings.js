@@ -11,14 +11,18 @@ export const OPT_IDS = [
   'cTie', 'cTiePlace', 'cTieInset', 'cAlign', 'cShiftX', 'cShiftY', 'winSrc', 'winW', 'winH', 'winFont',
   'winSize', 'winColor', 'winBoth', 'winOffX', 'winOffY', 'winCopies', 'cFoldDir', 'sheetSize', 'sheetW',
   'sheetH', 'sheetFeed', 'sheetFeedMm', 'gPage', 'gPageW', 'gPageH', 'dxSize', 'dxW', 'dxH', 'gPages',
-  'gMarksBack', 'gSqueeze', 'ggSqueeze', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap',
+  'gMarksBack', 'gSqueeze', 'ggSqueeze', 'gEachSets', 'gMarkLen', 'gMarkOff', 'gEdge', 'gMarkRoom', 'gSize', 'gScale', 'cPerfCut', 'cPerfGap',
   'vWidth', 'vLength', 'vMargin', 'vGap', 'vWeed', 'vWeedMargin', 'vMirror', 'penForce', 'penFill', 'penStyle',
   'penSpacing', 'penAngle', 'batchMix', 'ggFormat', 'ggW', 'ggH', 'ggBleed', 'ggFit', 'ggAuto', 'ggGap',
-  'ggMarkLen', 'ggMarkOff', 'ggEdge', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap',
+  'ggMarkLen', 'ggMarkOff', 'ggEdge', 'ggMarkRoom', 'spDpi', 'sqW', 'sqH', 'sqSheetW', 'sqSheetH', 'sqMargin', 'sqGap',
   'stSize', 'stMarginX', 'stMarginY', 'stShoulder', 'stShoulderScale', 'stSlope', 'stSlopeWidth', 'stEdge', 'stGap', 'stBedEdge',
   'rollW', 'rollMargin', 'rollGap', 'rollBleed', 'rollRadius', 'rollOuter', 'rollTurn', 'rollMax', 'rollOnePage', 'rollForce',
   'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'
 ];
+
+// Machine calibration: the knife and the plotter, not the job. Saved settings ("presets") neither save nor apply them.
+export const MACHINE_IDS = ['bladeOffset', 'overcut'];
+export const JOB_IDS = OPT_IDS.filter(id => !MACHINE_IDS.includes(id));
 
 // The options as the code uses them: numbers checked against a lowest value, with a fallback when a field is
 // empty or not a number. A few are stored under a clearer name than their field's id.
@@ -61,10 +65,10 @@ export function readOpts() {
     // guillotine and card deck
     gGap: num('gSpace', 4, 0), gAuto: on('gAutoGap'), gSqueeze: on('gSqueeze'), gMargin: num('gEdge', 3, 0), gSize: text('gSize'), gScale: num('gScale', 100, 5),
     gPages: text('gPages'), gEachSets: count('gEachSets', 1), gMarksBack: on('gMarksBack'),
-    gMarkLen: num('gMarkLen', 5, 1), gMarkOff: num('gMarkOff', 3, 0), deckSets: count('deckSets', 10), deckOrder: text('deckOrder'),
+    gMarkLen: num('gMarkLen', 5, 1), gMarkOff: num('gMarkOff', 3, 0), gMarkRoom: on('gMarkRoom'), deckSets: count('deckSets', 10), deckOrder: text('deckOrder'),
     // print sheets
     ggFormat: text('ggFormat'), ggW: num('ggW', 100, 5), ggH: num('ggH', 150, 5), ggBleed: num('ggBleed', 2, 0), ggFit: text('ggFit'),
-    ggAuto: on('ggAuto'), ggSqueeze: on('ggSqueeze'), ggGap: num('ggGap', 4, 0), ggMarkLen: num('ggMarkLen', 5, 1), ggMarkOff: num('ggMarkOff', 3, 0), ggEdge: num('ggEdge', 3, 0),
+    ggAuto: on('ggAuto'), ggSqueeze: on('ggSqueeze'), ggGap: num('ggGap', 4, 0), ggMarkLen: num('ggMarkLen', 5, 1), ggMarkOff: num('ggMarkOff', 3, 0), ggEdge: num('ggEdge', 3, 0), ggMarkRoom: on('ggMarkRoom'),
     // vinyl and pen
     vWidth: num('vWidth', 300, 20), vLength: num('vLength', 1000, 20), vMargin: num('vMargin', 5, 0), vGap: num('vGap', 3, 0),
     vWeed: text('vWeed'), vWeedMargin: num('vWeedMargin', 3, 0), vMirror: on('vMirror'),

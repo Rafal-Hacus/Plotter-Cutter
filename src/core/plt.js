@@ -153,9 +153,14 @@ export function containment(loops) {
 //         knife is set (frame.bottom/right: the start point in sheet mm; top/left unused) }.
 // sheetLoops: closed outlines in sheet mm; openLines, ...laterLines: groups of open lines cut first, in order
 // (a group with .ordered = true keeps its exact order and direction).
+// The header SignCut writes for a sheet with registration marks (FX, FY: the mark frame in PLT units).
+export function markHeader(frame) {
+  const FX = Math.round((frame.bottom - frame.top) * 40), FY = Math.round((frame.right - frame.left) * 40);
+  return { FX, FY, head: `IN FSIZE${FX},${FY} CMD:32,0,0,400,400;CMD:18,1;CMD:103,0;CMD:35,1,1,0;TB26,${FX},${FY} CMD:35,1;` };
+}
 export function writePlt(frame, opts, sheetLoops, openLines = [], ...laterLines) {
-  const { top, bottom, left, right } = frame, force = opts.force, oc = opts.overcut * 40, bo = opts.bladeOffset * 40;
-  const FX = Math.round((bottom - top) * 40), FY = Math.round((right - left) * 40);
+  const { bottom, right } = frame, force = opts.force, oc = opts.overcut * 40, bo = opts.bladeOffset * 40;
+  const { FX, head } = markHeader(frame);
   const loops = [];
   for (const loop of sheetLoops) {
     const pts = [];
@@ -166,7 +171,7 @@ export function writePlt(frame, opts, sheetLoops, openLines = [], ...laterLines)
     if (pts.length > 2) loops.push(pts);
   }
   const markless = !!opts.markless;
-  const out = [markless ? 'IN' : `IN FSIZE${FX},${FY} CMD:32,0,0,400,400;CMD:18,1;CMD:103,0;CMD:35,1,1,0;TB26,${FX},${FY} CMD:35,1;`];
+  const out = [markless ? 'IN' : head];
   if (opts.pltForce) out.push(...speedTokens(opts, force));
   // blade offset: the tip trails the holder axis, so the axis path is shifted ahead and swivels around corners
   let bdir = [1, 0], maxX = 0;

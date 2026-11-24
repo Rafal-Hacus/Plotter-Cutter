@@ -29,10 +29,10 @@
         <button type="button" class="primary" id="presetNameOk">Save</button><button type="button" id="presetNameCancel">Cancel</button>
       </div>
       <p class="hint" id="presetMsg" role="status"></p>
-      <p class="hint">Saves the mode and every setting (cut lines, sheet, layout, cards, PLT…) on the server. Picking one applies it; the default loads when the app opens.</p>
+      <p class="hint">Saves the mode and every setting (cut lines, sheet, layout, cards, PLT…) on the server. Picking one applies it; the default loads when the app opens. The blade offset and overcut belong to the plotter: they are not saved here, and picking saved settings leaves them as they are.</p>
     </section>
     <nav class="modes" aria-label="Mode"><div class="mgroup" role="group" aria-label="Print &amp; cut"><span class="mlabel">Print &amp; cut</span><div class="mbtns"><button type="button" data-mode="stickers" aria-pressed="true">Stickers</button><button type="button" data-mode="cards" aria-pressed="false">Business cards</button><button type="button" data-mode="vouchers" aria-pressed="false">Vouchers</button><button type="button" data-mode="winietka" aria-pressed="false">Winietki</button><button type="button" data-mode="roll" aria-pressed="false">Roll</button></div></div><div class="mgroup" role="group" aria-label="Print for the guillotine"><span class="mlabel">Print for the guillotine</span><div class="mbtns"><button type="button" data-mode="guillotine" aria-pressed="false">Guillotine</button><button type="button" data-mode="deck" aria-pressed="false">Card deck</button><button type="button" data-mode="gang" aria-pressed="false">Print sheets</button><button type="button" data-mode="morgana" aria-pressed="false">Morgana CardXtra</button><button type="button" data-mode="duplex" aria-pressed="false">Duplex test</button></div></div><div class="mgroup" role="group" aria-label="Cut or draw only"><span class="mlabel">Cut or draw only</span><div class="mbtns"><button type="button" data-mode="vinyl" aria-pressed="false">Vinyl</button><button type="button" data-mode="pen" aria-pressed="false">Pen</button><button type="button" data-mode="squares" aria-pressed="false">Squares</button><button type="button" data-mode="svgplt" aria-pressed="false">SVG to PLT</button></div></div><div class="mgroup" role="group" aria-label="Laser (xTool)"><span class="mlabel">Laser (xTool)</span><div class="mbtns"><button type="button" data-mode="stamps" aria-pressed="false">Pieczątki</button></div></div></nav>
-    <div class="tools" role="group" aria-label="Tools"><span class="mlabel">Tools</span><button type="button" id="toolModOpen" aria-haspopup="dialog" aria-controls="toolMod">PLT modifier…</button></div>
+    <div class="tools" role="group" aria-label="Tools"><span class="mlabel">Tools</span><button type="button" id="toolModOpen" aria-haspopup="dialog" aria-controls="toolMod">PLT modifier…</button><button type="button" id="toolTestOpen" aria-haspopup="dialog" aria-controls="toolTest">Test cut…</button></div>
 
     <section aria-labelledby="h-stickers" id="secStickers">
       <h2 id="h-stickers">Stickers</h2>
@@ -147,6 +147,7 @@
         <div class="row"><label for="gMarkLen">Crop mark length</label><span class="mm"><input id="gMarkLen" type="number" min="1" step="0.5" value="5">mm</span></div>
         <div class="row"><label for="gMarkOff">Crop mark distance from the cut</label><span class="mm"><input id="gMarkOff" type="number" min="0" step="0.5" value="3">mm</span></div>
         <div class="row"><label for="gEdge">Unprintable sheet edge</label><span class="mm"><input id="gEdge" type="number" min="0" step="0.5" value="3">mm</span></div>
+        <div class="row"><label for="gMarkRoom">Always leave room for crop marks (even when that fits fewer copies)</label><input id="gMarkRoom" type="checkbox"></div>
         <p class="hint">With a gap, every copy gets its own cuts (two cuts between neighbours) and keeps its bleed up to half the gap, so an imprecise guillotine cut still lands on artwork. 0 mm means shared single cuts.</p>
       </div>
       <p class="hint" id="cardsCutHint">Cards are cut with the die cut settings. Straight lines need square corners (with a corner radius each card gets its own rectangle). Use the back shift to correct your printer’s duplex misalignment.</p>
@@ -194,6 +195,7 @@
       <div class="row"><label for="ggMarkLen">Crop mark length</label><span class="mm"><input id="ggMarkLen" type="number" min="1" step="0.5" value="5">mm</span></div>
       <div class="row"><label for="ggMarkOff">Crop mark distance from the cut</label><span class="mm"><input id="ggMarkOff" type="number" min="0" step="0.5" value="3">mm</span></div>
       <div class="row"><label for="ggEdge">Unprintable sheet edge</label><span class="mm"><input id="ggEdge" type="number" min="0" step="0.5" value="3">mm</span></div>
+      <div class="row"><label for="ggMarkRoom">Always leave room for crop marks (even when that fits fewer copies)</label><input id="ggMarkRoom" type="checkbox"></div>
       <div class="row"><label for="gangSheet">Preview</label><select id="gangSheet"><option value="0">Sheet 1</option></select></div>
     </section>
 
@@ -330,6 +332,18 @@
       <div class="row"><label for="die">Easy-peel margin (die cut)</label><span class="mm"><input id="die" type="number" min="0" step="0.5" value="2">mm</span></div>
       <div class="row"><label for="gap">Space between die cuts</label><span class="mm"><input id="gap" type="number" min="0" step="0.5" value="2">mm</span></div>
       <div class="row"><label for="borderFill">Fill the border</label><span class="mm"><input id="borderFill" type="checkbox" checked><input id="borderColor" type="color" value="#ffffff" aria-label="Border fill color"></span></div>
+      <div class="row"><label for="matSel">Material</label><span class="presetpick"><select id="matSel"></select><span class="dirty" id="matDirty" hidden>changed</span></span></div>
+      <div class="actions">
+        <button type="button" id="matUpdate" disabled>Save</button>
+        <button type="button" id="matSave">Save as new…</button>
+        <button type="button" id="matDelete" disabled>Delete</button>
+      </div>
+      <div class="presetname" id="matNameRow" hidden>
+        <input type="text" id="matName" maxlength="80" placeholder="Name, e.g. Glossy vinyl" aria-label="Name for the material profile" autocomplete="off">
+        <button type="button" class="primary" id="matNameOk">Save</button><button type="button" id="matNameCancel">Cancel</button>
+        <label class="hint"><input type="checkbox" id="matKnife"> with this blade offset and overcut (another knife)</label>
+      </div>
+      <p class="hint">A material profile holds the kiss and die cut force and the speeds (under Knife, force and speed below), kept in this browser. Choosing one fills those fields; test new material with Tools → Test cut.</p>
       <details class="sub"><summary>Colours and layer names</summary>
       <div class="row"><label for="kissColor">Kiss cut color</label><input id="kissColor" type="color" value="#231f20"></div>
       <div class="row"><label for="dieColor">Die cut color</label><input id="dieColor" type="color" value="#231f20"></div>
@@ -409,6 +423,19 @@
     <div class="row"><label for="modClean">Fix dense paths (fewer micro-moves)</label><input id="modClean" type="checkbox" checked></div>
     <div class="row"><label for="modTwice">Cut every line twice</label><input id="modTwice" type="checkbox"></div>
     <div class="actions"><button type="button" class="primary" id="exMod" disabled>Download modified PLTs (zip)</button></div>
+  </div>
+</dialog>
+<dialog id="toolTest" class="tool" aria-labelledby="h-test">
+  <header class="toolhead"><h2 id="h-test">Test cut</h2><button type="button" class="link" id="toolTestClose">Close</button></header>
+  <div class="toolbody">
+    <p class="hint">Checks the knife on one sheet of the material, with the current sheet size, registration marks and Cut lines settings. The zip has a print PDF and four PLTs: print the PDF at 100 %, then send the PLTs in order.</p>
+    <ol class="hint">
+      <li><b>1-blade-offset</b>: five 10 mm squares, left to right with blade offset 0.25, 0.30, 0.35, 0.40 and 0.50 mm (printed under each), at the kiss force. Rounded corners: too small; a hook or loop at the corners: too large. Put the value of the square with sharp, clean corners in Cut lines → Blade offset.</li>
+      <li><b>2-marks</b>: a small cross on each printed target A–D (ticks every 0.5 mm). Off by the same amount on all four: set that as the mark (sensor) offset in the cutter’s settings. More off towards one side: the print was scaled; print at 100 %.</li>
+      <li><b>3-kiss</b> and <b>4-die</b>: a 15 mm square at the kiss force (cuts the face, not the backing) and at the die force (the square comes out). Adjust the forces under Cut lines and save them in the material profile.</li>
+    </ol>
+    <div class="actions"><button type="button" class="primary" id="exTestCut">Download test cut (zip)</button></div>
+    <p class="hint" id="testCutMsg" role="status"></p>
   </div>
 </dialog>
 <dialog id="imgEditor" class="editor" aria-labelledby="edTitle">

@@ -23,7 +23,7 @@ const gang = { items: [], layout: null, sheets: 0, view: 0 };
 let gangNext = 1;
 const GFORMATS = { '100x150': [100, 150], '130x180': [130, 180], A6: [105, 148], A5: [148, 210], A4: [210, 297], A3: [297, 420], DL: [99, 210], '90x50': [90, 50], '85x55': [85, 55] };
 function gangOpts(o) { // the guillotine engine, fed with this mode's own settings
-  return { ...o, cBleed: o.ggBleed, gAuto: o.ggAuto, gSqueeze: o.ggSqueeze, gGap: o.ggGap, gMarkLen: o.ggMarkLen, gMarkOff: o.ggMarkOff, gMargin: o.ggEdge, gSize: 'orig' };
+  return { ...o, cBleed: o.ggBleed, gAuto: o.ggAuto, gSqueeze: o.ggSqueeze, gGap: o.ggGap, gMarkLen: o.ggMarkLen, gMarkOff: o.ggMarkOff, gMargin: o.ggEdge, gMarkRoom: o.ggMarkRoom, gSize: 'orig' };
 }
 // "As in the file": the trim of the first PDF page (pictures have no size in mm; with only pictures it is 10 × 15)
 const sizedItem = () => gang.items.find(it => it.trim);

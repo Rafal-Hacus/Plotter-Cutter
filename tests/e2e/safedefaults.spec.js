@@ -53,16 +53,18 @@ test('guillotine: the narrowed gap is said, can be turned off, and the unprintab
   noProblems(problems);
 });
 
-test('guillotine: crop marks shorter than 3 mm are warned about', async ({ page }) => {
+test('guillotine: crop marks that would print short are said, with how many full ones would leave', async ({ page }) => {
   const problems = await openApp(page);
   await mode(page, 'guillotine');
   await setField(page, 'gEdge', 0);
+  await setField(page, 'gMarkLen', 8);
   await page.setInputFiles('#cardFile', { name: 'card-90x50.pdf', mimeType: 'application/pdf', buffer: await turnedPdf(90, 50, 0, { bleed: 3 }) });
-  // 24 at a 4.5 mm gap, 4.25 mm from the top edge: the top and bottom marks are 1.25 mm stubs
+  // 24 at a 4.5 mm gap, 4.25 mm from the top edge: the top and bottom marks are 1.25 mm stubs; room for 8 mm marks fits 21
   await expect(msg(page)).toContainText('Space between copies 4.5 mm');
-  await expect(msg(page)).toContainText('Crop marks at the top (1.3 mm) and bottom (1.3 mm) print shorter than 3 mm.');
+  await expect(msg(page)).toContainText('Room for full crop marks would fit 21 instead of 24: marks at the top and bottom are 1.3 mm (full length 8 mm).');
   await setField(page, 'gEdge', 3);
-  await expect(msg(page)).toContainText('Not enough room for printable crop marks at the top and bottom.');
+  await setField(page, 'gMarkLen', 5);
+  await expect(msg(page)).toContainText('Room for full crop marks would fit 21 instead of 24: marks at the top and bottom are not printed (full length 5 mm).');
   noProblems(problems);
 });
 

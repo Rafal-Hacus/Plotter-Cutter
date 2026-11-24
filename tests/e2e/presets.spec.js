@@ -110,6 +110,44 @@ test('settings save in Roll too; saved settings with a slip in them (26 mm blade
   }
 });
 
+test('saved settings (job presets) neither save nor overwrite the blade offset and overcut', async ({ page }) => {
+  await signIn(page);
+  await setField(page, 'bladeOffset', '0.4');
+  await setField(page, 'kissForce', '70');
+  await page.click('#presetSave');
+  await page.fill('#presetName', 'Calibration test');
+  await page.click('#presetNameOk');
+  await expect(page.locator('#presetMsg')).toHaveText('Saved “Calibration test”.');
+  const saved = await page.evaluate(async () => {
+    const id = (await (await fetch('api/presets')).json()).presets.find(p => p.name === 'Calibration test').id;
+    return { id, settings: (await (await fetch('api/presets/' + id)).json()).settings };
+  });
+  expect(saved.settings).not.toHaveProperty('bladeOffset');
+  expect(saved.settings).not.toHaveProperty('overcut');
+  expect(saved.settings.kissForce).toBe('70');
+  // a preset saved before this still carries them: picking it keeps the plotter's values
+  await page.evaluate(async s => {
+    const r = await fetch('api/presets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Old with knife', mode: 'stickers', settings: { ...s, bladeOffset: '0.25', overcut: '1.5', kissForce: '66' } }) });
+    if (!r.ok) throw new Error(await r.text());
+  }, saved.settings);
+  await setField(page, 'bladeOffset', '0.45');
+  await setField(page, 'overcut', '0.7');
+  await page.reload();
+  await expect(page.locator('#secPresets')).toBeVisible();
+  await page.selectOption('#presetSel', { label: 'Old with knife' });
+  await expect(page.locator('#presetMsg')).toHaveText('Applied “Old with knife”.');
+  await expect(page.locator('#kissForce')).toHaveValue('66');
+  await expect(page.locator('#bladeOffset')).toHaveValue('0.45');
+  await expect(page.locator('#overcut')).toHaveValue('0.7');
+  await expect(page.locator('#presetDirty')).toBeHidden();
+  for (const name of ['Old with knife', 'Calibration test']) {
+    await page.selectOption('#presetSel', { label: name });
+    page.once('dialog', d => d.accept());
+    await page.click('#presetDelete');
+    await expect(page.locator('#presetMsg')).toHaveText(`Deleted “${name}”.`);
+  }
+});
+
 test('signing out goes back to the login page', async ({ page }) => {
   await signIn(page);
   await page.click('#signOut');
