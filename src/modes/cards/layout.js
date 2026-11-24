@@ -51,20 +51,23 @@ export function markSide(L, o, space) {
   const off = Math.max(L.b, Math.min(o.gMarkOff, avail - 1.5)), end = Math.min(off + o.gMarkLen, space);
   return end - off >= 0.5 ? { off, end, printable: Math.max(0, Math.min(end, avail) - off) } : null;
 }
-// The sides whose crop marks print shorter than 3 mm (or not at all): [[side, printable mm], …]. With no unprintable
-// edge set, the marks run off the sheet into the part the printer can't reach and come out as stubs.
+// The sides whose crop marks print shorter than full length (or not at all): [[side, printable mm], …].
 export function shortMarks(L, o) {
   const sides = [['top', L.sy], ['bottom', G_PAGE.hMm - L.sy - L.totH], ['left', L.sx], ['right', G_PAGE.wMm - L.sx - L.totW]];
-  return sides.map(([name, space]) => { const m = markSide(L, o, space); return [name, m ? m.printable : 0]; }).filter(([, p]) => p < 3);
+  return sides.map(([name, space]) => { const m = markSide(L, o, space); return [name, m ? m.printable : 0]; }).filter(([, p]) => p < o.gMarkLen - 0.05);
 }
+// Said when the copies won over the room for the marks (see computeCardLayout): how many full-length marks would
+// leave, and which sides print short. Nothing when the marks are full length.
 export function shortMarksNote(L, o) {
+  if (!L || !L.n || !L.guil) return '';
   const short = shortMarks(L, o);
   if (!short.length) return '';
-  const none = short.filter(([, p]) => p < 1).map(([n]) => n), stub = short.filter(([, p]) => p >= 1);
-  const list = a => a.length > 1 ? `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}` : a[0], parts = [];
-  if (none.length) parts.push(`Not enough room for printable crop marks at the ${list(none)}.`);
-  if (stub.length) parts.push(`Crop marks at the ${list(stub.map(([n, p]) => `${n} (${mm1(p)} mm)`))} print shorter than 3 mm.`);
-  return `${parts.join(' ')} Use the cut positions below, or set the unprintable edge to what your printer really leaves white.`;
+  const list = a => a.length > 1 ? `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}` : a[0];
+  const groups = new Map(); // sides with the same length said together
+  for (const [n, p] of short) { const k = p < 0.5 ? 'not printed' : `${mm1(p)} mm`; groups.set(k, [...(groups.get(k) || []), n]); }
+  const sides = [...groups].map(([k, ns], i) => `${ns.length === 4 ? 'on all sides' : `at the ${list(ns)}`}${i ? '' : ' are'} ${k}`);
+  const room = L.marks && !L.marks.reserved ? `Room for full crop marks would fit ${L.marks.nRoom} instead of ${L.n}: marks` : 'Crop marks';
+  return `${room} ${list(sides)} (full length ${mm1(o.gMarkLen)} mm). Tick “Always leave room for crop marks” to keep them full length, or use the cut positions below.`;
 }
 // The gap the guillotine layout uses, said plainly: narrowed from 2 × bleed to fit more, and how much bleed that leaves
 export function gapNote(L, o, many = 'copies') {
@@ -194,14 +197,18 @@ export function computeCardLayout(sheet, o, job = state.job) {
   const guil = state.mode === 'guillotine' || state.mode === 'gang' || state.mode === 'deck';
   const sc = pageScale(o), pw = job.pageW * sc, ph = job.pageH * sc;
   const b = o.cBleed * sc, tw = pw - 2 * b, th = ph - 2 * b;
-  // auto: the gap is the two bleeds (after scaling), so the space between the cuts is fully printed; if a narrower
-  // gap (not under 3 mm, still two cuts) fits more copies, the widest such gap is used and the inner bleed trimmed to half of it
-  let gap = guil ? (o.gAuto ? 2 * b : o.gGap) : o.cGap;
-  let X0, Y0, W, H, e, squeezed = null;
-  if (guil) {
-    // trim + bleed must sit inside the printable sheet; crop marks use whatever room is left
-    const ins = o.gMargin + b;
-    X0 = ins; Y0 = ins; W = G_PAGE.wMm - 2 * ins; H = G_PAGE.hMm - 2 * ins; e = 0;
+  if (!guil) {
+    if (!sheet || !sheet.free) return null;
+    const f = sheet.free, gap = o.cGap;
+    return cardGrid({ b, tw, th, pw, ph, sc, guil }, f.x0 * CELL, f.y0 * CELL, (f.x1 - f.x0 + 1) * CELL, (f.y1 - f.y0 + 1) * CELL, Math.min(b, gap / 2), gap, null);
+  }
+  const dims = { b, tw, th, pw, ph, sc, guil };
+  // trim + bleed must sit inside the printable sheet; with `room`, so must full-length crop marks (see markRoom)
+  const fit = room => {
+    const ins = o.gMargin + (room ? markRoom(b, o) : b), W = G_PAGE.wMm - 2 * ins, H = G_PAGE.hMm - 2 * ins;
+    // auto: the gap is the two bleeds (after scaling), so the space between the cuts is fully printed; if a narrower
+    // gap (not under 3 mm, still two cuts) fits more copies, the widest such gap is used and the inner bleed trimmed to half of it
+    let gap = o.gAuto ? 2 * b : o.gGap, squeezed = null;
     if (o.gAuto && o.gSqueeze !== false && tw > 0 && th > 0) {
       const count = g => Math.max(...[[tw, th], [th, tw]].map(([cw, ch]) => Math.max(0, Math.floor((W + g) / (cw + g))) * Math.max(0, Math.floor((H + g) / (ch + g)))));
       let bestG = gap, bestN = count(gap);
@@ -211,13 +218,21 @@ export function computeCardLayout(sheet, o, job = state.job) {
       if (bestG < gap) squeezed = { gap2b: gap, n2b: at2b };
       gap = bestG;
     }
-  } else {
-    if (!sheet || !sheet.free) return null;
-    const f = sheet.free;
-    X0 = f.x0 * CELL; Y0 = f.y0 * CELL; W = (f.x1 - f.x0 + 1) * CELL; H = (f.y1 - f.y0 + 1) * CELL; e = Math.min(b, gap / 2);
-  }
+    return cardGrid(dims, ins, ins, W, H, 0, gap, squeezed);
+  };
+  // Room for the crop marks is kept when it costs no copies (or when asked to always keep it); otherwise the copies
+  // win and the marks get what is left, said next to the layout (shortMarksNote)
+  const withRoom = fit(true), without = fit(false), keep = o.gMarkRoom || withRoom.n >= without.n;
+  return { ...(keep ? withRoom : without), marks: { reserved: keep, nRoom: withRoom.n, nTight: without.n } };
+}
+// The room between the trim and the printable edge that full-length crop marks need: their offset from the cut
+// (never closer than the bleed, see markSide) plus their length
+export const markRoom = (b, o) => Math.max(b, o.gMarkOff) + o.gMarkLen;
+// The grid of cards in the area X0, Y0, W × H (sheet mm), each kept e in from its edges.
+function cardGrid(dims, X0, Y0, W, H, e, gap, squeezed) {
+  const { b, tw, th, ph, guil } = dims;
   const inner = Math.min(b, gap / 2), outer = guil ? b : inner;
-  const base = { n: 0, items: [], b, tw, th, e, gap, guil, pw, ph, sc, squeezed, inner };
+  const base = { n: 0, items: [], ...dims, e, gap, squeezed, inner };
   if (tw <= 0 || th <= 0 || W <= 0 || H <= 0) return base;
   let best = null;
   for (const rot of [0, 90]) {

@@ -10,12 +10,13 @@ const asksToLeave = page => page.evaluate(() => { const e = new Event('beforeunl
 const saved = page => expect.poll(() => asksToLeave(page), { timeout: 30_000 }).toBe(false);
 // the files of a PLT zip, without the zip's own dates
 const pltFiles = buf => Object.fromEntries(Object.entries(unzip(buf)).map(([k, v]) => [k, v.toString('latin1')]));
-async function reloadAndRestore(page, files) {
+// after a reload: one line per mode's job kept, each with its own button; all of them brought back
+async function reloadAndRestore(page, jobs) {
   await page.reload();
-  const btn = page.locator('#jobRestoreBtn');
-  await expect(btn).toBeVisible();
-  await expect(btn).toHaveText(new RegExp(`^Restore last job \\(${files} files?, saved \\d\\d:\\d\\d\\)$`));
-  await btn.click();
+  const rows = page.locator('#jobRestoreList li');
+  await expect(rows).toHaveCount(jobs);
+  for (const r of await rows.all()) await expect(r).toHaveText(/^.+: .+ · \d\d:\d\dBring it back$/);
+  await page.click(jobs > 1 ? '#jobRestoreAll' : '#jobRestoreList .jrBring');
   await expect(page.locator('#jobRestore')).toBeHidden();
 }
 
@@ -34,7 +35,7 @@ test('autosave: a sticker job (SVG + PDF, height and copies set) comes back afte
   const plt = pltFiles(await download(page, 'exPlt'));
   await saved(page);
 
-  await reloadAndRestore(page, 2);
+  await reloadAndRestore(page, 1);
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0).locator('.h')).toHaveValue('30');
   await expect(rows.nth(1).locator('.q')).toHaveValue('3');
@@ -73,8 +74,8 @@ test('autosave: the open mode is remembered; a roll job comes back with its copi
   await page.reload();
   // the mode opens by itself; the job is offered
   await expect(page.locator('.modes button[data-mode="roll"]')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#jobRestoreInfo')).toHaveText('Roll: 2 files');
-  await reloadAndRestore(page, 2);
+  await expect(page.locator('#jobRestoreList li span')).toHaveText(/^Roll: 2 files 'sign_100x150mm_3szt\.pdf', 'label_80x30mm_4pcs\.pdf' · \d\d:\d\d$/);
+  await reloadAndRestore(page, 1);
   await expect(page.locator('#count')).toHaveText(count);
   await expect(rows.nth(0).locator('.rc')).toHaveValue('outer');
   await expect(rows.nth(1).locator('.rq')).toHaveValue('2');
@@ -131,11 +132,10 @@ test('autosave: a business card PDF with a typed bleed comes back, with the same
   const plt = pltFiles(await download(page, 'exCardPlt'));
   await saved(page);
 
-  // reloaded in another mode: the card job is restored in its own mode, and the open mode stays
+  // reloaded in another mode: the card job is restored in its own mode, which its own button opens
   await mode(page, 'stickers');
   await reloadAndRestore(page, 1);
-  await expect(page.locator('.modes button[data-mode="stickers"]')).toHaveAttribute('aria-pressed', 'true');
-  await mode(page, 'cards');
+  await expect(page.locator('.modes button[data-mode="cards"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#cardInfo')).toContainText('card.pdf: 113 × 63 mm card + 3.5 mm bleed (as typed');
   await expect(page.locator('#count')).toHaveText(count);
   expect(pltFiles(await download(page, 'exCardPlt'))).toEqual(plt);
@@ -171,7 +171,7 @@ test('autosave: jobs of several modes come back in one go: print sheets, winietk
   await page.locator('#spGroups .spF').nth(0).fill('77');
   await saved(page);
 
-  await reloadAndRestore(page, 4);
+  await reloadAndRestore(page, 3);
   await expect(page.locator('.modes button[data-mode="svgplt"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#spGroups .spInc').nth(1)).not.toBeChecked();
   await expect(page.locator('#spGroups .spInc').nth(0)).toBeChecked();

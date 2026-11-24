@@ -46,13 +46,14 @@ test('edit picture: AI fills the rest of the page (runs the real model in the br
   await setField(page, 'edEmpty', 'ai');
   expect(await page.evaluate(() => crossOriginIsolated)).toBe(true); // so the AI may use all processor cores
   await page.click('#edApply');
-  // the AI runs in a background thread: the page keeps responding (a 50 ms timer is never more than 150 ms late)
+  // the AI runs in a background thread: the page keeps responding (a 50 ms timer is never more than 500 ms late;
+  // on the main thread it would be seconds. 500, not less: a busy test machine alone makes timers ~400 ms late)
   const worstDelay = await page.evaluate(async () => {
     let worst = 0;
     while (document.getElementById('edUse').hidden) { const t = performance.now(); await new Promise(r => setTimeout(r, 50)); worst = Math.max(worst, performance.now() - t - 50); }
     return worst;
   });
-  expect(worstDelay).toBeLessThan(150);
+  expect(worstDelay).toBeLessThan(500);
   await expect(page.locator('#edUse')).toBeVisible({ timeout: 200_000 });
   await expect(page.locator('#edStatus')).toContainText('Check the result');
   // the finished page: 30 + 2 x 2 mm by 45 + 2 x 2 mm at 300 dpi, and no white left where the picture didn't reach

@@ -11,7 +11,7 @@ import { SHAPES, expandUses, flattenPath, num, parseSvg } from '../core/svg.js';
 import { BED, buildXsFiles } from '../core/xs.js';
 import { makeZipDeflated } from '../core/zip.js';
 import { PT } from '../core/matrix.js';
-import { byId, plural, saveFile, setMsg, ui } from '../dom.js';
+import { byId, emptyItem, plural, restoreHint, saveFile, setMsg, ui } from '../dom.js';
 import { ensureLibs } from '../lib/pdf.js';
 import { schedule } from '../pipeline.js';
 import { readOpts } from '../settings.js';
@@ -165,7 +165,7 @@ function sizeOptions() {
 function list() {
   const ul = byId('stList');
   ul.innerHTML = '';
-  if (!stamps.items.length) { ul.innerHTML = '<li class="empty">No stamps yet.</li>'; return; }
+  if (!stamps.items.length) { ul.innerHTML = emptyItem('No stamps yet.'); return; }
   for (const it of stamps.items) {
     const li = document.createElement('li');
     li.className = 'design stamp';
@@ -173,10 +173,11 @@ function list() {
       <div class="dname"></div>
       ${it.kind === 'text' ? `<div class="steditbar" role="toolbar" aria-label="Text formatting">
           <button type="button" data-cmd="bold" title="Bold (Ctrl+B)" aria-label="Bold"><b>B</b></button><button type="button" data-cmd="italic" title="Italic (Ctrl+I)" aria-label="Italic"><i>I</i></button><button type="button" data-cmd="underline" title="Underline (Ctrl+U)" aria-label="Underline"><u>U</u></button>
-          <span class="sep"></span><button type="button" data-size="0.9" title="Smaller line" aria-label="Smaller line">A−</button><label class="stptl" title="Size of the line(s) with the cursor, in points"><input type="number" class="stpt" min="3" max="72" step="0.5" aria-label="Line size in pt">pt</label><button type="button" data-size="1.1" title="Bigger line" aria-label="Bigger line">A+</button>
+          <span class="sep"></span><button type="button" data-size="0.9" title="Smaller line" aria-label="Smaller line">A−</button><label class="stptl" title="Select lines to size only them; with nothing selected every line gets this size">Size (pt): the selected lines, or all lines<input type="number" class="stpt" min="3" max="72" step="0.5" aria-label="Size (pt): the selected lines, or all lines"></label><button type="button" data-size="1.1" title="Bigger line" aria-label="Bigger line">A+</button>
           <span class="sep"></span><button type="button" data-align="left" title="Align left" aria-label="Align left">⇤</button><button type="button" data-align="center" title="Centre" aria-label="Centre">≡</button><button type="button" data-align="right" title="Align right" aria-label="Align right">⇥</button>
         </div>
         <div class="steditor" contenteditable="true" spellcheck="false" role="textbox" aria-multiline="true" aria-label="Text of the stamp"></div>
+        <p class="stmixed securenote" hidden></p>
         <div class="fields"><label>Font<select class="stfont"></select></label>
         <label>Line spacing<input type="number" class="stspacing" min="80" max="250" step="5"> %</label>
         <label class="check"><input type="checkbox" class="stspread"> Spread the lines to fill the height</label></div>
@@ -200,7 +201,14 @@ function list() {
       const showFont = () => cssFamily(it.font).then(ff => { ed.style.fontFamily = ff; }).catch(() => {});
       showFont();
       // the editor's font follows the stamp's font where the browser has it (only a guide: the stamp is drawn exactly)
-      const edited = () => { it.html = ed.innerHTML; it.lines = parseEditor(ed); it.name = trimLines(it.lines).map(l => l.runs.map(r => r.text).join('')).find(t => t.trim()) || 'Stamp'; dn.textContent = it.name; schedule(); };
+      // lines of different sizes said right under the text (a size typed for one line only is easy to miss)
+      const mixed = q('.stmixed'), showMixed = () => {
+        const pts = [...new Set(trimLines(it.lines).map(l => Math.round(l.size * 100) / 10))].sort((a, b) => a - b);
+        mixed.hidden = pts.length < 2;
+        if (pts.length > 1) mixed.textContent = `Lines have different sizes: ${pts.slice(0, -1).map(num).join(', ')} and ${num(pts[pts.length - 1])} pt`;
+      };
+      showMixed();
+      const edited = () => { it.html = ed.innerHTML; it.lines = parseEditor(ed); it.name = trimLines(it.lines).map(l => l.runs.map(r => r.text).join('')).find(t => t.trim()) || 'Stamp'; dn.textContent = it.name; showMixed(); schedule(); };
       ed.addEventListener('input', edited);
       // as plain text; Word's line break (Shift+Enter) comes as a vertical tab, which the browser would drop
       ed.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData.getData('text/plain') || '').replace(/\r\n?|[\v\f\u2028\u2029]/g, '\n')); });
@@ -216,16 +224,17 @@ function list() {
           edited(); showPt();
         });
       }
-      // the size field shows the size of the line with the cursor; typing a size sets the selected lines
+      // the size field shows the size of the line with the cursor; typing a size sets the selected lines, or every line
+      // when nothing is selected (the cursor just left at the end of the text meant the whole stamp, not its last line)
       const pt = q('.stpt'), showPt = () => { const blk = selectedLines(ed, true)[0]; if (blk && document.activeElement !== pt) pt.value = String(linePt(blk)); };
       document.addEventListener('selectionchange', () => { if (ed.contains(document.getSelection().anchorNode)) showPt(); });
-      pt.addEventListener('mousedown', () => { ptLines = selectedLines(ed); });
-      pt.addEventListener('focus', () => { if (!ptLines) ptLines = selectedLines(ed); });
+      pt.addEventListener('mousedown', () => { ptLines = ptTargets(ed); });
+      pt.addEventListener('focus', () => { if (!ptLines) ptLines = ptTargets(ed); });
       // a size typed in pt means that size: the stamp is then set as typed, not fitted (fitted, the pt sizes only set the
       // lines' proportions and 8 pt came out as big as the stamp allows)
       pt.addEventListener('input', () => {
         const v = parseFloat(pt.value); if (!(v > 0)) return;
-        for (const blk of ptLines || selectedLines(ed)) setPt(blk, v);
+        for (const blk of ptLines || ptTargets(ed)) setPt(blk, v);
         if (!it.exact) { it.exact = true; q('.stexact').value = 'exact'; }
         edited();
       });
@@ -406,6 +415,12 @@ function selectedLines(ed, look) {
   const blocks = Array.from(ed.children).filter(d => r && r.intersectsNode(d));
   return blocks.length ? blocks : Array.from(ed.children).slice(-1);
 }
+// the lines the size field sets: the selected ones, or all of them when nothing is selected (only a cursor)
+function ptTargets(ed) {
+  const sel = window.getSelection(), r = sel && sel.rangeCount ? sel.getRangeAt(0) : null;
+  const lines = selectedLines(ed);
+  return r && !r.collapsed && ed.contains(r.commonAncestorContainer) ? lines : Array.from(ed.children);
+}
 
 /* ---------- fonts ---------- */
 function fillFontSelect(sel, value) {
@@ -475,7 +490,7 @@ function renderStats(busyText) {
   byId('exStampsXs').disabled = !n || !!busyText;
   byId('exStampsProof').disabled = !stamps.items.some(it => it.result) || !!busyText;
   if (busyText) { ui.count.textContent = busyText; return; }
-  ui.count.textContent = !stamps.items.length ? 'No stamps yet' : `${plural(n, 'stamp')} on the bed`;
+  ui.count.textContent = !stamps.items.length ? (restoreHint.on ? 'Your last stamps can be brought back' : 'No stamps yet') : `${plural(n, 'stamp')} on the bed`;
   const notes = [];
   if (stamps.tooBig.length) notes.push(`Too big for the bed: ${stamps.tooBig.join(', ')}.`);
   if (stamps.length > BED.h) notes.push(`The stamps need ${num(Math.round(stamps.length))} mm, more than the ${BED.h} mm of the bed: make fewer copies, or move some in xTool Studio.`);
@@ -564,7 +579,8 @@ onFontsChanged(fontList);
 // the stamps without their own distance to the cut show the general one
 for (const [id, cls] of [['stMarginX', '.stmx'], ['stMarginY', '.stmy']]) byId(id).addEventListener('input', () => { for (const el of document.querySelectorAll(`#stList ${cls}`)) el.placeholder = byId(id).value; });
 // the values of the stamp made in xTool Studio
-const ST_DEFAULTS = { stMarginX: 2.3, stMarginY: 0, stShoulder: 0.3, stEdge: 0.8 };
+// (top and bottom 0.1 mm, not 0: with 0 the cut ran along the tops of the letters and the laser's kerf could nick them)
+const ST_DEFAULTS = { stMarginX: 2.3, stMarginY: 0.1, stShoulder: 0.3, stEdge: 0.8 };
 // once: the values kept from before the standard changed (0.8 mm top and bottom, 0.2 mm rim that thins for small
 // letters) move to the new standard (0 mm, a 0.3 mm rim for all); values you set yourself stay
 try {
@@ -573,6 +589,14 @@ try {
       const set = (id, from, to) => { const e = byId(id); if (e.type === 'checkbox' ? e.checked === from : parseFloat(e.value) === from) { if (e.type === 'checkbox') e.checked = to; else e.value = String(to); e.dispatchEvent(new Event(e.type === 'checkbox' ? 'change' : 'input')); } };
       set('stMarginY', 0.8, 0); set('stShoulder', 0.2, 0.3); set('stShoulderScale', true, false);
       try { localStorage.setItem('pc.stampDefaults.v2', '1'); } catch { /* storage unavailable */ }
+    }, 0);
+  }
+  // and once more: the old standard of 0 mm top and bottom moves to 0.1 mm (a value you set yourself stays)
+  if (!localStorage.getItem('pc.stampDefaults.v3')) {
+    setTimeout(() => {
+      const e = byId('stMarginY');
+      if (parseFloat(e.value) === 0) { e.value = '0.1'; e.dispatchEvent(new Event('input')); }
+      try { localStorage.setItem('pc.stampDefaults.v3', '1'); } catch { /* storage unavailable */ }
     }, 0);
   }
 } catch { /* storage unavailable */ }
@@ -591,6 +615,9 @@ registerMode('stamps', { compute, renderPreview, renderStats, onDrop: addSvgs })
 const STAMP_FIELDS = ['kind', 'name', 'html', 'lines', 'font', 'spacing', 'spread', 'exact', 'size', 'w', 'h', 'copies', 'shape', 'radius', 'mx', 'my', 'rim', 'scale'];
 registerJob('stamps', {
   modes: ['stamps'], label: 'Pieczątki',
+  // "3 stamps 'Firma Kowalski'": the copies counted, the stamps by their first line
+  describe: saved => `${plural(saved.items.reduce((n, s) => n + (s.copies ?? 1), 0), 'stamp')} ${[...new Set(saved.items.map(s => s.name))].slice(0, 2).map(n => `'${n}'`).join(', ')}${new Set(saved.items.map(s => s.name)).size > 2 ? ', …' : ''}`,
+  title: snap => snap.state.items[0] && snap.state.items[0].name,
   serialize() {
     if (!stamps.items.length) return null;
     const { files, at } = itemFiles(stamps.items);

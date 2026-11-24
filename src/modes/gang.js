@@ -5,7 +5,7 @@ import { jpegOrientation, readAsDataUrl } from '../core/image.js';
 import { PT, mul } from '../core/matrix.js';
 import { mm1, num } from '../core/svg.js';
 import { asciiOnly, isImageFile, isPdfFile, tick } from '../core/util.js';
-import { CUT_RED, byId, saveFile, setMsg, ui } from '../dom.js';
+import { CUT_RED, byId, emptyItem, saveFile, setMsg, ui } from '../dom.js';
 import { pdfCheck } from '../export/check.js';
 import { drawClipped, drawCropMarks } from '../export/pdf-draw.js';
 import { embedSans, ensureLibs, pdfSource } from '../lib/pdf.js';
@@ -23,7 +23,7 @@ const gang = { items: [], layout: null, sheets: 0, view: 0 };
 let gangNext = 1;
 const GFORMATS = { '100x150': [100, 150], '130x180': [130, 180], A6: [105, 148], A5: [148, 210], A4: [210, 297], A3: [297, 420], DL: [99, 210], '90x50': [90, 50], '85x55': [85, 55] };
 function gangOpts(o) { // the guillotine engine, fed with this mode's own settings
-  return { ...o, cBleed: o.ggBleed, gAuto: o.ggAuto, gSqueeze: o.ggSqueeze, gGap: o.ggGap, gMarkLen: o.ggMarkLen, gMarkOff: o.ggMarkOff, gMargin: o.ggEdge, gSize: 'orig' };
+  return { ...o, cBleed: o.ggBleed, gAuto: o.ggAuto, gSqueeze: o.ggSqueeze, gGap: o.ggGap, gMarkLen: o.ggMarkLen, gMarkOff: o.ggMarkOff, gMargin: o.ggEdge, gMarkRoom: o.ggMarkRoom, gSize: 'orig' };
 }
 // "As in the file": the trim of the first PDF page (pictures have no size in mm; with only pictures it is 10 × 15)
 const sizedItem = () => gang.items.find(it => it.trim);
@@ -89,7 +89,7 @@ async function gangAddFiles(fileList) {
 function gangList() {
   const ul = byId('gangList');
   ul.innerHTML = '';
-  if (!gang.items.length) { ul.innerHTML = '<li class="empty">No files yet.</li>'; return; }
+  if (!gang.items.length) { ul.innerHTML = emptyItem('No files yet.'); return; }
   for (const it of gang.items) {
     const li = document.createElement('li');
     li.className = 'design';

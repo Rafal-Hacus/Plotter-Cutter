@@ -52,7 +52,7 @@ test('pieczątki: a text stamp (B3) and an SVG stamp, saved as an xTool project 
   await page.click('#stLayoutReset');
   await expect(page.locator('#stMarginX')).not.toHaveClass(/bad/);
   await expect(page.locator('#stMarginX')).toHaveValue('2.3');
-  await expect(logo.locator('.stst')).toContainText('Text to cut 2.3 mm at the sides, 0 mm top and bottom; rim around the letters 0.3 mm (the general rim).');
+  await expect(logo.locator('.stst')).toContainText('Text to cut 2.3 mm at the sides, 0.1 mm top and bottom; rim around the letters 0.3 mm (the general rim).');
   await expect(logo.locator('.stst')).not.toContainText('quarter');
   // its own rim around the letters
   await logo.locator('.strim').fill('0.08');
@@ -257,5 +257,22 @@ test('pieczątki: text pasted from Word keeps its line breaks, and letters the f
   await ed.evaluate(e => { e.innerHTML = '<div style="text-align: center;" data-pt="10">Tel. ☎ 600 000 000</div>'; e.dispatchEvent(new Event('input')); });
   await li.locator('.stfont').selectOption('greatVibes');
   await expect(li.locator('.stst')).toContainText('The font has no “☎”: it is left out of the stamp.');
+  noProblems(problems);
+});
+
+test('pieczątki: the old standard of 0 mm top and bottom moves to 0.1 mm once; a value set later stays', async ({ page }) => {
+  const problems = await openApp(page);
+  await page.evaluate(() => {
+    localStorage.setItem('stickerSheet.opts.v2', JSON.stringify({ stMarginY: '0' }));
+    localStorage.setItem('pc.stampDefaults.v2', '1');
+    localStorage.removeItem('pc.stampDefaults.v3');
+  });
+  await page.reload();
+  await expect(page.locator('#stMarginY')).toHaveValue('0.1');
+  // set to 0 on purpose after that: kept
+  await setField(page, 'stMarginY', '0');
+  await page.waitForFunction(() => /"stMarginY":"0"/.test(localStorage.getItem('stickerSheet.opts.v2') || ''));
+  await page.reload();
+  await expect(page.locator('#stMarginY')).toHaveValue('0');
   noProblems(problems);
 });

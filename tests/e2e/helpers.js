@@ -24,7 +24,12 @@ export const setField = (page, id, value) => page.evaluate(([id, v]) => {
   if (e.type === 'checkbox') e.checked = v; else e.value = v;
   e.dispatchEvent(new Event(e.type === 'checkbox' || e.tagName === 'SELECT' ? 'change' : 'input'));
 }, [id, value]);
-export const mode = (page, m) => page.click(`.modes button[data-mode="${m}"]`);
+// Pick a mode in the picker as a user would: a main choice (or a Tools entry), then its sub-choice when it has one.
+export async function mode(page, m) {
+  const main = await page.evaluate(m => document.querySelector(`.modes button[data-mode="${m}"]`).closest('[data-sub]')?.dataset.sub, m);
+  if (main) await page.click(`.modes button[data-main="${main}"]`);
+  await page.click(`.modes button[data-mode="${m}"]`);
+}
 export const enabled = (page, id, timeout = 60_000) => page.waitForFunction(id => !document.getElementById(id).disabled, id, { timeout });
 
 // Click an export button (also inside a closed panel) and return the downloaded bytes.

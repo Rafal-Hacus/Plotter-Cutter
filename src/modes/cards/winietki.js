@@ -3,7 +3,7 @@
 import { PT } from '../../core/matrix.js';
 import { pageGeom } from '../../core/pdfembed.js';
 import { isPdfFile, tick } from '../../core/util.js';
-import { byId, plural, setMsg } from '../../dom.js';
+import { byId, emptyItem, plural, setMsg } from '../../dom.js';
 import { buildNameCardsPdf, parseNames } from '../../lib/namecards.js';
 import { ensureLibs, pdfSource } from '../../lib/pdf.js';
 import { readCardImage } from './images.js';
@@ -167,7 +167,7 @@ export function winSync() {
 }
 export function winList() {
   const ul = byId('winList'), it = job.items;
-  ul.innerHTML = it.length ? '' : '<li class="empty">No cards yet.</li>';
+  ul.innerHTML = it.length ? '' : emptyItem('No cards yet.');
   it.forEach((c, i) => {
     const li = document.createElement('li');
     li.className = 'design';

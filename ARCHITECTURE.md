@@ -13,6 +13,8 @@ src/template.js       the sheet template: registration marks, sheet size, the gr
 src/nest.js           nesting designs on the grid; the matrix that places a nested design
 src/viewport.js       zoom and pan on the preview
 src/plt-modifier.js   the PLT modifier panel
+src/testcut.js        Tools → Test cut: the print PDF and PLTs that check the knife (blade offset, marks, forces)
+src/materials.js      material profiles (Cut lines → Material): forces and speeds per material, in the browser
 src/modes/            one module (or folder) per mode; each registers itself in the mode table
   registry.js         the mode table: registerMode, currentMode
   stickers/           design.js (read + trace a design), index.js (the mode, adding files), rows.js (the design list),
@@ -35,6 +37,7 @@ src/core/             pure code, no app state, unit tested
   geometry.js         distance transform, contour tracing, simplification (RDP), cell-grid nesting
   fill.js             pen fills (contour-parallel, hatched)
   plt.js              writePlt (Skycut PLT), drag-knife compensation, PLT editing
+  testcut.js          the test cut's layout and PLTs (a blade offset per square, marks crosses, kiss / die squares)
   svg.js              SVG units, viewBox, ids, path flattening, <use> expansion
   sanitize.js         cleaning of untrusted SVG files
   marks.js            SignCut registration-mark templates
