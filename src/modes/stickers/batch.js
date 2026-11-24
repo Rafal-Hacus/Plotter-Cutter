@@ -9,7 +9,8 @@ import { buildPlt } from '../../export/files.js';
 import { drawShapes, printPage } from '../../export/pdf-draw.js';
 import { ensureLibs } from '../../lib/pdf.js';
 import { buildExport, exportName, stickerLoops, vecCircle } from './export.js';
-import { nestAll, placeMatrix } from '../../nest.js';
+import { placeMatrix } from '../../nest.js';
+import { planSheets } from './plan.js';
 import { readOpts } from '../../settings.js';
 import { designs, state } from '../../state.js';
 import { templateShapes, templateSheet } from '../../template.js';
@@ -18,29 +19,7 @@ import { templateShapes, templateSheet } from '../../template.js';
 async function planBatch(o) {
   const ready = designs.filter(d => d.res && d.qty !== 0);
   if (!ready.length) throw new Error('Add some stickers first.');
-  const sheet = await templateSheet(o), sheets = [];
-  const remaining = new Map(ready.filter(d => d.qty != null).map(d => [d, d.qty]));
-  // designs without copies fill whatever space the counted ones leave on every sheet
-  const fills = ready.filter(d => d.qty == null), fillers = () => fills.map(d => Object.assign(Object.create(d), { qty: null }));
-  const groups = o.batchMix ? [[...remaining.keys()]] : [...remaining.keys()].map(d => [d]);
-  for (const g of groups) {
-    while (g.some(d => remaining.get(d) > 0)) {
-      const list = g.filter(d => remaining.get(d) > 0).map(d => Object.assign(Object.create(d), { qty: remaining.get(d) }));
-      const lay = await nestAll([...list, ...fillers()], sheet, o, () => false);
-      const placed = g.reduce((s, d) => s + ((lay && lay.counts.get(d.id)) || 0), 0);
-      if (!lay || !placed) throw new Error(`${list[0].name} doesn’t fit on a sheet.`);
-      for (const d of g) remaining.set(d, remaining.get(d) - (lay.counts.get(d.id) || 0));
-      sheets.push(lay);
-      if (sheets.length > 200) throw new Error('More than 200 sheets; check the copies.');
-    }
-  }
-  // only fill designs (nothing counted): one full sheet each
-  if (!remaining.size) for (const d of fills) {
-    const lay = await nestAll([Object.assign(Object.create(d), { qty: null })], sheet, o, () => false);
-    if (!lay || !lay.items.length) throw new Error(`${d.name} doesn’t fit on a sheet.`);
-    sheets.push(lay);
-  }
-  return sheets;
+  return (await planSheets(ready, await templateSheet(o), o)).sheets;
 }
 const sheetSummary = lay => {
   const per = new Map();

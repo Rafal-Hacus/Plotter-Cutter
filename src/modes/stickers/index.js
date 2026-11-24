@@ -13,6 +13,7 @@ import { renderStickerPreview, renderStickerStats } from './render.js';
 import { addRow, updateRow } from './rows.js';
 import { isMarkless } from '../vinyl.js';
 import { nestAll } from '../../nest.js';
+import { planSheets } from './plan.js';
 import { renderStats, schedule } from '../../pipeline.js';
 import { designs, state } from '../../state.js';
 import { templateSheet } from '../../template.js';
@@ -39,7 +40,19 @@ async function computeStickers(o, stale) {
   await tick();
   const lay = ready.length ? await nestAll(ready, sheet, o, stale) : null;
   if (stale()) return false;
-  state.layout = lay;
+  // typed copies: how many sheets the order needs, as the batch export plans them
+  let plan = null;
+  const typed = ready.filter(d => d.qty != null);
+  if (lay && typed.length) {
+    if (o.batchMix && typed.every(d => (lay.counts.get(d.id) || 0) >= d.qty)) plan = { groups: [{ designs: typed, pieces: typed.reduce((s, d) => s + d.qty, 0), sheets: 1, overs: 0 }] };
+    else {
+      renderStats('Planning the sheets…');
+      try { plan = await planSheets(ready, sheet, o, { cancelled: stale, limit: 5000 }); }
+      catch (e) { plan = { error: e.message || String(e) }; }
+      if (stale()) return false;
+    }
+  }
+  state.layout = lay; state.plan = plan;
   designs.forEach(updateRow);
 }
 registerMode('stickers', { compute: computeStickers, renderPreview: renderStickerPreview, renderStats: renderStickerStats, onDrop: addFiles });
@@ -128,6 +141,8 @@ export async function addFiles(fileList) {
     try {
       if (isPdfFile(f)) { setMsg(`Reading ${f.name}…`); await addPdfStickers(f); setMsg(''); continue; }
       const d = prepareDesign(await f.text(), f.name);
+      // vinyl: a file added starts at one copy (filling the roll cut one logo 34 times over a metre); empty = fill
+      if (state.mode === 'vinyl') d.qty = 1;
       designs.push(d); addRow(d);
     } catch (e) {
       failed.push(`${f.name}: ${e.message}`);

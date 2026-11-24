@@ -95,7 +95,7 @@ export function addRow(d) {
   li.querySelector('.dname').textContent = d.name;
   li.querySelector('.dname').title = d.name;
   const hIn = li.querySelector('.h'), qIn = li.querySelector('.q'), rm = li.querySelector('.remove');
-  hIn.value = mm1(d.heightMm);
+  hIn.value = mm1(d.heightMm); qIn.value = d.qty == null ? '' : d.qty;
   rm.setAttribute('aria-label', `Remove ${d.name}`);
   const mIn = li.querySelector('.m');
   mIn.value = d.mode;

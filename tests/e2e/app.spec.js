@@ -39,7 +39,7 @@ test('vinyl and pen modes cut the shapes as drawn', async ({ page }) => {
   const problems = await openApp(page);
   await mode(page, 'vinyl');
   await page.setInputFiles('#files', [fixture('star.svg')]);
-  await expect(page.locator('#count')).toHaveText(/\d+ copies on the vinyl/);
+  await expect(page.locator('#count')).toHaveText('1 copy on the vinyl'); // (a vinyl file starts at 1 copy)
   noProblems(problems);
 });
 
@@ -63,7 +63,7 @@ test('vinyl: a shape too big for the material with a weeding box around everythi
   await mode(page, 'vinyl');
   await setField(page, 'vWeed', 'all');
   await page.setInputFiles('#files', [fixture('star.svg')]);
-  await expect(page.locator('#count')).toHaveText(/\d+ copies on the vinyl/);
+  await expect(page.locator('#count')).toHaveText('1 copy on the vinyl'); // (a vinyl file starts at 1 copy)
   await page.fill('#list .h', '400'); // wider than the 300 mm material
   await expect(page.locator('#count')).toHaveText('0 copies on the vinyl');
   await expect(page.locator('#msg')).not.toContainText('undefined');
