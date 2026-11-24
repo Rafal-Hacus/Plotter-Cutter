@@ -8,6 +8,7 @@ import { winNamesChanged, winNamesOn } from './modes/cards/winietki.js';
 import { currentMode } from './modes/registry.js';
 import { updateRow } from './modes/stickers/rows.js';
 import { analyseSvgPlt, sp } from './modes/svgplt.js';
+import { initNumFields, recheckNumFields } from './numfield.js';
 import { syncOptionRows } from './option-rows.js';
 import { renderPreview, run, schedule } from './pipeline.js';
 import { initPresets } from './presets.js';
@@ -70,6 +71,7 @@ window.addEventListener('drop', e => {
 function snapshotSettings() { return { mode: state.mode, settings: optionValues() }; }
 function applySettings({ mode, settings }) {
   applyOptionValues(settings);
+  recheckNumFields();
   syncOptionRows();
   const t = state.template;
   if (!t || t.generated) applySheetSize(); // a template you loaded yourself stays
@@ -82,7 +84,9 @@ function applySettings({ mode, settings }) {
 }
 
 /* ---------- start ---------- */
+initNumFields();
 loadOpts();
+recheckNumFields();
 syncOptionRows();
 applySheetSize();
 ui.list.innerHTML = EMPTY_LIST;

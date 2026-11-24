@@ -1,4 +1,5 @@
 // The option fields of the side panel: reading them (readOpts), and keeping them in the browser between visits.
+import { normalizeNum, parseNum } from './core/number.js';
 import { byId } from './dom.js';
 
 // every field that is saved with the settings (the browser's storage, and Saved settings on the server)
@@ -23,11 +24,12 @@ export const OPT_IDS = [
 // empty or not a number. A few are stored under a clearer name than their field's id.
 export function readOpts() {
   const text = id => byId(id).value, on = id => byId(id).checked;
-  // a number of at least `min`, or `fallback`
-  const num = (id, fallback, min) => { const x = parseFloat(text(id)); return isFinite(x) ? Math.max(min, x) : fallback; };
+  // a number of at least `min`, or `fallback` (a decimal comma is read as a point; a value out of the field's range
+  // is marked on the field and holds back the exports, see numfield.js)
+  const num = (id, fallback, min) => { const x = parseNum(text(id)); return isFinite(x) ? Math.max(min, x) : fallback; };
   const count = (id, fallback) => Math.max(1, Math.round(num(id, fallback, 1)));
   // a number that may be negative (shifts, angles); 0 when empty
-  const signed = id => parseFloat(text(id)) || 0;
+  const signed = id => parseNum(text(id)) || 0;
   return {
     // stickers: outlines and nesting
     kiss: num('kiss', 2, 0), die: num('die', 2, 0), gap: num('gap', 2, 0), joinGap: num('joinGap', 3, 0),
@@ -75,7 +77,7 @@ export function readOpts() {
     rollRadius: num('rollRadius', 0, 0), rollOuter: on('rollOuter'), rollTurn: on('rollTurn'), rollMax: num('rollMax', 0, 0), rollOnePage: on('rollOnePage'), rollForce: text('rollForce'),
     // squares, SVG to PLT
     sqW: num('sqW', 50, 5), sqH: num('sqH', 50, 5), sqSheetW: num('sqSheetW', 320, 20), sqSheetH: num('sqSheetH', 450, 20),
-    sqMargin: num('sqMargin', 10, 0), sqGap: num('sqGap', 0, 0), spDpi: parseFloat(text('spDpi')) || 72
+    sqMargin: num('sqMargin', 10, 0), sqGap: num('sqGap', 0, 0), spDpi: parseNum(text('spDpi')) || 72
   };
 }
 // Values that can only be a slip (a size typed into the blade offset makes every corner a swing of centimetres
@@ -86,8 +88,9 @@ const SANE = { bladeOffset: [2, '0.35'], overcut: [5, '0.5'], clearance: [50, '5
 export function applyOptionValues(values, ids = OPT_IDS) {
   for (const id of ids) {
     if (!Object.hasOwn(values, id)) continue;
-    const e = byId(id), v = Object.hasOwn(SANE, id) && parseFloat(values[id]) > SANE[id][0] ? SANE[id][1] : values[id];
-    if (e.type === 'checkbox') e.checked = !!v; else e.value = String(v);
+    const e = byId(id), v = Object.hasOwn(SANE, id) && parseNum(values[id]) > SANE[id][0] ? SANE[id][1] : values[id];
+    if (e.type === 'checkbox') e.checked = !!v;
+    else e.value = e.type === 'number' || e.classList.contains('num') ? normalizeNum(v) : String(v); // 100,5 from older saves: 100.5
   }
 }
 const STORE_KEY = 'stickerSheet.opts.v2';
