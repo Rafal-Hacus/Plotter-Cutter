@@ -1,7 +1,7 @@
 // The stickers mode: adding designs, tracing their outlines and nesting them on the sheet.
 import { circleSvg, detectCircle } from '../../core/image.js';
 import { pagePaths } from '../../core/pdfpaths.js';
-import { stripCutColour } from '../../core/pdfcutstrip.js';
+import { stripCutColour, stripFillStroke } from '../../core/pdfcutstrip.js';
 import { bbox } from '../../core/stamp.js';
 import { num } from '../../core/svg.js';
 import { isPdfFile, tick } from '../../core/util.js';
@@ -100,15 +100,35 @@ async function addPdfStickers(file) {
     const pg = await pdf.getPage(i), vp1 = pg.getViewport({ scale: 1 });
     // the PDF's cut lines: closed, stroked and not filled, longer than a few mm; in the picture's coordinates
     const ol = await pg.getOperatorList();
-    const cutLines = [];
+    // Stroked AND filled outlines (Affinity draws a contour as a stroked shape with an invisible fill) count too when
+    // there is no stroke-only line, but only big ones (a tenth of the page or more), so a stroked logo isn't taken
+    let cutLines = [];
+    const filledStroked = [], pageArea = vp1.width * vp1.height;
     for (const p of pagePaths(ol.fnArray, ol.argsArray, OPS)) {
-      if (!p.stroke || p.fill) continue;
+      if (!p.stroke) continue;
       for (const sp of p.subpaths) {
         const a = sp.pts[0], z = sp.pts[sp.pts.length - 1];
         if (!(sp.closed || Math.hypot(a[0] - z[0], a[1] - z[1]) < 0.5) || sp.pts.length < 3) continue;
         const pts = sp.pts.map(([x, y]) => vp1.convertToViewportPoint(x, y));
         const b = bbox([pts]);
-        if (b.w > 5 && b.h > 5) cutLines.push(pts); // (points: about 2 mm)
+        if (!(b.w > 5 && b.h > 5)) continue; // (points: about 2 mm)
+        if (!p.fill) cutLines.push(pts);
+        else if (b.w * b.h >= pageArea * 0.1) filledStroked.push(pts);
+      }
+    }
+    let contourOff = false;
+    if (!cutLines.length && filledStroked.length) {
+      cutLines = filledStroked;
+      // the one stroked shape that is the contour: its stroke is taken out of the print (the kiss cut runs on it)
+      if (filledStroked.length === 1) {
+        try {
+          const r = await stripFillStroke(window.PDFLib, printBytes.slice(), i - 1);
+          if (r.removed) {
+            printBytes = r.bytes; printPdf = await window.pdfjsLib.getDocument(pdfSource(r.bytes.slice())).promise; contourOff = true;
+            // (the layers' visibility belongs to a document: set it again on the new one)
+            if (ocConfig) { ocConfig = await printPdf.getOptionalContentConfig(); for (const [id, grp] of ocConfig) if (grp && CUT_LAYER.test(grp.name || '')) ocConfig.setVisibility(id, false); }
+          }
+        } catch (e) { console.warn('Could not take the outline out of the print:', e); }
       }
     }
     const ppg = printPdf === pdf ? pg : await printPdf.getPage(i);
@@ -121,7 +141,7 @@ async function addPdfStickers(file) {
     const c = {
       img: cv.toDataURL('image/jpeg', 0.92), w: vp1.width, h: vp1.height, pdf: printBytes, page: i - 1, mbx: pg.view[0], mby: pg.view[1],
       rot: ((pg.rotate || 0) % 360 + 360) % 360, size: det ? det.size * 0.98 : 0.9, x: det ? det.x : 0, y: det ? det.y : 0, found: !!det,
-      cutLines, kind: cutLines.length ? 'cut' : det ? 'round' : 'trace', hidLayer, spotCut
+      cutLines, kind: cutLines.length ? 'cut' : det ? 'round' : 'trace', hidLayer, spotCut, contourOff
     };
     cv.width = cv.height = 1;
     const d = prepareDesign(pdfStickerSvg(c), pdf.numPages > 1 ? `${file.name} p.${i}` : file.name);
