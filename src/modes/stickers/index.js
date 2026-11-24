@@ -6,6 +6,7 @@ import { bbox } from '../../core/stamp.js';
 import { num } from '../../core/svg.js';
 import { isPdfFile, tick } from '../../core/util.js';
 import { EMPTY_LIST, setMsg, ui } from '../../dom.js';
+import { bladeNote, pdfCheck, pltCheck } from '../../export/check.js';
 import { ensureLibs, pdfSource } from '../../lib/pdf.js';
 import { registerMode } from '../registry.js';
 import { prepareDesign, processDesign } from './design.js';
@@ -55,7 +56,15 @@ async function computeStickers(o, stale) {
   state.layout = lay; state.plan = plan;
   designs.forEach(updateRow);
 }
-registerMode('stickers', { compute: computeStickers, renderPreview: renderStickerPreview, renderStats: renderStickerStats, onDrop: addFiles });
+// what the print PDF and the PLTs will carry
+function stickerExportCheck(o) {
+  const L = state.layout, t = state.template;
+  if (!L || !L.items.length || !t) return null;
+  const sheet = [t.wMm, t.hMm];
+  return [pdfCheck({ pages: 1, page: sheet, extra: `artwork at 300 dpi, ${L.items.length} stickers` }),
+    t.marks ? pltCheck(o, [['kiss', o.kissForce], ['die', o.dieForce]], { sheet, pieces: L.items.length }) : '', t.marks ? bladeNote(o) : ''];
+}
+registerMode('stickers', { compute: computeStickers, renderPreview: renderStickerPreview, renderStats: renderStickerStats, onDrop: addFiles, exportCheck: stickerExportCheck });
 
 /* ---------- stickers from a PDF: the page as artwork, and the kiss cut one of three ways ---------- */
 //   kind 'cut':   the line drawn in the PDF (stroked, not filled: the usual cut line, as for SVGs)

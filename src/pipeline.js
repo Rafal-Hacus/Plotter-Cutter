@@ -1,5 +1,6 @@
 // Recomputing the open mode's layout and redrawing the sheet.
 import { setMsg, ui } from './dom.js';
+import { showExportCheck } from './export/check.js';
 import { numProblem, onNumValidity, recheckNumFields } from './numfield.js';
 import { currentMode } from './modes/registry.js';
 import { readOpts, saveOpts } from './settings.js';
@@ -9,10 +10,14 @@ export function renderPreview() { currentMode().renderPreview(); }
 // busyText: what is being worked on; the counts and notes are filled in when it is left out
 export function renderStats(busyText) {
   currentMode().renderStats(busyText);
+  if (!busyText) refreshExportCheck();
   if (showNumProblem()) return;
   // a file that couldn't be added stays mentioned until the next one is
   if (!busyText && state.loadError) setMsg([ui.msg.textContent, state.loadError].filter(Boolean).join(' '), true);
 }
+
+// the "Will be written" line under Export: what the open mode's files will carry
+export function refreshExportCheck() { const m = currentMode(); showExportCheck(m.exportCheck ? m.exportCheck(readOpts()) : null); }
 
 // Recompute and redraw shortly after the last change. A newer run supersedes an older one that is still working:
 // `stale()` tells the older one to stop.

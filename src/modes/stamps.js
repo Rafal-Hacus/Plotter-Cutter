@@ -274,6 +274,7 @@ function syncRow(it, li) {
   li.querySelector('.stcustom').hidden = it.size !== 'custom';
   li.querySelector('.stradius').hidden = it.shape !== 'round';
 }
+const MIN_READABLE_PT = 6;
 function status(it) {
   if (!it.li || !it.li.isConnected) return;
   const st = it.li.querySelector('.stst'), [W, H] = sizeOf(it), r = it.result;
@@ -306,6 +307,8 @@ function status(it) {
       const lo = Math.min(...pts), hi = Math.max(...pts);
       st.textContent += ` Letters ${lo === hi ? r1(lo) : `${r1(lo)}–${r1(hi)}`} pt.`;
       if (r.shrunk && it.exact) { st.textContent += ' The sizes set don’t fit the stamp: the text was made smaller to stay inside it (the cut is never bigger than the stamp).'; st.classList.add('warn'); }
+      // laser rubber fills in small letters: below about 6 pt they don't read on the stamp (a warning, not a stop)
+      if (Math.round(lo * 10) / 10 < MIN_READABLE_PT) { st.textContent += ` Letters under ${MIN_READABLE_PT} pt (${r1(lo)} pt here) won’t read well on rubber: they fill in. Make the line bigger, the text shorter or the stamp larger.`; st.classList.add('warn'); }
     }
   }
   const th = it.li.querySelector('.thumb');

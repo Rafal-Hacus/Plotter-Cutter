@@ -4,7 +4,7 @@ import { mul } from '../../core/matrix.js';
 import { SLOT_RE, mm1, num } from '../../core/svg.js';
 import { CUT_RED, byId, fillSheetPicker, plural, setMsg, ui } from '../../dom.js';
 import { G_PAGE, KIND, M_TPL, deckLike, deckPer, pageDims, pageScale } from './job.js';
-import { backClip, backMarks, backRect, backT, cardCuts, cardFoldLines, cardGridLines, cardTrim, cropMarks, deckCard, deckPlan, dotCut, gridCut, markSide, perfDie, sheetMirror, startDotSvg, winItem, winPlan } from './layout.js';
+import { backClip, backMarks, backRect, backT, cardCuts, cardFoldLines, cardGridLines, cardTrim, cropMarks, deckCard, deckPlan, dotCut, gapNote, gridCut, perfDie, shortMarksNote, sheetMirror, startDotSvg, winItem, winPlan } from './layout.js';
 import { updateCardInfo } from './load.js';
 import { readOpts } from '../../settings.js';
 import { state } from '../../state.js';
@@ -113,9 +113,9 @@ function deckNotes(o, notes) {
 }
 // guillotine: where the crop marks can't be printed, and the cut positions
 function guillotineNotes(o, L, notes) {
-  const sides = [['top', L.sy], ['bottom', G_PAGE.hMm - L.sy - L.totH], ['left', L.sx], ['right', G_PAGE.wMm - L.sx - L.totW]];
-  const weak = sides.filter(([, space]) => { const m = markSide(L, o, space); return !m || m.printable < 1; }).map(([name]) => name);
-  if (weak.length) notes.push(`Not enough room for printable crop marks at the ${weak.join(' and ')}; use the cut positions below or lower the unprintable edge if your printer allows.`);
+  notes.push(gapNote(L, o, KIND[state.mode].many));
+  const marks = shortMarksNote(L, o);
+  if (marks) notes.push(marks);
   notes.push(`Cuts from the left edge: ${L.cutsX.map(mm1).join(', ')} mm. From the top: ${L.cutsY.map(mm1).join(', ')} mm.`);
 }
 export function renderCardStats(busyText) {

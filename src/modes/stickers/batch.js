@@ -7,7 +7,7 @@ import { makeZip } from '../../core/zip.js';
 import { byId, saveFile, setMsg } from '../../dom.js';
 import { buildPlt } from '../../export/files.js';
 import { drawShapes, printPage } from '../../export/pdf-draw.js';
-import { ensureLibs } from '../../lib/pdf.js';
+import { embedSans, ensureLibs } from '../../lib/pdf.js';
 import { buildExport, exportName, stickerLoops, vecCircle } from './export.js';
 import { placeMatrix } from '../../nest.js';
 import { planSheets } from './plan.js';
@@ -91,9 +91,9 @@ async function buildBatch() {
   const o = readOpts(), t = state.template;
   setMsg('Planning the sheets…');
   await ensureLibs();
-  const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+  const { PDFDocument, rgb } = window.PDFLib;
   const sheets = await planBatch(o);
-  const pdf = await PDFDocument.create(), font = await pdf.embedFont(StandardFonts.Helvetica);
+  const pdf = await PDFDocument.create(), font = await embedSans(pdf);
   const marks = templateShapes(), files = [], date = new Date().toISOString().slice(0, 10), total = sheets.length;
   // identical sheets (same stickers in the same places) share one pair of PLTs: A, B, C…
   const pltOf = new Map(), sheetPlt = [], vcache = new Map();

@@ -141,10 +141,11 @@
         <div class="row"><label for="gSize">Final size</label><select id="gSize"><option value="orig">As in the PDF</option><option value="A3">A3 (297 × 420)</option><option value="A4">A4 (210 × 297)</option><option value="A5">A5 (148 × 210)</option><option value="A6">A6 (105 × 148)</option><option value="DL">DL (99 × 210)</option><option value="custom">Custom scale</option></select></div>
         <div class="row" id="rowGScale" hidden><label for="gScale">Scale</label><span class="mm"><input id="gScale" type="number" min="5" max="400" step="1" value="100">%</span></div>
         <div class="row"><label for="gAutoGap">Space between copies = 2 × bleed</label><input id="gAutoGap" type="checkbox" checked></div>
+        <div class="row"><label for="gSqueeze">… or narrower (down to 3 mm) when that fits more copies</label><input id="gSqueeze" type="checkbox" checked></div>
         <div class="row" id="rowGSpace"><label for="gSpace">Space between copies</label><span class="mm"><input id="gSpace" type="number" min="0" step="0.5" value="4">mm</span></div>
         <div class="row"><label for="gMarkLen">Crop mark length</label><span class="mm"><input id="gMarkLen" type="number" min="1" step="0.5" value="5">mm</span></div>
         <div class="row"><label for="gMarkOff">Crop mark distance from the cut</label><span class="mm"><input id="gMarkOff" type="number" min="0" step="0.5" value="3">mm</span></div>
-        <div class="row"><label for="gEdge">Unprintable sheet edge</label><span class="mm"><input id="gEdge" type="number" min="0" step="0.5" value="0">mm</span></div>
+        <div class="row"><label for="gEdge">Unprintable sheet edge</label><span class="mm"><input id="gEdge" type="number" min="0" step="0.5" value="3">mm</span></div>
         <p class="hint">With a gap, every copy gets its own cuts (two cuts between neighbours) and keeps its bleed up to half the gap, so an imprecise guillotine cut still lands on artwork. 0 mm means shared single cuts.</p>
       </div>
       <p class="hint" id="cardsCutHint">Cards are cut with the die cut settings. Straight lines need square corners (with a corner radius each card gets its own rectangle). Use the back shift to correct your printer’s duplex misalignment.</p>
@@ -182,15 +183,16 @@
       <p class="hint">Photos and PDFs on 310 × 440 sheets for the guillotine. Every file (every PDF page) is scaled with its proportions kept to the format plus bleed, centred, and turned when its orientation differs. Crop marks and a cut plan included.</p>
       <div class="actions"><label class="btn primary">Add images or PDFs<input id="gangFile" type="file" accept="image/*,.pdf,application/pdf" multiple></label></div>
       <ul class="designs" id="gangList"></ul>
-      <div class="row"><label for="ggFormat">Format</label><select id="ggFormat"><option value="100x150">10 × 15 cm</option><option value="130x180">13 × 18 cm</option><option value="A6">A6</option><option value="A5">A5</option><option value="A4">A4</option><option value="A3">A3</option><option value="DL">DL</option><option value="90x50">90 × 50</option><option value="85x55">85 × 55</option><option value="custom">Custom</option></select></div>
+      <div class="row"><label for="ggFormat">Format</label><select id="ggFormat"><option value="file">As in the file (1:1)</option><option value="100x150">10 × 15 cm</option><option value="130x180">13 × 18 cm</option><option value="A6">A6</option><option value="A5">A5</option><option value="A4">A4</option><option value="A3">A3</option><option value="DL">DL</option><option value="90x50">90 × 50</option><option value="85x55">85 × 55</option><option value="custom">Custom</option></select></div>
       <div class="row" id="rowGGCustom" hidden><label for="ggW">Custom size</label><span class="mm"><input id="ggW" type="number" min="5" step="1" value="100" aria-label="Width">×<input id="ggH" type="number" min="5" step="1" value="150" aria-label="Height">mm</span></div>
       <div class="row"><label for="ggBleed">Bleed</label><span class="mm"><input id="ggBleed" type="number" min="0" step="0.5" value="2">mm</span></div>
       <div class="row"><label for="ggFit">Scaling</label><select id="ggFit"><option value="fill">Fill format + bleed (trims the overflow)</option><option value="fit">Fit whole picture (may leave white)</option></select></div>
       <div class="row"><label for="ggAuto">Space between copies = 2 × bleed</label><input id="ggAuto" type="checkbox" checked></div>
+      <div class="row"><label for="ggSqueeze">… or narrower (down to 3 mm) when that fits more copies</label><input id="ggSqueeze" type="checkbox" checked></div>
       <div class="row" id="rowGGGap" hidden><label for="ggGap">Space between copies</label><span class="mm"><input id="ggGap" type="number" min="0" step="0.5" value="4">mm</span></div>
       <div class="row"><label for="ggMarkLen">Crop mark length</label><span class="mm"><input id="ggMarkLen" type="number" min="1" step="0.5" value="5">mm</span></div>
       <div class="row"><label for="ggMarkOff">Crop mark distance from the cut</label><span class="mm"><input id="ggMarkOff" type="number" min="0" step="0.5" value="3">mm</span></div>
-      <div class="row"><label for="ggEdge">Unprintable sheet edge</label><span class="mm"><input id="ggEdge" type="number" min="0" step="0.5" value="0">mm</span></div>
+      <div class="row"><label for="ggEdge">Unprintable sheet edge</label><span class="mm"><input id="ggEdge" type="number" min="0" step="0.5" value="3">mm</span></div>
       <div class="row"><label for="gangSheet">Preview</label><select id="gangSheet"><option value="0">Sheet 1</option></select></div>
     </section>
 
@@ -262,6 +264,7 @@
 
     <section aria-labelledby="h-export" class="export" id="secExport">
       <h2 id="h-export">Export</h2>
+      <p class="hint" id="exportCheck" hidden></p>
       <div class="actions" id="cardExports" hidden>
         <button type="button" class="primary" id="exCardPdf" disabled>Print PDF (both sides)</button>
         <button type="button" id="exCardCut" disabled>Cut only SVG</button>

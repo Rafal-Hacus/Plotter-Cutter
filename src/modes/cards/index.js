@@ -2,10 +2,12 @@
 // the rows of its panel, and its export buttons.
 import { makeZip } from '../../core/zip.js';
 import { byId, saveFile, setMsg } from '../../dom.js';
+import { bladeNote, pdfCheck, pltCheck } from '../../export/check.js';
 import { buildCutPdf, closedAll, lemurCutSvg, openAll, pdfClick } from '../../export/cut-files.js';
+import { num } from '../../core/svg.js';
 import { syncImgRows } from './images.js';
-import { KIND, PRINT_MODES, deckLike, deckPer, isPrintMode, kinds, showBleed } from './job.js';
-import { cardCuts, cardPlt, computeCardLayout, deckPlan, dotCut, winPlan } from './layout.js';
+import { KIND, PRINT_MODES, deckLike, deckPer, isPrintMode, kinds, pageDims, showBleed } from './job.js';
+import { cardCuts, cardPlt, computeCardLayout, deckPlan, dotCut, gridCut, winPlan } from './layout.js';
 import { loadCardFile, updateCardInfo } from './load.js';
 import { buildCardCutSvg, buildCardsPdf, buildDeckPdf, buildWinietkaPdf } from './pdf.js';
 import { renderCardPreview, renderCardStats } from './render.js';
@@ -22,7 +24,23 @@ async function computeCards(o, stale) {
   if (stale()) return false;
   state.job.layout = computeCardLayout(sheet, o);
 }
-const cardMode = { compute: computeCards, renderPreview: renderCardPreview, renderStats: renderCardStats, onDrop: files => loadCardFile(files) };
+// what the print PDF and (where the mode cuts on the plotter) the PLT will carry
+function cardExportCheck(o) {
+  const job = state.job, L = job.layout, m = state.mode;
+  if (!job.bytes || !L || !L.n) return null;
+  const pg = pageDims(), plainSheet = m === 'guillotine' || m === 'morgana' || m === 'deck';
+  let pages = job.pages > 1 ? 2 : 1, pieces = L.n;
+  if (m === 'winietka') { const wp = winPlan(o); pages = wp.sheets; pieces = wp.total; }
+  else if (deckLike()) { const dk = deckPlan(o); pages = dk.sheets * deckPer(); pieces = dk.total; }
+  // the bleed each copy keeps: on a guillotine sheet the full bleed outside, at most half the gap between copies
+  const between = L.guil && L.inner < L.b - 0.005 ? `, ${num(L.inner)} mm between copies` : '';
+  const lines = [pdfCheck({ pages, page: [pg.wMm, pg.hMm], bleed: L.guil ? L.b : L.e, extra: `${pieces} ${KIND[m].many}${between}` })];
+  if (!plainSheet && state.template && state.template.marks) {
+    lines.push(pltCheck(o, [['die', o.dieForce]], { sheet: [state.template.wMm, state.template.hMm], pieces: m === 'winietka' ? `${L.n} per sheet` : L.n, overcut: !gridCut(o) }), bladeNote(o));
+  }
+  return lines;
+}
+const cardMode = { compute: computeCards, renderPreview: renderCardPreview, renderStats: renderCardStats, onDrop: files => loadCardFile(files), exportCheck: cardExportCheck };
 registerMode(PRINT_MODES.filter(m => m !== 'winietka'), cardMode);
 registerMode('winietka', { ...cardMode, onDrop: files => winAddFiles(files) });
 

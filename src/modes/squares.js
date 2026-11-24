@@ -4,6 +4,7 @@ import { dragKnife, speedTokens, strokeTokens } from '../core/plt.js';
 import { aiId, mm1, num, pathEl } from '../core/svg.js';
 import { makeZip } from '../core/zip.js';
 import { CUT_RED, byId, saveFile, setMsg, ui } from '../dom.js';
+import { bladeNote, pltCheck } from '../export/check.js';
 import { buildCutPdf, openAll, pdfClick } from '../export/cut-files.js';
 import { registerMode } from './registry.js';
 import { readOpts } from '../settings.js';
@@ -80,7 +81,9 @@ byId('exSqPlt').addEventListener('click', () => {
   saveFile(`${base}-plt.zip`, makeZip([{ name: `${base}.plt`, text: buildSquaresPlt() }]));
 });
 byId('exSqSvg').addEventListener('click', () => { const L = squares.L; saveFile(`squares-${num(L.pw)}x${num(L.ph)}-${L.n}pcs-cut.svg`, buildSquaresSvg()); });
-registerMode('squares', { compute: squaresCompute, renderPreview: renderSquaresPreview, renderStats: renderSquaresStats });
+// what the PLT will carry: straight open lines, so no overcut
+const squaresExportCheck = o => squares.L && squares.L.n ? [pltCheck(o, [['die', o.dieForce]], { sheet: [squares.L.W, squares.L.H], pieces: squares.L.n, overcut: false }), bladeNote(o)] : null;
+registerMode('squares', { compute: squaresCompute, renderPreview: renderSquaresPreview, renderStats: renderSquaresStats, exportCheck: squaresExportCheck });
 pdfClick('exSqPdf', () => `squares-${num(squares.L.pw)}x${num(squares.L.ph)}-${squares.L.n}pcs-cut.pdf`, () => {
   const o = readOpts();
   return buildCutPdf(squares.L.W, squares.L.H, [{ name: o.dieLayer, color: o.dieColor, paths: openAll(squaresLines()) }], false);

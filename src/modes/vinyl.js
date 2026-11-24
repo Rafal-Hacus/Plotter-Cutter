@@ -6,7 +6,8 @@ import { closedTip, dragKnife, speedTokens, strokeTokens } from '../core/plt.js'
 import { SHAPES, aiId, flattenPath, num, parseSvg, pathEl } from '../core/svg.js';
 import { tick } from '../core/util.js';
 import { makeZip } from '../core/zip.js';
-import { CUT_RED, byId, saveFile, setMsg, ui } from '../dom.js';
+import { CUT_RED, byId, plural, saveFile, setMsg, ui } from '../dom.js';
+import { bladeNote, pltCheck } from '../export/check.js';
 import { buildCutPdf, pdfClick } from '../export/cut-files.js';
 import { registerMode } from './registry.js';
 import { addFiles } from './stickers/index.js';
@@ -295,7 +296,13 @@ async function computeVinyl(_, stale) {
   state.vinylLayout = lay;
   designs.forEach(updateRow);
 }
-registerMode(['vinyl', 'pen'], { compute: computeVinyl, renderPreview: renderVinylPreview, renderStats: renderVinylStats, onDrop: files => addFiles(files) });
+// what the PLT will carry (the pen: its own force, no blade offset or overcut)
+function vinylExportCheck() {
+  const L = state.vinylLayout, o = vOpts(), pen = state.mode === 'pen';
+  if (!L || !L.items.length) return null;
+  return [pltCheck(o, [[pen ? 'pen' : 'force', o.kissForce]], { sheet: [L.W, Math.ceil(vinylUsedLength())], pieces: plural(L.items.length, 'copy', 'copies'), knife: !pen }), pen ? '' : bladeNote(o)];
+}
+registerMode(['vinyl', 'pen'], { compute: computeVinyl, renderPreview: renderVinylPreview, renderStats: renderVinylStats, onDrop: files => addFiles(files), exportCheck: vinylExportCheck });
 byId('exVinylSvg').addEventListener('click', () => saveFile(`${state.mode === 'pen' ? 'pen' : 'vinyl'}-${state.vinylLayout.items.length}pcs-${state.mode === 'pen' ? 'draw' : 'cut'}.svg`, buildVinylSvg()));
 byId('exVinylPlt').addEventListener('click', () => {
   const base = `${state.mode === 'pen' ? 'pen' : 'vinyl'}-${state.vinylLayout.items.length}pcs`;

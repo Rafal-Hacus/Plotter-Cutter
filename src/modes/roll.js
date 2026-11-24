@@ -13,9 +13,10 @@ import { aiId, mm1, num, pathEl } from '../core/svg.js';
 import { isPdfFile, tick } from '../core/util.js';
 import { makeZip } from '../core/zip.js';
 import { CUT_RED, byId, fillSheetPicker, plural, saveFile, setMsg, ui } from '../dom.js';
+import { bladeNote, pdfCheck, pltCheck } from '../export/check.js';
 import { pltOpts } from '../export/files.js';
 import { drawClipped, svgPathPt } from '../export/pdf-draw.js';
-import { ensureLibs, pdfSource } from '../lib/pdf.js';
+import { embedSans, ensureLibs, pdfSource } from '../lib/pdf.js';
 import { renderPreview, schedule } from '../pipeline.js';
 import { readOpts } from '../settings.js';
 import { state } from '../state.js';
@@ -221,14 +222,14 @@ function renderRollStats(busyText) {
 /* ---------- files ---------- */
 async function buildPdf() {
   await ensureLibs();
-  const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
+  const { PDFDocument, rgb } = window.PDFLib;
   const o = readOpts(), B = o.rollBleed, out = await PDFDocument.create(), docs = new Map(), emb = new Map(), black = rgb(0, 0, 0);
   for (const it of roll.items) {
     if (!it.copies) continue;
     if (!docs.has(it.bytes)) docs.set(it.bytes, await PDFDocument.load(it.bytes, { ignoreEncryption: true }));
     emb.set(it, (await embedPages(out, docs.get(it.bytes), [it.page]))[0]);
   }
-  const N = roll.sheets.length, font = N > 1 ? await out.embedFont(StandardFonts.Helvetica) : null;
+  const N = roll.sheets.length, font = N > 1 ? await embedSans(out) : null;
   const pages = roll.long ? [[roll.sheets, roll.sheets[N - 1].oy + roll.sheets[N - 1].H]] : roll.sheets.map(sec => [[sec], sec.H]);
   for (const [secs, Hmm] of pages) {
     const Wpt = secs[0].W * PT, Hpt = Hmm * PT, page = out.addPage([Wpt, Hpt]), names = new Map();
@@ -288,4 +289,13 @@ byId('rollSheet').addEventListener('change', e => { roll.view = parseInt(e.targe
 byId('rollBleed').addEventListener('input', () => list());
 
 list();
-registerMode('roll', { compute, renderPreview: renderRollPreview, renderStats: renderRollStats, onDrop: addFiles });
+// what the print PDF and the PLTs will carry
+function rollExportCheck(o) {
+  const N = roll.sheets.length;
+  if (!N) return null;
+  const W = roll.sheets[0].W, used = roll.long ? roll.sheets[N - 1].oy + roll.sheets[N - 1].H : Math.max(...roll.sheets.map(sec => sec.H));
+  const pieces = roll.sheets.reduce((a, s) => a + s.places.length, 0), force = o.rollForce === 'die' ? 'die' : 'kiss';
+  return [pdfCheck({ pages: roll.long ? 1 : N, page: [W, used], bleed: o.rollBleed, extra: plural(pieces, 'piece') }),
+    pltCheck(o, [[force, force === 'die' ? o.dieForce : o.kissForce]], { sheet: [W, used], pieces: N > 1 ? `${pieces} pieces in ${N} PLTs (one per section)` : pieces }), bladeNote(o)];
+}
+registerMode('roll', { compute, renderPreview: renderRollPreview, renderStats: renderRollStats, onDrop: addFiles, exportCheck: rollExportCheck });

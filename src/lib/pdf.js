@@ -21,3 +21,12 @@ export const pdfSource = data => {
   const base = new URL('pdfjs/', document.baseURI).href;
   return { data, isEvalSupported: false, cMapUrl: base + 'cmaps/', cMapPacked: true, standardFontDataUrl: base + 'standard_fonts/', wasmUrl: base + 'wasm/', iccUrl: base + 'iccs/' };
 };
+// A sans-serif font embedded in the PDF being written (only the letters used), for labels on print sheets: a font
+// that is only named (pdf-lib's standard Helvetica) is left to the RIP to substitute.
+export async function embedSans(pdf) {
+  const fontkit = (await import('@pdf-lib/fontkit')).default;
+  pdf.registerFontkit(fontkit);
+  const r = await fetch(new URL('pdfjs/standard_fonts/LiberationSans-Regular.ttf', document.baseURI));
+  if (!r.ok) throw new Error('Could not load the font.');
+  return pdf.embedFont(new Uint8Array(await r.arrayBuffer()), { subset: true });
+}

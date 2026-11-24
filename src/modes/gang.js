@@ -1,15 +1,16 @@
 // Print sheets (gang printing for the guillotine): pictures and PDF pages, each scaled with its proportions kept
 // to cover the chosen format plus bleed (or to fit inside it), imposed on 310 × 440 sheets with crop marks.
-import { embedPages, pageView, seenBox } from '../core/pdfembed.js';
+import { embedPages, pageGeom, pageView, seenBox } from '../core/pdfembed.js';
 import { jpegOrientation, readAsDataUrl } from '../core/image.js';
 import { PT, mul } from '../core/matrix.js';
 import { mm1, num } from '../core/svg.js';
 import { asciiOnly, isImageFile, isPdfFile, tick } from '../core/util.js';
 import { CUT_RED, byId, saveFile, setMsg, ui } from '../dom.js';
+import { pdfCheck } from '../export/check.js';
 import { drawClipped, drawCropMarks } from '../export/pdf-draw.js';
-import { ensureLibs, pdfSource } from '../lib/pdf.js';
+import { embedSans, ensureLibs, pdfSource } from '../lib/pdf.js';
 import { G_PAGE, kinds } from './cards/job.js';
-import { computeCardLayout, cropMarks } from './cards/layout.js';
+import { computeCardLayout, cropMarks, gapNote, shortMarksNote } from './cards/layout.js';
 import { registerMode } from './registry.js';
 import { renderPreview, schedule } from '../pipeline.js';
 import { readOpts } from '../settings.js';
@@ -22,10 +23,13 @@ const gang = { items: [], layout: null, sheets: 0, view: 0 };
 let gangNext = 1;
 const GFORMATS = { '100x150': [100, 150], '130x180': [130, 180], A6: [105, 148], A5: [148, 210], A4: [210, 297], A3: [297, 420], DL: [99, 210], '90x50': [90, 50], '85x55': [85, 55] };
 function gangOpts(o) { // the guillotine engine, fed with this mode's own settings
-  return { ...o, cBleed: o.ggBleed, gAuto: o.ggAuto, gGap: o.ggGap, gMarkLen: o.ggMarkLen, gMarkOff: o.ggMarkOff, gMargin: o.ggEdge, gSize: 'orig' };
+  return { ...o, cBleed: o.ggBleed, gAuto: o.ggAuto, gSqueeze: o.ggSqueeze, gGap: o.ggGap, gMarkLen: o.ggMarkLen, gMarkOff: o.ggMarkOff, gMargin: o.ggEdge, gSize: 'orig' };
 }
+// "As in the file": the trim of the first PDF page (pictures have no size in mm; with only pictures it is 10 × 15)
+const sizedItem = () => gang.items.find(it => it.trim);
 function gangFormat(o) {
-  const f = o.ggFormat === 'custom' ? [o.ggW, o.ggH] : (GFORMATS[o.ggFormat] || [100, 150]);
+  const sized = o.ggFormat === 'file' ? sizedItem() : null;
+  const f = sized ? [sized.trim.w, sized.trim.h] : o.ggFormat === 'custom' ? [o.ggW, o.ggH] : (GFORMATS[o.ggFormat] || [100, 150]);
   return [Math.max(5, f[0]), Math.max(5, f[1])];
 }
 // A picture as the PDF will carry it: PNG and upright JPEG as they are; other formats, and JPEGs the camera
@@ -54,10 +58,14 @@ async function readPdfPages(f) {
   for (let i = 0; i < pdf.numPages; i++) {
     // the page as it is seen (turned by its /Rotate); pdf.js's picture is of the crop box, turned
     const pg = await pdf.getPage(i + 1), view = pageView(lib.getPage(i)), [vx0, vy0, vx1, vy1] = pg.view;
+    // the trim as seen (mm) and its centre (points of the page as seen, y down): the page's own size, for 1:1
+    const g = pageGeom(lib.getPage(i)), bl = (g.bleed || 0) * PT;
+    const tb = seenBox(view, { x: g.box.x + bl, y: g.box.y + bl, w: g.box.width - 2 * bl, h: g.box.height - 2 * bl });
+    const trim = { w: Math.round(tb.w / PT * 100) / 100, h: Math.round(tb.h / PT * 100) / 100, cx: tb.x + tb.w / 2, cy: view.h - tb.y - tb.h / 2, bleed: g.bleed };
     const vp = pg.getViewport({ scale: 4 / PT });
     const cv = document.createElement('canvas'); cv.width = Math.ceil(vp.width); cv.height = Math.ceil(vp.height);
     await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-    pages.push({ name: pdf.numPages > 1 ? `${f.name} p.${i + 1}` : f.name, kind: 'pdf', bytes, page: i, w: view.w, h: view.h, view: view.M, shown: seenBox(view, { x: vx0, y: vy0, w: vx1 - vx0, h: vy1 - vy0 }), preview: cv.toDataURL('image/jpeg', 0.85) });
+    pages.push({ name: pdf.numPages > 1 ? `${f.name} p.${i + 1}` : f.name, kind: 'pdf', bytes, page: i, w: view.w, h: view.h, trim, view: view.M, shown: seenBox(view, { x: vx0, y: vy0, w: vx1 - vx0, h: vy1 - vy0 }), preview: cv.toDataURL('image/jpeg', 0.85) });
     cv.width = cv.height = 1;
   }
   return pages;
@@ -85,7 +93,7 @@ function gangList() {
   for (const it of gang.items) {
     const li = document.createElement('li');
     li.className = 'design';
-    li.innerHTML = `<div class="thumb"><img alt="" style="max-width:100%;max-height:100%"></div><div><div class="dname"></div><div class="fields"><label>Copies<input type="number" min="0" step="1" class="gq"></label></div><div class="actions"><button type="button" class="link ged" hidden>Edit picture (fit, rotate, AI)</button></div><div class="status gst"></div></div><button type="button" class="remove">×</button>`;
+    li.innerHTML = `<div class="thumb"><img alt="" style="max-width:100%;max-height:100%"></div><div><div class="dname"></div><div class="fields"><label>Copies<input type="number" min="0" step="1" class="gq"></label></div><div class="actions"><button type="button" class="link ged" hidden>Edit picture (fit, rotate, AI)</button></div><div class="status gst"></div><div class="status gfit"></div></div><button type="button" class="remove">×</button>`;
     li.querySelector('img').src = it.preview;
     li.querySelector('.dname').textContent = it.name; li.querySelector('.dname').title = it.name;
     const q = li.querySelector('.gq'); q.value = it.copies;
@@ -132,15 +140,53 @@ function gangSlots() {
 // The box a picture is placed in: its slot's trim plus the full bleed. (The slot's clip can be narrower when the
 // gap between copies is less than two bleeds; the picture is clipped to that, but always placed on the trim.)
 const gangBox = slot => { const b = gangOpts(readOpts()).cBleed, [x, y, w, h] = slot.trim; return [x - b, y - b, w + 2 * b, h + 2 * b]; };
-// placement of an item (natural w × h) in a box on the sheet (mm, y down): rotation to match orientation, scale, centre
-function gangPlace(it, box, fill) {
-  const [bx, by, bw, bh] = box, rot = (it.w > it.h) !== (bw > bh) && Math.abs(it.w - it.h) > 1e-6;
+// "As in the file": a PDF page whose trim is the format (either way round) is placed 1:1, its trim on the slot's.
+// Anything else (another size, a picture) is scaled by the Scaling setting.
+function oneToOne(it, o) {
+  if (o.ggFormat !== 'file' || !it.trim) return false;
+  const [fw, fh] = gangFormat(o), near = (a, b) => Math.abs(a - b) <= 0.5;
+  return (near(it.trim.w, fw) && near(it.trim.h, fh)) || (near(it.trim.w, fh) && near(it.trim.h, fw));
+}
+// placement of an item (natural w × h) in a box on the sheet (mm, y down; the slot's trim plus bleed): rotation to
+// match orientation, scale, centre. one: 1:1 (see oneToOne).
+function gangPlace(it, box, fill, one = false) {
+  const [bx, by, bw, bh] = box;
+  if (one) {
+    // turned a quarter when the slot lies the other way round from the trim (the layout turns slots to fit more)
+    const t0 = it.trim, rot = (t0.w > t0.h) !== (bw > bh) && Math.abs(t0.w - t0.h) > 0.5, s = 1 / PT, cw = rot ? it.h : it.w, ch = rot ? it.w : it.h, mx = bx + bw / 2, my = by + bh / 2, t = it.trim;
+    return { rot, s, one: true, x: rot ? mx - s * t.cy : mx - s * t.cx, y: rot ? my - s * (it.w - t.cx) : my - s * t.cy, cw, ch };
+  }
+  const rot = (it.w > it.h) !== (bw > bh) && Math.abs(it.w - it.h) > 1e-6;
   const cw = rot ? it.h : it.w, ch = rot ? it.w : it.h;
   const s = fill ? Math.max(bw / cw, bh / ch) : Math.min(bw / cw, bh / ch);
   return { rot, s, x: bx + (bw - cw * s) / 2, y: by + (bh - ch * s) / 2, cw, ch };
 }
+const placeItem = (it, box, o) => gangPlace(it, box, o.ggFit === 'fill', oneToOne(it, o));
+// What happens to an item, said next to it: 1:1, or scaled by how much and how many mm of it are cut off (or left
+// white) on which sides. -> { text, warn }
+function fitNote(it, o) {
+  const [fw, fh] = gangFormat(o), b = o.ggBleed, pl = placeItem(it, [0, 0, fw + 2 * b, fh + 2 * b], o);
+  if (pl.one) {
+    const fb = it.trim.bleed || 0;
+    return { text: `1:1, as in the file (${mm1(it.trim.w)} × ${mm1(it.trim.h)} mm).${fb + 0.05 < b ? ` The file has ${fb ? `only ${num(fb)} mm` : 'no'} bleed: past ${fb ? 'it' : 'the trim'} the ${num(b)} mm bleed prints white.` : ''}`, warn: false };
+  }
+  // the design: a PDF page's trim (its bleed is meant to be cut off), a picture whole; in the sheet's orientation
+  const dw = it.trim ? it.trim.w * PT : it.w, dh = it.trim ? it.trim.h * PT : it.h;
+  const sw = (pl.rot ? dh : dw) * pl.s, sh = (pl.rot ? dw : dh) * pl.s;
+  const across = (sw - fw) / 2, down = (sh - fh) / 2; // per side, on the sheet: > 0 cut off, < 0 left white
+  // sides named as in the file: turned a quarter, the sheet's left and right are the file's top and bottom
+  const [lr, tb] = pl.rot ? [down, across] : [across, down], parts = [];
+  for (const [v, sides] of [[lr, 'left and right'], [tb, 'top and bottom']]) {
+    if (v > 0.1) parts.push(`${mm1(v)} mm cut off at the ${sides}`);
+    else if (v < -0.1) parts.push(`${mm1(-v)} mm white at the ${sides}`);
+  }
+  const pct = it.trim ? pl.s * PT * 100 : null, scaled = pct != null && Math.abs(pct - 100) >= 0.5;
+  const how = pct == null ? 'A picture has no size in mm: scaled to the format' : scaled ? `Scaled to ${num(Math.round(pct * 10) / 10)} %` : 'At 100 %';
+  const text = `${how}${pl.rot ? ', turned a quarter' : ''}${parts.length ? `; ${parts.join(', ')}` : ''}.${it.trim && o.ggFormat !== 'file' ? ' Choose Format “As in the file (1:1)” to print it at its own size.' : ''}`;
+  return { text, warn: scaled || lr > 0.5 || tb > 0.5 };
+}
 function renderGangPreview() {
-  const o = readOpts(), go = gangOpts(o), L = gang.layout, pg = G_PAGE, fill = o.ggFit === 'fill';
+  const o = readOpts(), go = gangOpts(o), L = gang.layout, pg = G_PAGE;
   state.previewFrame = { x: -8, y: -8, w: pg.wMm + 16, h: pg.hMm + 16 };
   const p = [`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${state.previewFrame.x} ${state.previewFrame.y} ${state.previewFrame.w} ${state.previewFrame.h}" role="img" aria-label="Print sheet preview"><rect x="0" y="0" width="${pg.wMm}" height="${pg.hMm}" fill="#fff"/>`];
   if (go.gMargin) p.push(`<rect x="${go.gMargin}" y="${go.gMargin}" width="${pg.wMm - 2 * go.gMargin}" height="${pg.hMm - 2 * go.gMargin}" fill="none" stroke="#9fb0a9" stroke-dasharray="4 4" vector-effect="non-scaling-stroke"/>`);
@@ -150,7 +196,7 @@ function renderGangPreview() {
       const it = seq[base + i], [cx, cy, cw2, ch2] = slot.clip;
       p.push(`<rect x="${num(slot.trim[0])}" y="${num(slot.trim[1])}" width="${num(slot.trim[2])}" height="${num(slot.trim[3])}" fill="none" stroke="${CUT_RED}" stroke-width="1.1" vector-effect="non-scaling-stroke"/>`);
       if (!it || !ui.showArt.checked) return;
-      const pl = gangPlace(it, gangBox(slot), fill), sh = it.shown || { x: 0, y: 0, w: it.w, h: it.h };
+      const pl = placeItem(it, gangBox(slot), o), sh = it.shown || { x: 0, y: 0, w: it.w, h: it.h };
       // image drawn in its own (rotated) frame
       const M = pl.rot ? [0, -pl.s, pl.s, 0, pl.x, pl.y + pl.ch * pl.s] : [pl.s, 0, 0, pl.s, pl.x, pl.y];
       p.push(`<clipPath id="gc${i}"><rect x="${num(cx)}" y="${num(cy)}" width="${num(cw2)}" height="${num(ch2)}"/></clipPath><g clip-path="url(#gc${i})"><image href="${it.preview}" x="${sh.x}" y="${it.h - sh.y - sh.h}" width="${sh.w}" height="${sh.h}" preserveAspectRatio="none" transform="matrix(${M.map(num).join(',')})"/></g>`);
@@ -168,12 +214,24 @@ function renderGangStats(busyText) {
   byId('exGangProof').disabled = !n || !total || !!busyText;
   if (busyText) { ui.count.textContent = busyText; return; }
   ui.count.textContent = !gang.items.length ? 'No files yet' : `${total} ${total === 1 ? 'print' : 'prints'} on ${gang.sheets} ${gang.sheets === 1 ? 'sheet' : 'sheets'}`;
-  const notes = [];
+  const notes = [], o = readOpts();
+  // next to every file: 1:1, or how much it is scaled and cut
+  const lis = byId('gangList').querySelectorAll('li.design');
+  gang.items.forEach((it, i) => {
+    const el = lis[i] && lis[i].querySelector('.gfit');
+    if (!el) return;
+    const f = fitNote(it, o);
+    el.textContent = f.text; el.classList.toggle('warn', f.warn);
+  });
   if (gang.items.length && L) {
-    const [fw, fh] = gangFormat(readOpts());
+    const [fw, fh] = gangFormat(o);
+    if (o.ggFormat === 'file' && !sizedItem()) notes.push('Pictures have no size in mm, so “As in the file” uses 10 × 15 cm: choose the format.');
     if (!n) notes.push('The format doesn’t fit on the sheet.');
     else {
-      notes.push(`${n} per sheet (${L.cols} × ${L.rows}${L.rot ? ', rotated' : ''}), ${num(fw)} × ${num(fh)} mm + ${num(readOpts().ggBleed)} mm bleed.`);
+      const go = gangOpts(o), marks = shortMarksNote(L, go);
+      notes.push(`${n} per sheet (${L.cols} × ${L.rows}${L.rot ? ', rotated' : ''}), ${num(fw)} × ${num(fh)} mm + ${num(o.ggBleed)} mm bleed.`);
+      notes.push(gapNote(L, go, 'prints'));
+      if (marks) notes.push(marks);
       notes.push(`Cuts from the left edge: ${L.cutsX.map(mm1).join(', ')} mm. From the top: ${L.cutsY.map(mm1).join(', ')} mm.`);
     }
   }
@@ -182,7 +240,7 @@ function renderGangStats(busyText) {
 async function buildGangPdf() {
   await ensureLibs();
   const { PDFDocument } = window.PDFLib;
-  const o = readOpts(), go = gangOpts(o), L = gang.layout, fill = o.ggFit === 'fill', seq = gangSlots();
+  const o = readOpts(), go = gangOpts(o), L = gang.layout, seq = gangSlots();
   const out = await PDFDocument.create(), Wpt = G_PAGE.wMm * PT, Hpt = G_PAGE.hMm * PT;
   // embed every source once
   const emb = new Map(), srcDocs = new Map();
@@ -205,7 +263,7 @@ async function buildGangPdf() {
       if (!it) return;
       const e = emb.get(it);
       if (!names.has(e)) names.set(e, page.node.newXObject('Gang', e.ref));
-      const pl = gangPlace(it, gangBox(slot), fill), rc = slot.clip;
+      const pl = placeItem(it, gangBox(slot), o), rc = slot.clip;
       // source units -> natural size (image: unit square; PDF page: points of the page as seen)
       const S0 = it.kind === 'img' ? [it.w, 0, 0, it.h, 0, 0] : it.view;
       // natural (y up) -> sheet points (y up), rotated a quarter turn when the orientation differs
@@ -233,9 +291,9 @@ byId('exGang').addEventListener('click', async () => {
 // and everything that ends up cut off greyed out.
 async function buildGangProof() {
   await ensureLibs();
-  const { PDFDocument, StandardFonts, rgb, pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject } = window.PDFLib;
+  const { PDFDocument, rgb, pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject } = window.PDFLib;
   const o = readOpts(), go = gangOpts(o), L = gang.layout, fill = o.ggFit === 'fill', [fw, fh] = gangFormat(o), b = go.cBleed;
-  const out = await PDFDocument.create(), font = await out.embedFont(StandardFonts.Helvetica), srcDocs = new Map();
+  const out = await PDFDocument.create(), font = await embedSans(out), srcDocs = new Map();
   const tw = L.items[0].trim[2], th = L.items[0].trim[3], PW = 595.28, PH = 841.89;
   const red = rgb(0.85, 0.1, 0.1), orange = rgb(0.95, 0.55, 0.1), grey = rgb(1, 1, 1);
   for (const it of gang.items) {
@@ -245,11 +303,13 @@ async function buildGangProof() {
       if (!srcDocs.has(it.bytes)) srcDocs.set(it.bytes, await PDFDocument.load(it.bytes, { ignoreEncryption: true }));
       return (await embedPages(out, srcDocs.get(it.bytes), [it.page]))[0];
     })();
-    const pl = gangPlace(it, [0, 0, tw + 2 * b, th + 2 * b], fill), s = pl.s;
+    const pl = placeItem(it, [0, 0, tw + 2 * b, th + 2 * b], o), s = pl.s;
     // the printed area (bleed box) and the cut line, in the file's own units, centred on it
     const vis = pl.rot ? [(th + 2 * b) / s, (tw + 2 * b) / s] : [(tw + 2 * b) / s, (th + 2 * b) / s];
     const cut = pl.rot ? [th / s, tw / s] : [tw / s, th / s];
-    const rect = sz => [it.w / 2 - sz[0] / 2, it.h / 2 - sz[1] / 2, sz[0], sz[1]]; // x, y (from the top), w, h
+    // centred on the page, or 1:1 on its trim
+    const ccx = pl.one ? it.trim.cx : it.w / 2, ccy = pl.one ? it.trim.cy : it.h / 2;
+    const rect = sz => [ccx - sz[0] / 2, ccy - sz[1] / 2, sz[0], sz[1]]; // x, y (from the top), w, h
     const V = rect(vis), C = rect(cut);
     const minX = Math.min(0, V[0]), minY = Math.min(0, V[1]), maxX = Math.max(it.w, V[0] + V[2]), maxY = Math.max(it.h, V[1] + V[3]);
     const AX = 40, AY = 70, AW = PW - 80, AH = PH - 150, k = Math.min(AW / (maxX - minX), AH / (maxY - minY));
@@ -270,7 +330,7 @@ async function buildGangProof() {
     const frame = (R, color, dash) => { const [px, py] = P(R[0], R[1] + R[3]); page.drawRectangle({ x: px, y: py, width: R[2] * k, height: R[3] * k, borderColor: color, borderWidth: 1, borderDashArray: dash, opacity: 0 }); };
     frame(V, orange, [4, 3]); frame(C, red, undefined);
     const t1 = asciiOnly(`${it.name}  (${it.copies} ${it.copies === 1 ? 'copy' : 'copies'})`);
-    const t2 = asciiOnly(`${num(fw)} x ${num(fh)} mm + ${num(b)} mm bleed, ${fill ? 'filled' : 'fitted whole'}${pl.rot ? ', turned a quarter on the sheet' : ''}`);
+    const t2 = asciiOnly(`${num(fw)} x ${num(fh)} mm + ${num(b)} mm bleed, ${pl.one ? '1:1 as in the file' : fill ? 'filled' : 'fitted whole'}${pl.rot ? ', turned a quarter on the sheet' : ''}`);
     page.drawText(t1.slice(0, 90), { x: 40, y: PH - 45, size: 12, font, color: rgb(0, 0, 0) });
     page.drawText(t2, { x: 40, y: PH - 62, size: 9, font, color: rgb(0.3, 0.3, 0.3) });
     page.drawText('Red: cut line.  Orange dashed: edge of the printed bleed.  Greyed out: cut off.', { x: 40, y: 40, size: 9, font, color: rgb(0.3, 0.3, 0.3) });
@@ -285,4 +345,11 @@ byId('exGangProof').addEventListener('click', async () => {
   finally { btn.disabled = false; }
 });
 gangList();
-registerMode('gang', { compute: gangCompute, renderPreview: renderGangPreview, renderStats: renderGangStats, onDrop: gangAddFiles });
+// what the print PDF will carry
+function gangExportCheck(o) {
+  const L = gang.layout, total = gang.items.reduce((s, it) => s + it.copies, 0);
+  if (!L || !L.n || !total) return null;
+  const between = L.inner < L.b - 0.005 ? `, ${num(L.inner)} mm between prints` : '';
+  return [pdfCheck({ pages: gang.sheets, page: [G_PAGE.wMm, G_PAGE.hMm], bleed: o.ggBleed, extra: `${total} ${total === 1 ? 'print' : 'prints'}${between}` })];
+}
+registerMode('gang', { compute: gangCompute, renderPreview: renderGangPreview, renderStats: renderGangStats, onDrop: gangAddFiles, exportCheck: gangExportCheck });

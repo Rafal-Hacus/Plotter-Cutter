@@ -10,7 +10,7 @@ import { updateRow } from './modes/stickers/rows.js';
 import { analyseSvgPlt, sp } from './modes/svgplt.js';
 import { initNumFields, recheckNumFields } from './numfield.js';
 import { syncOptionRows } from './option-rows.js';
-import { renderPreview, run, schedule } from './pipeline.js';
+import { refreshExportCheck, renderPreview, run, schedule } from './pipeline.js';
 import { initPresets } from './presets.js';
 import { OPT_IDS, applyOptionValues, loadOpts, optionValues, saveOpts } from './settings.js';
 import { designs, state } from './state.js';
@@ -50,6 +50,7 @@ for (const id of OPT_IDS) {
     if (!REDRAW_ONLY.includes(id)) { schedule(); return; }
     saveOpts();
     if (state.template) renderPreview();
+    refreshExportCheck();
     designs.forEach(updateRow);
   });
 }

@@ -7,9 +7,10 @@ import { MM_PER, SHAPES, dataUri, decodeLayer, elementPolys, esc, expandUses, mm
 import { tick } from '../core/util.js';
 import { makeZip } from '../core/zip.js';
 import { byId, saveFile, setMsg, ui } from '../dom.js';
+import { bladeNote, pltCheck } from '../export/check.js';
 import { pltOpts } from '../export/files.js';
 import { registerMode } from './registry.js';
-import { renderPreview, renderStats } from '../pipeline.js';
+import { refreshExportCheck, renderPreview, renderStats } from '../pipeline.js';
 import { readOpts } from '../settings.js';
 import { state } from '../state.js';
 import { markFrame } from '../template.js';
@@ -112,7 +113,7 @@ function spRenderGroups() {
   box.innerHTML = `<table class="modt"><thead><tr><th></th><th>Cut group</th><th>Lines</th><th>Length</th><th>Force g</th></tr></thead><tbody>${sp.groups.map((g, i) =>
     `<tr><td><input type="checkbox" data-i="${i}" class="spInc" ${g.include ? 'checked' : ''} aria-label="Cut ${esc(g.name)}"></td><td title="${esc(g.name)}"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${g.color};margin-right:5px"></span>${esc(g.name)}</td><td>${g.paths.length}</td><td>${num(Math.round(g.paths.reduce((s, p) => s + pathLen(p), 0) / 100) / 10)} m</td><td><input type="number" min="1" max="160" step="1" data-i="${i}" class="spF" value="${g.force}" aria-label="Force for ${esc(g.name)}"></td></tr>`).join('')}</tbody></table>`;
   box.querySelectorAll('.spInc').forEach(c => c.addEventListener('change', () => { sp.groups[+c.dataset.i].include = c.checked; renderPreview(); renderStats(); }));
-  box.querySelectorAll('.spF').forEach(c => c.addEventListener('input', () => { const v = parseFloat(c.value); if (isFinite(v)) sp.groups[+c.dataset.i].force = v; }));
+  box.querySelectorAll('.spF').forEach(c => c.addEventListener('input', () => { const v = parseFloat(c.value); if (isFinite(v)) { sp.groups[+c.dataset.i].force = v; refreshExportCheck(); } }));
 }
 async function spLoad(file) {
   if (!file) return;
@@ -181,4 +182,10 @@ byId('exSpPlt').addEventListener('click', () => {
   });
   saveFile(`${sp.name}-plt.zip`, makeZip(files));
 });
-registerMode('svgplt', { renderPreview: renderSvgPltPreview, renderStats: renderSvgPltStats, onDrop: files => spLoad(files[0]) });
+// what the PLTs will carry: one file per cut group, each with its own force
+function svgPltExportCheck(o) {
+  const inc = sp.groups.filter(g => g.include), n = inc.reduce((s, g) => s + g.paths.length, 0);
+  if (!sp.marks || !n) return null;
+  return [pltCheck(o, inc.map(g => [g.name, g.force]), { sheet: [sp.W, sp.H], pieces: `${n} cut ${n === 1 ? 'line' : 'lines'}` }), bladeNote(o)];
+}
+registerMode('svgplt', { renderPreview: renderSvgPltPreview, renderStats: renderSvgPltStats, onDrop: files => spLoad(files[0]), exportCheck: svgPltExportCheck });
