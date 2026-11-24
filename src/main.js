@@ -13,7 +13,7 @@ import { syncOptionRows } from './option-rows.js';
 import { refreshExportCheck, renderPreview, run, schedule } from './pipeline.js';
 import { initPresets } from './presets.js';
 import { initJobStore, lastMode } from './jobstore.js';
-import { OPT_IDS, applyOptionValues, loadOpts, optionValues, saveOpts } from './settings.js';
+import { JOB_IDS, OPT_IDS, applyOptionValues, loadOpts, optionValues, saveOpts } from './settings.js';
 import { designs, state } from './state.js';
 import { applySheetSize, setTemplate } from './template.js';
 import './viewport.js';
@@ -27,6 +27,8 @@ import './modes/stamps.js';
 import './modes/squares.js';
 import './modes/duplex.js';
 import './plt-modifier.js';
+import './testcut.js';
+import { initMaterials } from './materials.js';
 
 /* ---------- the sheet template ---------- */
 ui.tplFile.addEventListener('change', async () => {
@@ -70,9 +72,11 @@ window.addEventListener('drop', e => {
 });
 
 /* ---------- saved settings: the mode plus every option field ---------- */
-function snapshotSettings() { return { mode: state.mode, settings: optionValues() }; }
+// (not the blade offset and overcut: they are the plotter's calibration, and saved settings made before this
+// still carry them, so picking one must not overwrite them)
+function snapshotSettings() { const v = optionValues(); return { mode: state.mode, settings: Object.fromEntries(JOB_IDS.map(id => [id, v[id]])) }; }
 function applySettings({ mode, settings }) {
-  applyOptionValues(settings);
+  applyOptionValues(settings, JOB_IDS);
   recheckNumFields();
   syncOptionRows();
   const t = state.template;
@@ -91,6 +95,7 @@ loadOpts();
 recheckNumFields();
 syncOptionRows();
 applySheetSize();
+initMaterials();
 ui.list.innerHTML = EMPTY_LIST;
 renderPreview();
 run();
