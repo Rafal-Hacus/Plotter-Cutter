@@ -84,11 +84,14 @@ async function processVinyl(d, o) {
   // the height is the shapes' (what gets cut), as typed. Until it is typed it starts at the shapes' real size in the
   // file (the file's height is its page's, blank space included: a logo drawn to size on an A4 page was cut 297 mm
   // tall, one with a little margin a little too big)
-  if (!d.hEdited && !d.realSized) { d.heightMm = d.heightMm * bh / d.vb.h; d.realSized = true; }
+  // (from the file's own scale: the height may have been set for a sticker's cut line before switching here)
+  d.vShapeH = bh;
+  if (!d.hEdited && !d.realSized) { d.heightMm = d.mmPerUnit * bh; d.realSized = true; }
   const s = d.heightMm / bh, frW = bw * s, frH = d.heightMm;
   const weedEach = o.vWeed === 'each', wm = weedEach ? o.vWeedMargin : 0;
   const pad = o.vGap / 2 + wm + 1.5;
   const Wc = Math.ceil((frW + 2 * pad) / CELL), Hc = Math.ceil((frH + 2 * pad) / CELL);
+  if (Wc * Hc > 16e6) throw new Error(`At ${num(Math.round(frW))} × ${num(Math.round(frH))} mm this is too big to read: set a smaller height.`);
   let ppm = 2;
   for (const p of [10, 6, 4, 2]) if (Wc * Hc * (p * CELL) ** 2 <= 9e6) { ppm = p; break; }
   const f = Math.round(ppm * CELL), w = Wc * f, h = Hc * f, N = w * h;

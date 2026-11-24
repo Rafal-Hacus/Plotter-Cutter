@@ -3,7 +3,7 @@
 import { rdp, simplifyLoop } from '../core/geometry.js';
 import { writePlt } from '../core/plt.js';
 import { sanitize } from '../core/sanitize.js';
-import { MM_PER, SHAPES, dataUri, decodeLayer, elementPolys, esc, expandUses, mm1, num, parseLen, parseSvg, pathLen, readViewBox, toHex, windowSvg } from '../core/svg.js';
+import { MM_PER, SHAPES, dataUri, decodeLayer, elementPolys, esc, expandUses, mm1, num, parseLen, parseSvg, pathLen, readViewBox, svgGenerator, toHex, windowSvg } from '../core/svg.js';
 import { tick } from '../core/util.js';
 import { makeZip } from '../core/zip.js';
 import { byId, saveFile, setMsg, ui } from '../dom.js';
@@ -15,9 +15,9 @@ import { state } from '../state.js';
 import { markFrame } from '../template.js';
 import { applyView } from '../viewport.js';
 
-export const sp = { name: null, text: null, groups: [], vb: null, u: 1, marks: null, markSrc: '', unitless: false, err: '' };
+export const sp = { name: null, text: null, groups: [], vb: null, u: 1, marks: null, markSrc: '', unitless: false, err: '', texts: 0, cutTexts: 0 };
 export function analyseSvgPlt() {
-  sp.groups = []; sp.marks = null; sp.err = ''; sp.markSrc = ''; sp.vb = null;
+  sp.groups = []; sp.marks = null; sp.err = ''; sp.markSrc = ''; sp.vb = null; sp.texts = 0; sp.cutTexts = 0;
   if (!sp.text) { spRenderGroups(); return; }
   let host = null;
   try {
@@ -26,7 +26,11 @@ export function analyseSvgPlt() {
     if (!vb) throw new Error('The SVG has no viewBox or size.');
     const wl = parseLen(root.getAttribute('width'));
     sp.unitless = !(wl && MM_PER[wl.unit]);
-    sp.u = sp.unitless ? readOpts().spDpi / 25.4 : vb.w / (wl.n * MM_PER[wl.unit]);
+    // a width in px is the page's width at that many px per inch, whatever the viewBox's units; with no width
+    // (or one in %) the viewBox's units are taken as px
+    sp.pxW = sp.unitless && wl && wl.unit !== '%' && wl.n > 0 ? wl.n : null;
+    const dpi = readOpts().spDpi;
+    sp.u = !sp.unitless ? vb.w / (wl.n * MM_PER[wl.unit]) : sp.pxW ? vb.w / (sp.pxW * 25.4 / dpi) : dpi / 25.4;
     sp.vb = vb;
     doc.querySelectorAll('image').forEach(n => n.remove());
     host = document.createElement('div');
@@ -36,6 +40,16 @@ export function analyseSvgPlt() {
     host.appendChild(svg); document.body.appendChild(host);
     const inv = svg.getScreenCTM().inverse(), u = sp.u, mm = (X, Y) => [(X - vb.x) / u, (Y - vb.y) / u];
     const Wmm = vb.w / u, Hmm = vb.h / u, shapes = [];
+    // live text is never cut (only shapes are): said, and louder for text drawn like a cut line (stroked, unfilled)
+    for (const t of svg.querySelectorAll('text')) {
+      if (t.closest('defs,clipPath,mask,pattern,symbol,marker') || !(t.textContent || '').trim()) continue;
+      let layer = '';
+      for (let a = t.parentElement; a && a !== svg; a = a.parentElement) if (a.localName === 'g' && a.id) layer = a.id;
+      if (/regmark|printonly/i.test(layer)) continue;
+      const cs = getComputedStyle(t);
+      sp.texts++;
+      if (cs.stroke && cs.stroke !== 'none' && (!cs.fill || cs.fill === 'none')) sp.cutTexts++;
+    }
     for (const el of svg.querySelectorAll(SHAPES)) {
       if (el.closest('defs,clipPath,mask,pattern,symbol,marker')) continue;
       const cs = getComputedStyle(el);
@@ -107,6 +121,8 @@ async function spLoad(file) {
   sp.name = file.name.replace(/\.svg$/i, '');
   try { sp.text = await file.text(); }
   catch (e) { sp.text = null; }
+  // a size in px (or none): read by the program that wrote the file when that is known (Illustrator 72, Inkscape 96 per inch)
+  { const g = svgGenerator(sp.text); if (g.sure && (g.dpi === 72 || g.dpi === 96)) byId('spDpi').value = String(g.dpi); }
   analyseSvgPlt();
   if (sp.text == null) sp.err = `Couldn’t read ${file.name}.`;
   state.view = null;
@@ -140,13 +156,15 @@ function renderSvgPltStats(busyText) {
   ui.count.textContent = !sp.vb ? 'No SVG loaded' : `${n} cut ${n === 1 ? 'line' : 'lines'} in ${inc.length} ${inc.length === 1 ? 'group' : 'groups'}`;
   if (!sp.text && !sp.err) { setMsg(''); return; }
   const notes = [];
-  if (sp.vb) notes.push(`${sp.name}: ${mm1(sp.W)} × ${mm1(sp.H)} mm${sp.unitless ? ` (no size in the file, read as ${readOpts().spDpi === 25.4 ? 'mm' : readOpts().spDpi + ' per inch'})` : ''}.`);
+  if (sp.vb) notes.push(`${sp.name}: ${mm1(sp.W)} × ${mm1(sp.H)} mm${sp.unitless ? ` (${sp.pxW ? 'size in px' : 'no size in the file'}, read as ${readOpts().spDpi === 25.4 ? 'mm' : readOpts().spDpi + ' per inch'})` : ''}.`);
   else notes.push(`${sp.name}:`);
   if (sp.marks) {
     const mk = sp.marks, f = v => mm1(v / sp.u);
     notes.push(`Marks from the ${sp.markSrc}: ${f(mk.right - mk.left)} × ${f(mk.bottom - mk.top)} mm between centres, ${mm1(mk.thick)} mm thick. The knife origin is the bottom-right mark.`);
     if (Math.abs(mk.thick - 1) > 0.3) notes.push('The marks aren’t 1 mm thick: check the file’s units before cutting.');
   }
+  if (sp.cutTexts) notes.push(`${sp.cutTexts === 1 ? '1 live text element is' : `${sp.cutTexts} live text elements are`} drawn like a cut line but won’t be cut: only shapes are cut. Convert text to curves (outlines) in the SVG.`);
+  else if (sp.texts) notes.push(`${sp.texts === 1 ? '1 live text element (not converted to curves) isn’t' : `${sp.texts} live text elements (not converted to curves) aren’t`} cut: only shapes are. Fine if ${sp.texts === 1 ? 'it' : 'they'} only print${sp.texts === 1 ? 's' : ''}.`);
   if (sp.err) notes.push(sp.err);
   setMsg(notes.join(' '), !!sp.err);
 }

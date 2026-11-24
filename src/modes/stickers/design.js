@@ -2,7 +2,7 @@
 // size (processDesign).
 import { CELL, edt, fillHolesBin, fillHolesField, joinNear, loopArea, makeMask, march, rotBits, simplifyLoop } from '../../core/geometry.js';
 import { sanitize } from '../../core/sanitize.js';
-import { MM_PER, SHAPES, XLINK, dataUri, esc, loadImg, num, parseLen, parseSvg, prefixDoc, readViewBox, ser, sizedSvg, splitRoot, windowSvg } from '../../core/svg.js';
+import { SHAPES, XLINK, dataUri, esc, loadImg, mm1, num, parseSvg, prefixDoc, readViewBox, ser, sizedSvg, splitRoot, svgRealSize, windowSvg } from '../../core/svg.js';
 import { tick } from '../../core/util.js';
 
 // Vector shapes that look like cut lines: stroked, with no visible fill. Indices into the SHAPES list.
@@ -44,17 +44,40 @@ function detectCutShapes(doc) {
     if (host) host.remove();
   }
 }
+// What is drawn in a file with no viewBox and no size, in its user units (a frame to size it by)
+function contentBox(doc) {
+  let host = null;
+  try {
+    host = document.createElement('div');
+    host.style.cssText = 'position:absolute;left:-100000px;top:0;width:10px;height:10px;overflow:hidden;visibility:hidden;pointer-events:none';
+    const svg = document.importNode(doc.documentElement, true);
+    svg.removeAttribute('width'); svg.removeAttribute('height');
+    host.appendChild(svg); document.body.appendChild(host);
+    const b = svg.getBBox();
+    return b.width > 0 && b.height > 0 ? { x: b.x, y: b.y, w: b.width, h: b.height } : null;
+  } catch (e) {
+    return null;
+  } finally {
+    if (host) host.remove();
+  }
+}
 let nextId = 1;
 export function prepareDesign(text, name) {
   const doc = parseSvg(text);
   const linked = Array.from(doc.documentElement.querySelectorAll('image')).some(im => { const h = (im.getAttribute('href') || im.getAttributeNS(XLINK, 'href') || '').trim(); return h && !h.startsWith('data:'); });
   sanitize(doc);
   const root = doc.documentElement;
-  const vb = readViewBox(root);
-  if (!vb) throw new Error('No viewBox or size in this file. Re-export it with a viewBox.');
-  const hl = parseLen(root.getAttribute('height'));
-  let natH = (hl && MM_PER[hl.unit]) ? hl.n * MM_PER[hl.unit] : null;
-  if (!natH || natH < 5 || natH > 400) natH = 50;
+  // the file at its real size; only a file with no size and no viewBox, or an absurd size, starts at 50 mm (and says so)
+  let vb = readViewBox(root);
+  const real = svgRealSize(root, vb, text);
+  let sizeNote = real.note, natH = real.hMm;
+  if (!vb) {
+    vb = contentBox(doc);
+    if (!vb) throw new Error('No viewBox or size in this file, and nothing drawn in it. Re-export it with a viewBox.');
+    sizeNote = 'No size and no viewBox in this file: started at 50 mm height, set the height';
+  } else if (!real.ok) sizeNote = `The file says ${mm1(real.wMm)} × ${mm1(real.hMm)} mm${real.note ? ` (${real.note.replace(/: check$/, '')})` : ''}, which can’t be right: started at 50 mm height, set the height`;
+  if (!real.ok) natH = 50;
+  const mmPerUnit = natH / vb.h;
   const warns = [];
   if (linked) warns.push('Linked images in this file won’t show (for safety only embedded images are used). Embed them before exporting.');
   if (root.querySelector('text')) {
@@ -113,6 +136,8 @@ export function prepareDesign(text, name) {
   const markupNoCut = cut.idx.length ? fixRefs(splitRoot(without(odoc, cut.idx).documentElement).inner) : markup;
   return {
     id, name, vb, norm, markup, markupNoCut, cutMask, wrap, warns, heightMm, qty: null,
+    // mm per user unit at the file's real size, what the file says (null when that isn't a usable size) and how it was read
+    mmPerUnit, fileMm: real.ok ? { w: real.wMm, h: real.hMm } : null, sizeNote, sizeGuessed: !real.ok || real.guessed, vShapeH: null,
     sharedDefs: shared.join(''), canCut: cut.idx.length > 0, cutBox: cut.box,
     mode,
     url: dataUri(norm), urlNoCut: cut.idx.length ? dataUri(normNoCut) : dataUri(norm),
@@ -126,6 +151,8 @@ export async function processDesign(d, o) {
   const s = d.heightMm / fr.h, artW = d.vb.w * s, artH = d.vb.h * s, frW = fr.w * s, frH = d.heightMm;
   const pad = k + dd + Math.max(gap / 2, o.joinGap / 2) + 1.5;
   const Wc = Math.ceil((frW + 2 * pad) / CELL), Hc = Math.ceil((frH + 2 * pad) / CELL);
+  // (a design at its real size may be a poster: past about 2 × 2 m the tracing would run the browser out of memory)
+  if (Wc * Hc > 16e6) throw new Error(`At ${mm1(frW)} × ${mm1(frH)} mm this is too big to trace: set a smaller height.`);
   let ppm = 2;
   for (const p of [20, 10, 6, 4, 2]) {
     if (o.quality !== 'fine' && p > 10) continue;
