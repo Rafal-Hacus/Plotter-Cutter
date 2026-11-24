@@ -280,7 +280,7 @@ describe('restarts', () => {
       expect((await fetch(other.url + '/api/me', { headers: { cookie: c } })).status).toBe(401);
       other.app.server.close();
     } finally { a.app.server.close(); b.app.server.close(); }
-  });
+  }, 30_000); // three servers each hash the password: slow while the other test files run
 });
 
 describe('first-run setup (no password in the environment)', () => {
