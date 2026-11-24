@@ -37,7 +37,7 @@ export const FIELD_MODES = {
   // knife, force and speed (pen sets overcut and blade offset to 0 and uses its own force; squares has no overcut)
   lineW: [...TEMPLATE, 'roll', 'vinyl', 'pen', 'squares'],
   overcut: [...TEMPLATE, 'roll', 'svgplt', 'vinyl'], bladeOffset: [...TEMPLATE, 'roll', 'svgplt', 'vinyl', 'squares'],
-  pltForce: PLT, cutSpeed: PLT, upSpeed: PLT,
+  pltForce: PLT, cutSpeed: PLT, upSpeed: PLT, matSel: PLT, // (the material profile: forces and speeds)
   kissForce: ['stickers', 'roll', 'svgplt', 'vinyl'], dieForce: [...TEMPLATE, 'roll', 'svgplt', 'squares'],
   // Layout
   clearance: TEMPLATE, joinGap: ['stickers'], rotate: ['stickers', 'vinyl', 'pen'], center: ['stickers'],

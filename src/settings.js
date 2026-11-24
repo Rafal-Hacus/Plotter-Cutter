@@ -20,6 +20,10 @@ export const OPT_IDS = [
   'borderFill', 'borderColor', 'clearance', 'joinGap', 'rotate', 'center', 'ignoreWhite', 'quality', 'dpi'
 ];
 
+// Machine calibration: the knife and the plotter, not the job. Saved settings ("presets") neither save nor apply them.
+export const MACHINE_IDS = ['bladeOffset', 'overcut'];
+export const JOB_IDS = OPT_IDS.filter(id => !MACHINE_IDS.includes(id));
+
 // The options as the code uses them: numbers checked against a lowest value, with a fallback when a field is
 // empty or not a number. A few are stored under a clearer name than their field's id.
 export function readOpts() {
