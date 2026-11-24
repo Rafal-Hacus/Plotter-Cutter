@@ -42,11 +42,15 @@ test('pieczątki: a text stamp (B3) and an SVG stamp, saved as an xTool project 
   await logo.locator('.stshape').selectOption('rect');
   await expect(logo.locator('.stst')).toContainText('59 × 25 mm: text 54.4 × 16.2 mm, cut 59 × 25 mm.');
   await expect(page.locator('#count')).toHaveText('3 stamps on the bed');
-  // the stamp's size typed as the general distance to the cut by mistake: a warning, and one click back
+  // the stamp's size typed as the general distance to the cut by mistake: over the field's 15 mm, so the field is
+  // red with the range, nothing is exported, and one click back
   await page.locator('details:has(#stMarginX) summary').click();
   await setField(page, 'stMarginX', 48);
-  await expect(logo.locator('.stst')).toContainText('is more than a quarter of the stamp');
+  await expect(page.locator('#stMarginX')).toHaveClass(/bad/);
+  await expect(page.locator('#msg')).toContainText('0–15 mm');
+  await expect(page.locator('#exStampsXs')).toHaveClass(/numblock/);
   await page.click('#stLayoutReset');
+  await expect(page.locator('#stMarginX')).not.toHaveClass(/bad/);
   await expect(page.locator('#stMarginX')).toHaveValue('2.3');
   await expect(logo.locator('.stst')).toContainText('Text to cut 2.3 mm at the sides, 0 mm top and bottom; rim around the letters 0.3 mm (the general rim).');
   await expect(logo.locator('.stst')).not.toContainText('quarter');
