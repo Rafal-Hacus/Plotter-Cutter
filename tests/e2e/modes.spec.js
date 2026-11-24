@@ -83,6 +83,82 @@ test('the knife settings show only in the modes that cut with them; hidden value
   noProblems(problems);
 });
 
+// the picker: six main choices, a sub-choice for three of them, and a Tools row (src/mode-switch.js)
+const MAIN = { stickers: ['stickers'], cards: ['cards', 'vouchers', 'winietka'], guillotine: ['guillotine', 'deck', 'gang', 'morgana'], roll: ['roll'], vinyl: ['vinyl', 'pen'], stamps: ['stamps'] };
+const TOOLS = ['svgplt', 'squares', 'duplex'];
+const pressed = page => page.evaluate(() => [...document.querySelectorAll('.modes button[aria-pressed="true"]')].filter(b => b.offsetParent).map(b => b.dataset.mode || `main:${b.dataset.main}`));
+
+test('the mode picker: six main choices, a sub-choice that picks the mode, and Tools', async ({ page }) => {
+  const problems = await openApp(page);
+  await expect(page.locator('.modes .mmain button')).toHaveText(['Stickers', 'Cards & flyers', 'Guillotine', 'Roll', 'Vinyl & pen', 'Pieczątki']);
+  await expect(page.locator('.modes .tools button')).toHaveText(['SVG to PLT', 'Squares', 'Duplex test', 'PLT modifier…']);
+  await expect(page.locator('.modes [data-sub]:visible')).toHaveCount(0);
+  // every mode of the app is reachable, with the main choice and the sub-choice pressed and its own title
+  const reached = [];
+  for (const [main, modes] of Object.entries(MAIN)) {
+    for (const m of modes) {
+      await mode(page, m);
+      reached.push(m);
+      await expect(page.locator('h1')).toHaveText(MODE_META[m].title);
+      expect(await page.evaluate(() => document.body.dataset.mode)).toBe(m);
+      expect(await pressed(page)).toEqual(modes.length > 1 ? [`main:${main}`, m] : [m]);
+      await expect(page.locator('.modes [data-sub]:visible')).toHaveCount(modes.length > 1 ? 1 : 0);
+    }
+  }
+  for (const m of TOOLS) {
+    await page.click(`.modes .tools button[data-mode="${m}"]`);
+    reached.push(m);
+    await expect(page.locator('h1')).toHaveText(MODE_META[m].title);
+    expect(await pressed(page)).toEqual([m]);
+    await expect(page.locator('.modes [data-sub]:visible')).toHaveCount(0);
+  }
+  expect(reached.sort()).toEqual(MODES.slice().sort());
+  // a main choice opens on the sub-choice used last, also after a reload
+  await mode(page, 'deck');
+  await mode(page, 'pen');
+  await page.click('.modes button[data-main="guillotine"]');
+  await expect(page.locator('h1')).toHaveText(MODE_META.deck.title);
+  await page.click('.modes button[data-main="cards"]');
+  await expect(page.locator('h1')).toHaveText(MODE_META.winietka.title); // the last one picked in the loop above
+  await page.click('.modes button[data-main="vinyl"]');
+  await expect(page.locator('h1')).toHaveText(MODE_META.pen.title);
+  await page.reload();
+  // the last mode comes back with its main choice open
+  await expect(page.locator('h1')).toHaveText(MODE_META.pen.title);
+  expect(await pressed(page)).toEqual(['main:vinyl', 'pen']);
+  await page.click('.modes button[data-main="guillotine"]');
+  await expect(page.locator('h1')).toHaveText(MODE_META.deck.title);
+  // keyboard: Tab to a choice, Enter or Space picks it
+  await page.focus('.modes button[data-main="cards"]');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('h1')).toHaveText(MODE_META.winietka.title);
+  for (let i = 0; i < 5; i++) await page.keyboard.press('Tab'); // past the other main choices
+  await expect(page.locator('.modes button[data-mode="cards"]')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('.modes button[data-mode="vouchers"]')).toBeFocused();
+  await page.keyboard.press(' ');
+  await expect(page.locator('h1')).toHaveText(MODE_META.vouchers.title);
+  noProblems(problems);
+});
+
+for (const [w, h, max] of [[1400, 900, 190], [390, 844, 190]]) {
+  test(`the mode picker is compact and fits at ${w} × ${h}`, async ({ page }) => {
+    await page.setViewportSize({ width: w, height: h });
+    const problems = await openApp(page);
+    for (const m of ['stickers', 'deck', 'morgana', 'vouchers', 'pen', 'duplex']) {
+      await mode(page, m);
+      const box = await page.locator('nav.modes').boundingBox();
+      expect(box.height, `picker height in ${m}`).toBeLessThanOrEqual(max);
+      // nothing in it sticks out of it
+      expect(await page.evaluate(() => {
+        const n = document.querySelector('nav.modes').getBoundingClientRect();
+        return [...document.querySelectorAll('nav.modes button')].filter(b => b.offsetParent).every(b => { const r = b.getBoundingClientRect(); return r.left >= n.left && r.right <= n.right; });
+      }), `buttons inside in ${m}`).toBe(true);
+    }
+    noProblems(problems);
+  });
+}
+
 test('the PLT modifier is a tool of its own, opened from Tools', async ({ page }) => {
   const problems = await openApp(page);
   expect(await page.locator('aside #modFile').count()).toBe(0);
