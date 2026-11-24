@@ -99,8 +99,11 @@ for (const [w, h] of [[1400, 900], [390, 844]]) {
   test(`an export button is in view without scrolling in every mode at ${w} × ${h}`, async ({ page }) => {
     await page.setViewportSize({ width: w, height: h });
     const problems = await openApp(page);
+    // (with the "Restore last job" bar and "Clear job" shown, as after a reload with a job kept)
+    await page.evaluate(() => { for (const id of ['jobRestore', 'jobClear']) document.getElementById(id).hidden = false; });
     for (const m of MODES.filter(x => x !== 'duplex')) {
       await mode(page, m);
+      await page.evaluate(() => { for (const id of ['jobRestore', 'jobClear']) document.getElementById(id).hidden = false; });
       await page.evaluate(() => { document.querySelector('aside').scrollTop = 0; window.scrollTo(0, 0); });
       expect(await exportInView(page), `export in view in ${m}`).toBe(true);
     }

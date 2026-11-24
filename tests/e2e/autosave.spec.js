@@ -63,7 +63,7 @@ test('autosave: the open mode is remembered; a roll job comes back with its copi
   await expect(page.locator('#count')).toContainText('7 pieces');
   const rows = page.locator('#rollList li');
   await rows.nth(0).locator('.rc').selectOption('outer');
-  await rows.nth(1).locator('.rq').fill('3.5');
+  await rows.nth(1).locator('.rq').fill('2');
   await rows.nth(1).locator('.rr').fill('3');
   await expect(page.locator('#count')).toContainText('5 pieces');
   const count = await page.locator('#count').textContent();
