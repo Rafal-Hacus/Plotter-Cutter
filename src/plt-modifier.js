@@ -54,7 +54,7 @@ byId('exMod').addEventListener('click', () => {
       if (m.counts) notes.push(`${f.name}: ${m.counts[0].toLocaleString()} → ${m.counts[1].toLocaleString()} moves`);
       return { name: f.name, text };
     });
-    saveFile('modified-plt.zip', makeZip(out));
+    saveFile('modified-plt.zip', makeZip(out), { plain: true });
     if (notes.length) setMsg(notes.join('; ') + '.');
   } catch (err) { setMsg(`Couldn’t modify: ${err.message || err}`, true); }
 });

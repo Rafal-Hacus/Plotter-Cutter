@@ -150,6 +150,11 @@ main{position:relative;display:flex;flex-direction:column;min-width:0;min-height
 #jobClear{color:var(--mat-text);font-size:13px}
 .jobrestore{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:8px 20px;color:var(--mat-text);font-size:13px;background:rgba(0,0,0,.3)}
 .jobrestore .link{color:var(--mat-text)}
+.jobrestore ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;flex-basis:100%}
+.jobrestore li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.savednote{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:50;max-width:min(640px,calc(100vw - 32px));padding:10px 16px;border-radius:var(--radius);border:1px solid var(--accent);background:var(--accent-soft);color:var(--ink,inherit);font-size:14px;font-weight:600;box-shadow:0 4px 16px rgba(0,0,0,.2);overflow-wrap:anywhere}
+.savednote[hidden]{display:none}
+.stmixed{margin:4px 0 0;padding:5px 9px;font-size:12.5px}
 body[data-mode="vinyl"] .ksel,body[data-mode="pen"] .ksel,body[data-mode="pen"] .vinylOnly,body:not([data-mode="pen"]) .penOnly{display:none}
 .modt{width:100%;border-collapse:collapse;font-size:12.5px;margin:6px 0 4px}
 .modt th{font-weight:600;color:var(--muted);text-align:left;padding:3px 4px;border-bottom:1px solid var(--line)}

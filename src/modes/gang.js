@@ -5,7 +5,7 @@ import { jpegOrientation, readAsDataUrl } from '../core/image.js';
 import { PT, mul } from '../core/matrix.js';
 import { mm1, num } from '../core/svg.js';
 import { asciiOnly, isImageFile, isPdfFile, tick } from '../core/util.js';
-import { CUT_RED, byId, saveFile, setMsg, ui } from '../dom.js';
+import { CUT_RED, byId, emptyItem, saveFile, setMsg, ui } from '../dom.js';
 import { pdfCheck } from '../export/check.js';
 import { drawClipped, drawCropMarks } from '../export/pdf-draw.js';
 import { embedSans, ensureLibs, pdfSource } from '../lib/pdf.js';
@@ -89,7 +89,7 @@ async function gangAddFiles(fileList) {
 function gangList() {
   const ul = byId('gangList');
   ul.innerHTML = '';
-  if (!gang.items.length) { ul.innerHTML = '<li class="empty">No files yet.</li>'; return; }
+  if (!gang.items.length) { ul.innerHTML = emptyItem('No files yet.'); return; }
   for (const it of gang.items) {
     const li = document.createElement('li');
     li.className = 'design';
