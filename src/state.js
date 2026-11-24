@@ -4,6 +4,7 @@ export const state = {
   template: null,       // the sheet with its registration marks (see template.js)
   sheetCache: null,     // the template as a nesting grid: where stickers and cards may go
   layout: null,         // stickers placed on the sheet
+  plan: null,           // typed copies over as many sheets as they need: { groups: [{ designs, pieces, sheets, overs }] }
   vinylLayout: null,    // shapes placed on the vinyl (vinyl and pen modes)
   job: null,            // the PDF job of the open card mode (see modes/cards/job.js)
   gen: 0,               // counts layout runs, so an older run can tell it was superseded

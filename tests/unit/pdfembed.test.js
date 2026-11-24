@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import * as PDFLib from 'pdf-lib';
-import { embedPages, pageView, seenBox } from '../../src/core/pdfembed.js';
+import { embedPages, pageGeom, pageView, seenBox, shownMatrix } from '../../src/core/pdfembed.js';
+import { apply } from '../../src/core/matrix.js';
+
+const PT = 72 / 25.4;
 
 describe('embedPages', () => {
   it('keeps a page whose media box does not start at 0,0 whole, moved to start at the origin', async () => {
@@ -50,5 +53,41 @@ describe('pageView', () => {
     const v = pageView(await page(90));
     // 10 in from the left and 20 up from the bottom of the media box, 50 x 30: seen 20 from the left, 140 up
     expect(seenBox(v, { x: 40, y: 60, w: 50, h: 30 })).toEqual({ x: 20, y: 140, w: 30, h: 50 });
+  });
+});
+
+describe('pageGeom', () => {
+  const page = async setup => { const d = await PDFLib.PDFDocument.create(), p = d.addPage([300, 200]); setup(p); return (await PDFLib.PDFDocument.load(await d.save())).getPage(0); };
+  it('a plain page: the media box, no bleed', async () => {
+    const g = pageGeom(await page(() => {}));
+    expect(g).toMatchObject({ box: { x: 0, y: 0, width: 300, height: 200 }, rot: 0, w: 300, h: 200, bleed: null });
+  });
+  it('a trim box that is the whole page (Canva without bleed): no bleed, not unknown', async () => {
+    const g = pageGeom(await page(p => p.setTrimBox(0, 0, 300, 200)));
+    expect(g.bleed).toBe(0);
+    expect(g.box).toEqual({ x: 0, y: 0, width: 300, height: 200 });
+  });
+  it('a file exported with marks: the bleed box, not the media box with the slug', async () => {
+    const g = pageGeom(await page(p => { p.setBleedBox(20, 20, 260, 160); p.setTrimBox(20 + 2 * PT, 20 + 2 * PT, 260 - 4 * PT, 160 - 4 * PT); }));
+    expect(g.bleed).toBe(2);
+    expect(g.box.x).toBeCloseTo(20); expect(g.box.width).toBeCloseTo(260); expect(g.box.height).toBeCloseTo(160);
+  });
+  it('a trim box off centre: the trim plus the narrowest bleed, so the trim is in the middle', async () => {
+    const g = pageGeom(await page(p => p.setTrimBox(3 * PT, 1 * PT, 300 - 6 * PT, 200 - 4 * PT)));
+    expect(g.bleed).toBe(1);
+    expect(g.box.x).toBeCloseTo(2 * PT); expect(g.box.y).toBeCloseTo(0); expect(g.box.width).toBeCloseTo(300 - 4 * PT); expect(g.box.height).toBeCloseTo(200 - 2 * PT);
+  });
+  it('a crop box smaller than the media box is what is printed (as a viewer shows it)', async () => {
+    const g = pageGeom(await page(p => p.setCropBox(10, 10, 100, 50)));
+    expect(g.box).toEqual({ x: 10, y: 10, width: 100, height: 50 });
+  });
+  it('/Rotate: the size as shown, and a matrix that turns the page clockwise', async () => {
+    for (const [rot, ll] of [[90, [0, 300]], [180, [300, 200]], [270, [200, 0]]]) {
+      const g = pageGeom(await page(p => p.setRotation(PDFLib.degrees(rot))));
+      expect(g.rot).toBe(rot);
+      expect([g.w, g.h]).toEqual(rot === 180 ? [300, 200] : [200, 300]);
+      // the page's lower left corner, turned clockwise: top left (90), top right (180), lower right (270)
+      expect(apply(shownMatrix(g), [0, 0])).toEqual(ll);
+    }
   });
 });

@@ -1,10 +1,10 @@
 // Winietki (place cards) from a list of names: one PDF page per name, the card size plus bleed, an optional
 // shared background, and the name set in an embedded font (Polish letters included).
-import { embedPages } from '../core/pdfembed.js';
+import { embedPages, pageGeom, shownMatrix } from '../core/pdfembed.js';
 import montserrat from '@expo-google-fonts/montserrat/500Medium/Montserrat_500Medium.ttf?url';
 import playfair from '@expo-google-fonts/playfair-display/400Regular/PlayfairDisplay_400Regular.ttf?url';
 import greatVibes from '@expo-google-fonts/great-vibes/400Regular/GreatVibes_400Regular.ttf?url';
-import { PT } from '../core/matrix.js';
+import { PT, mul } from '../core/matrix.js';
 import { ensureLibs } from './pdf.js';
 
 export const FONTS = { sans: montserrat, serif: playfair, script: greatVibes };
@@ -43,10 +43,13 @@ export async function buildNameCardsPdf(opts) {
   const pdf = await PDFDocument.create();
   pdf.registerFontkit(fontkit);
   const font = await pdf.embedFont(opts.font === 'custom' && opts.fontFile ? opts.fontFile : await fontBytes(FONTS[opts.font] ? opts.font : 'sans'), { subset: true });
-  let bgObj = null;
+  let bgObj = null, bgSize = null, bgTurn = null;
   if (bg) {
-    if (bg.kind === 'pdf') [bgObj] = await embedPages(pdf, await PDFDocument.load(bg.bytes, { ignoreEncryption: true }), [bg.page || 0]);
-    else bgObj = bg.kind === 'png' ? await pdf.embedPng(bg.bytes) : await pdf.embedJpg(bg.bytes);
+    if (bg.kind === 'pdf') { // the page as a viewer shows it: its bleed box, turned by its /Rotate
+      const doc = await PDFDocument.load(bg.bytes, { ignoreEncryption: true }), g = pageGeom(doc.getPage(bg.page || 0));
+      [bgObj] = await embedPages(pdf, doc, [bg.page || 0], [g.box]);
+      bgSize = [g.w, g.h]; bgTurn = shownMatrix(g);
+    } else { bgObj = bg.kind === 'png' ? await pdf.embedPng(bg.bytes) : await pdf.embedJpg(bg.bytes); bgSize = [bgObj.width, bgObj.height]; }
   }
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(opts.color || '') || [0, '1f', '2a', '24'];
   const color = rgb(parseInt(m[1], 16) / 255, parseInt(m[2], 16) / 255, parseInt(m[3], 16) / 255);
@@ -57,9 +60,12 @@ export async function buildNameCardsPdf(opts) {
     const page = pdf.addPage([pw, ph]);
     if (b) page.setTrimBox(b * PT, b * PT, W * PT, H * PT);
     if (bgObj) { // fill the card plus bleed, proportions kept, centred
-      const k = Math.max(pw / bgObj.width, ph / bgObj.height), w = bgObj.width * k, h = bgObj.height * k;
+      const k = Math.max(pw / bgSize[0], ph / bgSize[1]), w = bgSize[0] * k, h = bgSize[1] * k;
       const at = { x: (pw - w) / 2, y: (ph - h) / 2, width: w, height: h };
-      if (bg.kind === 'pdf') page.drawPage(bgObj, at); else page.drawImage(bgObj, at);
+      if (bg.kind === 'pdf') {
+        const { pushGraphicsState, popGraphicsState, concatTransformationMatrix, drawObject } = window.PDFLib;
+        page.pushOperators(pushGraphicsState(), concatTransformationMatrix(...mul([k, 0, 0, k, at.x, at.y], bgTurn)), drawObject(page.node.newXObject('Bg', bgObj.ref)), popGraphicsState());
+      } else page.drawImage(bgObj, at);
     }
     let small = false;
     for (const a of areas) {

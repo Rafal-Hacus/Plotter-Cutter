@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { PDFDocument, rgb } from 'pdf-lib';
+import { PDFDocument, degrees, rgb } from 'pdf-lib';
 import { openApp, noProblems, setField, download, mode, makePng, enabled } from './helpers.js';
 
 const PT = 72 / 25.4;
@@ -157,4 +157,140 @@ test('card images: stretch to the card inside a safe margin first, then the AI f
   await expect(page.locator('#cardInfo')).toContainText('40 × 25 mm card + 2 mm bleed', { timeout: 240_000 });
   await expect(page.locator('#rowIcSafe')).toBeVisible();
   noProblems(problems.filter(p => !/WebGPU|webgpu|GPU adapter|adapters/i.test(p)));
+});
+
+// A card PDF the way some programs write it: a /Rotate 90 page (shown portrait, 50 × 90 mm), with printer's marks
+// on a slug around the bleed box (magenta) and a black square at the top left of the trim as it is shown.
+async function turnedCardWithSlug() {
+  const doc = await PDFDocument.create(), s = 10, W = 90, H = 50, b = 2;
+  for (const col of [rgb(0, 0, 1), rgb(0, 0.7, 0)]) {
+    const pw = W + 2 * b + 2 * s, ph = H + 2 * b + 2 * s, p = doc.addPage([pw * PT, ph * PT]);
+    const R = (x, y, w, h, color) => p.drawRectangle({ x: x * PT, y: y * PT, width: w * PT, height: h * PT, color });
+    R(0, 0, pw, ph, rgb(1, 0, 1)); // the slug, where the marks would be
+    R(s, s, W + 2 * b, H + 2 * b, rgb(1, 0, 0));
+    R(s + b, s + b, W, H, col);
+    R(s + b, s + b, 3, 3, rgb(0, 0, 0)); // bottom left unturned = top left once turned clockwise
+    p.setBleedBox(s * PT, s * PT, (W + 2 * b) * PT, (H + 2 * b) * PT);
+    p.setTrimBox((s + b) * PT, (s + b) * PT, W * PT, H * PT);
+    p.setRotation(degrees(90));
+  }
+  return Buffer.from(await doc.save());
+}
+// the pages of a PDF drawn in the app's page at 4 px/mm: per page, the colour at each probe ([xMm, yMm] -> [r, g, b])
+// and how many pixels are magenta
+async function renderPdf(page, bytes, probes) {
+  return page.evaluate(async ([b64, probes]) => {
+    const pdf = await window.pdfjsLib.getDocument({ data: Uint8Array.from(atob(b64), c => c.charCodeAt(0)) }).promise, out = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const pg = await pdf.getPage(i), vp = pg.getViewport({ scale: 4 * 25.4 / 72 }), cv = document.createElement('canvas');
+      cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+      await pg.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      let magenta = 0;
+      for (let k = 0; k < d.length; k += 4) if (d[k] > 200 && d[k + 1] < 60 && d[k + 2] > 200) magenta++;
+      const px = probes.map(([x, y]) => { const k = (Math.round(y * 4) * cv.width + Math.round(x * 4)) * 4; return [d[k], d[k + 1], d[k + 2]]; });
+      out.push({ px, magenta });
+    }
+    return out;
+  }, [bytes.toString('base64'), probes]);
+}
+const isRgb = (c, want) => c.every((v, i) => Math.abs(v - want[i]) < 40);
+const cutList = async page => {
+  const msg = await page.locator('#msg').textContent(), list = re => re.exec(msg)[1].split(', ').map(Number);
+  return [list(/Cuts from the left edge: ([\d., ]+) mm/), list(/From the top: ([\d., ]+) mm/)];
+};
+
+test('guillotine: a /Rotate page with printer’s marks prints turned like the preview, without the slug', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'guillotine');
+  await page.setInputFiles('#cardFile', { name: 'turned.pdf', mimeType: 'application/pdf', buffer: await turnedCardWithSlug() });
+  await expect(page.locator('#cardInfo')).toContainText('50 × 90 mm copy + 2 mm bleed, two-sided');
+  await expect(page.locator('#count')).toHaveText('24 copies on the sheet');
+  const [xs, ys] = await cutList(page);
+  // the preview's picture of the card has the card's shape as shown (portrait)
+  const ratio = await page.evaluate(async () => { const i = new Image(); i.src = document.querySelector('#stage image').getAttribute('href'); await i.decode(); return i.naturalWidth / i.naturalHeight; });
+  expect(ratio).toBeCloseTo(54 / 94, 2);
+  // 50 × 90 cards laid on their side: the first card spans the first two cuts each way
+  expect(xs[1] - xs[0]).toBeCloseTo(90, 1); expect(ys[1] - ys[0]).toBeCloseTo(50, 1);
+  const probes = [[xs[0] + 45, ys[0] + 25], [xs[0] - 1, ys[0] + 25], [xs[1] - 1.5, ys[0] + 1.5], [xs[0] + 1.5, ys[1] - 1.5]];
+  const [front, back] = await renderPdf(page, await download(page, 'exCardPdf'), probes);
+  expect(isRgb(front.px[0], [0, 0, 255])).toBe(true);
+  expect(isRgb(front.px[1], [255, 0, 0])).toBe(true); // the bleed, not the slug
+  // the card's top left (as shown), turned once more by the layout: the top right of the slot
+  expect(isRgb(front.px[2], [0, 0, 0])).toBe(true);
+  expect(isRgb(front.px[3], [0, 0, 255])).toBe(true);
+  expect(front.magenta).toBe(0);
+  expect(back.magenta).toBe(0);
+  noProblems(problems);
+});
+
+// one page w x h mm; trim: [bleed] for a trim box that much inside, 0 for a trim box that is the whole page (as
+// Canva writes it), null for no trim box
+async function onePage(w, h, trim) {
+  const doc = await PDFDocument.create(), p = doc.addPage([w * PT, h * PT]);
+  p.drawRectangle({ x: 0, y: 0, width: w * PT, height: h * PT, color: rgb(0, 0, 1) });
+  if (trim != null) p.setTrimBox(trim * PT, trim * PT, (w - 2 * trim) * PT, (h - 2 * trim) * PT);
+  return { name: 'card.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await doc.save()) };
+}
+test('the bleed comes from the file only: never from the job before, a reload, or winietki from names', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'guillotine');
+  // a card job with 3 mm bleed first, then the Canva A6 invite (trim box = media box): no bleed, the whole A6
+  await page.setInputFiles('#cardFile', await onePage(96, 56, 3));
+  await expect(page.locator('#cardInfo')).toContainText('90 × 50 mm copy + 3 mm bleed, single-sided');
+  await page.setInputFiles('#cardFile', await onePage(105, 148, 0));
+  await expect(page.locator('#cardInfo')).toContainText('105 × 148 mm copy + 0 mm bleed (the trim box is the whole page)');
+  await page.reload();
+  await mode(page, 'guillotine');
+  await page.setInputFiles('#cardFile', await onePage(105, 148, 0));
+  await expect(page.locator('#cardInfo')).toContainText('105 × 148 mm copy + 0 mm bleed');
+  // no trim box: a standard size plus a little is read as that size with bleed, anything else is the card as it is
+  await mode(page, 'winietka');
+  await setField(page, 'winSrc', 'names');
+  await setField(page, 'winNames', 'Anna\nBartek');
+  await expect(page.locator('#cardInfo')).toContainText('+ 0 mm bleed');
+  await mode(page, 'guillotine');
+  await page.setInputFiles('#cardFile', await onePage(94, 54, null));
+  await expect(page.locator('#cardInfo')).toContainText('90 × 50 mm copy + 2 mm bleed (the PDF has no trim box: taken as 90 × 50 mm plus the bleed, from its size)');
+  await page.setInputFiles('#cardFile', await onePage(100, 70, null));
+  await expect(page.locator('#cardInfo')).toContainText('100 × 70 mm copy + 0 mm bleed (the PDF has no trim box, so the whole page is taken as the card');
+  // typed: used for this file
+  await setField(page, 'cBleed', '1');
+  await expect(page.locator('#cardInfo')).toContainText('98 × 68 mm copy + 1 mm bleed (as typed');
+  await mode(page, 'winietka');
+  await expect(page.locator('#cBleed')).toHaveValue('0');
+  await page.waitForFunction(() => /"cBleed":"1"/.test(localStorage.getItem('stickerSheet.opts.v2') || ''));
+  noProblems(problems);
+});
+
+test('guillotine: a Final size other than “As in the PDF” is said plainly, not only in the small print', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'guillotine');
+  await setField(page, 'gSize', 'A4');
+  await page.setInputFiles('#cardFile', { name: 'card.pdf', mimeType: 'application/pdf', buffer: await turnedCardWithSlug() });
+  await expect(page.locator('#count')).toHaveText('1 copy on the sheet');
+  await expect(page.locator('#msg')).toContainText('Final size A4: every copy is printed at 330 % (165 × 297 mm), not at the PDF’s 50 × 90 mm.');
+  noProblems(problems);
+});
+
+test('card images at 100 %: a 72 dpi tag that can’t be meant for the card gives way to the resolution setting', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'cards');
+  // 94 × 54 mm at 300 dpi, but the file says 72 dpi (391.6 × 225 mm)
+  await page.setInputFiles('#cardFile', { name: 'card72.png', mimeType: 'image/png', buffer: makePng(1110, 638, 72) });
+  await setField(page, 'icDpi', '300');
+  await expect(page.locator('#icInfo')).toContainText('94 × 54 mm at 300 dpi (the file says 72 dpi');
+  await expect(page.locator('#cardInfo')).toContainText('90 × 50 mm card + 2');
+  noProblems(problems);
+});
+
+test('a back side shift saved far too big goes back to 0 on the next visit', async ({ page }) => {
+  const problems = await openApp(page);
+  await setField(page, 'cOffX', '-35');
+  await setField(page, 'cOffY', '1.5');
+  await page.waitForFunction(() => /"cOffX":"-35"/.test(localStorage.getItem('stickerSheet.opts.v2') || ''));
+  await page.reload();
+  await expect(page.locator('#cOffX')).toHaveValue('0');
+  await expect(page.locator('#cOffY')).toHaveValue('1.5');
+  noProblems(problems);
 });

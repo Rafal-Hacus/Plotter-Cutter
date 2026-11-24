@@ -48,3 +48,26 @@ test('pen: strokes are drawn as they are, so no stroke warning', async ({ page }
   await expect(page.locator('#list .status')).not.toContainText('stroke');
   noProblems(problems);
 });
+
+const logo = () => [svgFile('logo.svg', '<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="20mm" viewBox="0 0 40 20"><rect x="0" y="0" width="40" height="20"/></svg>')];
+test('vinyl: a file added starts at 1 copy, not a roll full of it; emptied, the copies fill', async ({ page }) => {
+  const problems = await openApp(page);
+  await mode(page, 'vinyl');
+  await page.setInputFiles('#files', logo());
+  await expect(page.locator('#list input.q')).toHaveValue('1');
+  await expect(page.locator('#count')).toHaveText('1 copy on the vinyl');
+  await page.locator('#list input.q').fill('');
+  await expect(page.locator('#count')).toHaveText(/^\d{2,} copies on the vinyl$/);
+  // more than the material length holds: how many lengths the order needs
+  await page.locator('#list input.q').fill('5000');
+  await expect(page.locator('#msg')).toContainText(/logo\.svg: 5000 pieces → \d+ lengths of \d+ mm \(\d+ per length, \d+ on the last\)/);
+  noProblems(problems);
+});
+
+test('stickers: a file added still starts at Fill', async ({ page }) => {
+  const problems = await openApp(page);
+  await page.setInputFiles('#files', logo());
+  await expect(page.locator('#list input.q')).toHaveValue('');
+  await expect(page.locator('#count')).toHaveText(/^\d{2,} stickers on the sheet$/);
+  noProblems(problems);
+});
