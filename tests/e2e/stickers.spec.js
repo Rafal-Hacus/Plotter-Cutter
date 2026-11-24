@@ -204,3 +204,28 @@ test('traced with "ignore white", a sticker\'s white background never prints ove
   expect(area / (16 * Math.PI * 100)).toBeCloseTo(1, 1); // every circle prints whole
   noProblems(problems);
 });
+
+test('typed copies nest as densely as Fill: 6 per SRA3 sheet of a 96 x 145 mm sticker, and the order in sheets', async ({ page }) => {
+  // (the cut line of the shop's wino_teresy_14_5cm_cut.pdf: Fill put 6 on a sheet, copies 6 or 12 only 5 a sheet)
+  const problems = await openApp(page);
+  await page.setInputFiles('#files', fixture('sticker-96x145-cutspot.pdf'));
+  const row = page.locator('#list li.design'), count = page.locator('#count'), msg = page.locator('#msg');
+  await expect(row.locator('.status')).toContainText('Cut line 96 × 145 mm');
+  await expect(count).toHaveText('6 stickers on the sheet');
+  await row.locator('.q').fill('6');
+  await expect(msg).toHaveText(/6 pieces → 1 sheet\./);
+  await expect(count).toHaveText('6 stickers on the sheet');
+  await row.locator('.q').fill('12');
+  await expect(msg).toHaveText(/12 pieces → 2 sheets\./);
+  await expect(count).toHaveText('6 stickers on the sheet');
+  await expect(msg).not.toContainText('Only');
+  // the sheet's cut file has the 6
+  expect(cutLayers((await download(page, 'exCut')).toString()).Kiss_cut.length).toBe(6);
+  // the batch export makes the 12 as 2 sheets of 6
+  const z = unzip(await download(page, 'exBatch'));
+  expect(z['batch-sheets.txt'].toString().trim().split('\n').map(l => l.replace(/^.*?: /, ''))).toEqual(['sticker-96x145-cutspot.pdf x6', 'sticker-96x145-cutspot.pdf x6']);
+  // an order of 500: 84 sheets, the last could take 4 more
+  await row.locator('.q').fill('500');
+  await expect(msg).toContainText('500 pieces → 84 sheets (+ 4 overs on the last).');
+  noProblems(problems);
+});

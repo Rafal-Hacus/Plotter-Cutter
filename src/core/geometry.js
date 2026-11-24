@@ -286,7 +286,8 @@ export function runStrategy(Gw, Gh, blocked, items, rotSet) {
   const fixed = idx.filter(i => items[i].qty != null).sort((a, b) => items[b].area - items[a].area);
   for (const i of fixed) for (let n = 0; n < items[i].qty; n++) if (!tryPlace(i)) break;
   let auto = idx.filter(i => items[i].qty == null);
-  while (auto.length) auto = auto.filter(i => tryPlace(i));
+  // (an item with a cap is filled like the others but stops at that many: a typed quantity packed as densely as a fill)
+  while (auto.length) auto = auto.filter(i => (items[i].cap == null || placed[i] < items[i].cap) && tryPlace(i));
   return { out, placed };
 }
 // Label 8-connected components; returns labels (1-based) and bounding boxes.
