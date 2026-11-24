@@ -117,6 +117,9 @@ main{position:relative;display:flex;flex-direction:column;min-width:0;min-height
 .msg{color:var(--mat-muted);font-size:13px;flex-basis:100%}
 .msg:empty{display:none}
 .msg.warn{color:var(--mat-warn)}
+#jobClear{color:var(--mat-text);font-size:13px}
+.jobrestore{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;padding:8px 20px;color:var(--mat-text);font-size:13px;background:rgba(0,0,0,.3)}
+.jobrestore .link{color:var(--mat-text)}
 body[data-mode="vinyl"] .ksel,body[data-mode="pen"] .ksel,body[data-mode="pen"] .vinylOnly,body:not([data-mode="pen"]) .penOnly{display:none}
 .modt{width:100%;border-collapse:collapse;font-size:12.5px;margin:6px 0 4px}
 .modt th{font-weight:600;color:var(--muted);text-align:left;padding:3px 4px;border-bottom:1px solid var(--line)}

@@ -10,7 +10,7 @@ import { drawClipped, drawCropMarks } from '../export/pdf-draw.js';
 import { ensureLibs, pdfSource } from '../lib/pdf.js';
 import { G_PAGE, kinds } from './cards/job.js';
 import { computeCardLayout, cropMarks } from './cards/layout.js';
-import { registerMode } from './registry.js';
+import { itemFiles, matchItems, registerJob, registerMode } from './registry.js';
 import { renderPreview, schedule } from '../pipeline.js';
 import { readOpts } from '../settings.js';
 import { state } from '../state.js';
@@ -71,7 +71,7 @@ async function gangAddFiles(fileList) {
       if (isPdfFile(f)) found = await readPdfPages(f);
       else if (isImageFile(f)) found = [{ name: f.name, ...await readPicture(f) }];
       else throw new Error('not a picture or a PDF');
-      for (const it of found) gang.items.push({ id: gangNext++, copies: 1, ...it });
+      found.forEach((it, k) => gang.items.push({ id: gangNext++, copies: 1, ...it, src: f, part: k })); // (src, part: for the autosave)
     } catch (e) { failed.push(`${f.name}: ${e.message || e}.`); }
   }
   state.loadError = failed.join(' ');
@@ -286,3 +286,28 @@ byId('exGangProof').addEventListener('click', async () => {
 });
 gangList();
 registerMode('gang', { compute: gangCompute, renderPreview: renderGangPreview, renderStats: renderGangStats, onDrop: gangAddFiles });
+
+/* ---------- the job kept in the browser (see jobstore.js): the files, each print's copies and edited picture ---------- */
+registerJob('gang', {
+  modes: ['gang'], label: 'Print sheets',
+  serialize() {
+    if (!gang.items.length) return null;
+    const { files, at } = itemFiles(gang.items);
+    const items = gang.items.map(it => ({
+      f: at(it), part: it.part, copies: it.copies,
+      edited: it.orig ? { bytes: it.bytes, mime: it.mime, w: it.w, h: it.h, preview: it.preview, edit: it.edit } : null
+    }));
+    return { files, state: { items }, count: items.length };
+  },
+  async restore(saved, files) {
+    gang.items = [];
+    await gangAddFiles(files);
+    gang.items = matchItems(gang.items, files, saved.items).map(([it, s]) => {
+      it.copies = s.copies;
+      if (s.edited) { it.orig = { bytes: it.bytes, mime: it.mime, w: it.w, h: it.h, preview: it.preview }; Object.assign(it, s.edited); }
+      return it;
+    });
+    gangList(); schedule();
+  },
+  clear() { gang.items = []; gang.layout = null; gangList(); schedule(); }
+});

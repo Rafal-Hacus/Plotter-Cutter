@@ -12,6 +12,7 @@ import { initNumFields, recheckNumFields } from './numfield.js';
 import { syncOptionRows } from './option-rows.js';
 import { renderPreview, run, schedule } from './pipeline.js';
 import { initPresets } from './presets.js';
+import { initJobStore, lastMode } from './jobstore.js';
 import { OPT_IDS, applyOptionValues, loadOpts, optionValues, saveOpts } from './settings.js';
 import { designs, state } from './state.js';
 import { applySheetSize, setTemplate } from './template.js';
@@ -93,6 +94,9 @@ ui.list.innerHTML = EMPTY_LIST;
 renderPreview();
 run();
 initPresets({ snapshot: snapshotSettings, apply: applySettings });
+// the mode open last time, and the jobs kept from then (offered, not loaded by themselves)
+{ const m = lastMode(); if (m && m !== state.mode && document.querySelector(`.modes button[data-mode="${CSS.escape(m)}"]`)) setAppMode(m); }
+initJobStore({ setAppMode });
 // Browsers give the in-browser AI the graphics card and all processor cores only on secure, cross-origin isolated
 // pages (https or localhost, with the COOP/COEP headers the server sends). Otherwise it is stuck on one core: say so.
 if (!(window.isSecureContext && window.crossOriginIsolated)) {

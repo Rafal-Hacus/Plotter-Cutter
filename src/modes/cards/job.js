@@ -6,6 +6,8 @@ import { state } from '../../state.js';
 export const PRINT_MODES = ['cards', 'vouchers', 'winietka', 'guillotine', 'deck', 'morgana'];
 // items: the cards of a winietki job (one PDF page each); imgSrc: the pictures a job was made from, if any
 const newPrintJob = () => ({ imgSrc: null, name: null, bytes: null, pages: 0, pageW: 0, pageH: 0, geoms: [], previews: [], layout: null, bleed: null, bleedFrom: null, items: [] });
+// a job emptied (Clear job)
+export const resetPrintJob = job => Object.assign(job, newPrintJob());
 export const kinds = Object.fromEntries([...PRINT_MODES, 'gang'].map(m => [m, newPrintJob()]));
 state.job = kinds.cards;
 export function isPrintMode() { return PRINT_MODES.includes(state.mode); }

@@ -17,7 +17,7 @@ export async function readCardImage(f) {
   try { bmp = await createImageBitmap(new Blob([bytes], { type: f.type || 'image/png' })); }
   catch (e) { throw new Error(`${f.name} isn’t an image the browser can read.`, { cause: e }); }
   const png = bytes[0] === 0x89 && bytes[1] === 0x50, jpg = bytes[0] === 0xFF && bytes[1] === 0xD8;
-  const img = { name: f.name, w: bmp.width, h: bmp.height, dpi: imageDpi(bytes), bytes: null, kind: null, blob: new Blob([bytes], { type: f.type || 'image/png' }) };
+  const img = { name: f.name, src: f, w: bmp.width, h: bmp.height, dpi: imageDpi(bytes), bytes: null, kind: null, blob: new Blob([bytes], { type: f.type || 'image/png' }) };
   if (png) { img.bytes = bytes; img.kind = 'png'; }
   else if (jpg && jpegOrientation(bytes) === 1) { img.bytes = bytes; img.kind = 'jpg'; }
   else { // other formats, or a rotated JPEG: re-encode upright as lossless PNG

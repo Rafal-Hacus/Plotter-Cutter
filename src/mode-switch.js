@@ -1,5 +1,6 @@
 // Switching between modes: which panels each mode shows, the legend and the hint on the empty sheet.
 import { byId, setMsg, ui } from './dom.js';
+import { modeOpened } from './jobstore.js';
 import { ensureLibs } from './lib/pdf.js';
 import { enterCardMode } from './modes/cards/index.js';
 import { PRINT_MODES } from './modes/cards/job.js';
@@ -63,5 +64,6 @@ export function setAppMode(m) {
   // the PDF libraries load in the background as soon as a mode that needs them opens
   if (printMode || m === 'gang' || m === 'roll') ensureLibs().catch(e => setMsg(e.message, true));
   renderStats(); renderPreview(); schedule();
+  modeOpened(m);
 }
 for (const b of document.querySelectorAll('.modes button')) b.addEventListener('click', () => setAppMode(b.dataset.mode));

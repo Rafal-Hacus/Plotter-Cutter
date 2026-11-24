@@ -1,5 +1,6 @@
 // Recomputing the open mode's layout and redrawing the sheet.
 import { setMsg, ui } from './dom.js';
+import { busy, noteChange } from './jobstore.js';
 import { numProblem, onNumValidity, recheckNumFields } from './numfield.js';
 import { currentMode } from './modes/registry.js';
 import { readOpts, saveOpts } from './settings.js';
@@ -29,12 +30,13 @@ function showNumProblem() {
 }
 // a field turned wrong or right again: lay out again (or say why not)
 onNumValidity(() => schedule());
-export function schedule() { clearTimeout(timer); timer = setTimeout(run, 280); }
+export function schedule() { clearTimeout(timer); timer = setTimeout(run, 280); noteChange(); }
 export async function run() {
   const my = ++state.gen, stale = () => my !== state.gen, mode = currentMode();
   saveOpts();
   recheckNumFields();
   if (showNumProblem()) return;
+  busy(1);
   try {
     renderStats('Preparing the sheet…');
     if (mode.compute && await mode.compute(readOpts(), stale) === false) return;
@@ -43,5 +45,5 @@ export async function run() {
     renderStats();
   } catch (e) {
     if (!stale()) { renderStats(); setMsg(e.message || String(e), true); }
-  }
+  } finally { busy(-1); }
 }

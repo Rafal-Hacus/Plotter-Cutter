@@ -3,14 +3,14 @@
 import { makeZip } from '../../core/zip.js';
 import { byId, saveFile, setMsg } from '../../dom.js';
 import { buildCutPdf, closedAll, lemurCutSvg, openAll, pdfClick } from '../../export/cut-files.js';
-import { syncImgRows } from './images.js';
-import { KIND, PRINT_MODES, deckLike, deckPer, isPrintMode, kinds, showBleed } from './job.js';
+import { imagesToCardPdf, syncImgRows } from './images.js';
+import { KIND, PRINT_MODES, deckLike, deckPer, isPrintMode, kinds, resetPrintJob, showBleed } from './job.js';
 import { cardCuts, cardPlt, computeCardLayout, deckPlan, dotCut, winPlan } from './layout.js';
-import { loadCardFile, updateCardInfo } from './load.js';
+import { loadCardFile, loadCardPdf, updateCardInfo } from './load.js';
 import { buildCardCutSvg, buildCardsPdf, buildDeckPdf, buildWinietkaPdf } from './pdf.js';
 import { renderCardPreview, renderCardStats } from './render.js';
-import { syncWinRows, winAddFiles, winList, winNamesChanged, winNamesOn } from './winietki.js';
-import { registerMode } from '../registry.js';
+import { syncWinRows, winAddFiles, winList, winNamesChanged, winNamesOn, winSync } from './winietki.js';
+import { registerJob, registerMode } from '../registry.js';
 import { renderPreview, renderStats, schedule } from '../../pipeline.js';
 import { readOpts } from '../../settings.js';
 import { state } from '../../state.js';
@@ -100,3 +100,64 @@ byId('exCardPlt').addEventListener('click', () => {
   saveFile(`${name}-plt.zip`, makeZip([{ name: `${name}-die.plt`, text: cardPlt(cardCuts(), o) }]));
 });
 pdfClick('exCardCutPdf', () => `${cardBase()}-cut.pdf`, () => buildCutPdf(state.template.wMm, state.template.hMm, [cardCutLayer(readOpts())], true));
+
+/* ---------- each card mode's job kept in the browser (see jobstore.js) ---------- */
+// what of it is kept: the PDF (or the pictures it was made from, with their edits), a bleed typed for it, and the
+// winietki read from PDFs (made from names, they come from the names, which are kept with the settings)
+function serializeCards(m) {
+  const job = kinds[m];
+  if (m === 'winietka') {
+    if (byId('winSrc').value === 'names' || !job.items.length) return null;
+    const bufs = [];
+    for (const it of job.items) if (!bufs.some(b => b.data === it.bytes)) bufs.push({ name: it.file || 'winietki.pdf', type: 'application/pdf', data: it.bytes });
+    const items = job.items.map(it => ({ f: bufs.findIndex(b => b.data === it.bytes), page: it.page }));
+    return { files: bufs, state: { items, bleed: typedBleed(job) }, count: items.length };
+  }
+  if (job.imgSrc) {
+    const imgs = job.imgSrc.imgs;
+    return { files: imgs.map(im => ({ name: im.name, type: im.src.type, data: im.src })), state: { images: true, edits: imgs.map(im => im.edit || null) }, count: imgs.length };
+  }
+  if (!job.bytes || job.bytes === true) return null;
+  return { files: [{ name: job.name, type: 'application/pdf', data: job.bytes }], state: { bleed: typedBleed(job) }, count: 1 };
+}
+const typedBleed = job => (job.bleedFrom && job.bleedFrom.how === 'typed' ? job.bleed : null);
+function setTypedBleed(job, b) {
+  if (b == null) return;
+  job.bleed = b; job.bleedFrom = { how: 'typed' };
+  showBleed(job); updateCardInfo();
+}
+async function restoreCards(m, saved, files) {
+  const job = kinds[m];
+  clearCards(m);
+  if (m === 'winietka') {
+    if (byId('winSrc').value === 'names') throw new Error('“Cards from” is set to a list of names, so the PDFs were not read again.');
+    await winAddFiles(files);
+    // the cards read again, matched by file and page, in the saved order (cards removed before stay removed)
+    const fileOf = new Map(), seen = [];
+    for (const it of job.items) { if (!seen.includes(it.bytes)) seen.push(it.bytes); fileOf.set(it, seen.indexOf(it.bytes)); }
+    const by = new Map(job.items.map(it => [`${fileOf.get(it)}:${it.page}`, it]));
+    job.items = saved.items.map(s => by.get(`${s.f}:${s.page}`)).filter(Boolean);
+    setTypedBleed(job, saved.bleed);
+    winSync();
+    return;
+  }
+  await loadCardFile(files);
+  if (saved.images && job.imgSrc) {
+    // the pictures' edits, then the card PDF made from them again
+    job.imgSrc.imgs.forEach((im, i) => { im.edit = saved.edits[i] || null; });
+    if (job.imgSrc.imgs.some(im => im.edit)) {
+      syncImgRows();
+      const r = await imagesToCardPdf(job.imgSrc); await loadCardPdf(r.bytes, job.imgSrc.name, r.bleed);
+    }
+  }
+  setTypedBleed(job, saved.bleed);
+  schedule();
+}
+function clearCards(m) {
+  resetPrintJob(kinds[m]);
+  if (state.mode === m) { enterCardMode(m); schedule(); }
+}
+const CARD_LABELS = { cards: 'Business cards', vouchers: 'Vouchers', winietka: 'Winietki', guillotine: 'Guillotine', deck: 'Card deck', morgana: 'Morgana CardXtra' };
+for (const m of PRINT_MODES) {
+  registerJob(m, { modes: [m], label: CARD_LABELS[m], serialize: () => serializeCards(m), restore: (saved, files) => restoreCards(m, saved, files), clear: () => clearCards(m) });
+}

@@ -8,7 +8,8 @@ import { tick } from '../core/util.js';
 import { makeZip } from '../core/zip.js';
 import { byId, saveFile, setMsg, ui } from '../dom.js';
 import { pltOpts } from '../export/files.js';
-import { registerMode } from './registry.js';
+import { registerJob, registerMode } from './registry.js';
+import { noteChange } from '../jobstore.js';
 import { renderPreview, renderStats } from '../pipeline.js';
 import { readOpts } from '../settings.js';
 import { state } from '../state.js';
@@ -119,14 +120,15 @@ async function spLoad(file) {
   renderSvgPltStats('Reading the SVG…');
   await tick();
   sp.name = file.name.replace(/\.svg$/i, '');
-  try { sp.text = await file.text(); }
-  catch (e) { sp.text = null; }
+  try { sp.text = await file.text(); sp.file = file; }
+  catch (e) { sp.text = null; sp.file = null; }
   // a size in px (or none): read by the program that wrote the file when that is known (Illustrator 72, Inkscape 96 per inch)
   { const g = svgGenerator(sp.text); if (g.sure && (g.dpi === 72 || g.dpi === 96)) byId('spDpi').value = String(g.dpi); }
   analyseSvgPlt();
   if (sp.text == null) sp.err = `Couldn’t read ${file.name}.`;
   state.view = null;
   renderPreview(); renderStats();
+  noteChange();
 }
 function spPlt(group) {
   const loops = group.paths.filter(p => p.closed && p.pts.length > 2).map(p => p.pts), open = group.paths.filter(p => !p.closed).map(p => p.pts);
@@ -182,3 +184,19 @@ byId('exSpPlt').addEventListener('click', () => {
   saveFile(`${sp.name}-plt.zip`, makeZip(files));
 });
 registerMode('svgplt', { renderPreview: renderSvgPltPreview, renderStats: renderSvgPltStats, onDrop: files => spLoad(files[0]) });
+
+/* ---------- the job kept in the browser (see jobstore.js): the SVG, which cut groups are cut and their forces ---------- */
+registerJob('svgplt', {
+  modes: ['svgplt'], label: 'SVG to PLT',
+  serialize() {
+    if (!sp.text || !sp.file) return null;
+    return { files: [{ name: sp.file.name, type: sp.file.type || 'image/svg+xml', data: sp.file }], state: { dpi: byId('spDpi').value, groups: sp.groups.map(g => ({ name: g.name, include: g.include, force: g.force })) }, count: 1 };
+  },
+  async restore(saved, files) {
+    await spLoad(files[0]);
+    if (saved.dpi && byId('spDpi').value !== saved.dpi) { byId('spDpi').value = saved.dpi; analyseSvgPlt(); }
+    sp.groups.forEach((g, i) => { const s = saved.groups[i]; if (s && s.name === g.name) { g.include = s.include; g.force = s.force; } });
+    spRenderGroups(); state.view = null; renderPreview(); renderStats();
+  },
+  clear() { sp.text = null; sp.file = null; sp.name = null; analyseSvgPlt(); state.view = null; renderPreview(); renderStats(); }
+});
