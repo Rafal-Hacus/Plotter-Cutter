@@ -164,7 +164,7 @@
       <h2 id="h-sp">SVG to PLT</h2>
       <p class="hint">Load a finished print-and-cut SVG: registration marks plus cut lines. Marks come from the regmarks layer (scpro2_regmarks), or else from the L-marks in the four corners. Cut lines are stroked shapes without fill; they’re grouped by layer, or by colour if there are no layers, and each group becomes its own PLT, positioned from the marks. Artwork, filled shapes and the print-only layer are ignored, and &lt;use&gt; clones are resolved.</p>
       <div class="actions"><label class="btn primary">Load SVG<input id="spFile" type="file" accept=".svg,image/svg+xml"></label></div>
-      <div class="row" id="rowSpDpi" hidden><label for="spDpi">File units (the SVG has no size)</label><select id="spDpi"><option value="72">pt, 72 per inch (Illustrator, Affinity)</option><option value="96">px, 96 per inch (Inkscape, browsers)</option><option value="25.4">mm</option></select></div>
+      <div class="row" id="rowSpDpi" hidden><label for="spDpi">File units (the SVG has no size)</label><select id="spDpi"><option value="72">pt, 72 per inch (Illustrator)</option><option value="300">300 per inch (Affinity)</option><option value="96">px, 96 per inch (Inkscape, browsers)</option><option value="25.4">mm</option></select></div>
       <div id="spGroups"></div>
       <p class="hint">Overcut, blade offset and speeds come from Cut lines below; force is set per group.</p>
     </section>

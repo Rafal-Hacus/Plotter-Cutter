@@ -12,6 +12,9 @@ const AI = svgFile('logo-ai.svg', `<?xml version="1.0" encoding="utf-8"?>
 // 100 × 50 mm of shapes on a 150 × 90 mm page, in Inkscape's px (96 per inch)
 const INK = svgFile('sign-ink.svg', `<svg ${NS} xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" inkscape:version="1.3.2 (091e20e, 2023-11-25)" sodipodi:docname="sign.svg" width="566.929" height="340.157" viewBox="0 0 150 90"><rect x="10" y="10" width="100" height="50" fill="#000"/></svg>`);
 const BIG = svgFile('poster.svg', `<svg ${NS} width="300mm" height="420mm" viewBox="0 0 300 420"><rect width="300" height="420" fill="#c2410c"/></svg>`);
+// an Affinity export (width/height 100 %, the viewBox at its 300 dpi export setting): 567 × 225 = 48 × 19.05 mm,
+// like the shop's 48 × 19 stamp files
+const AFF = svgFile('stamp-affinity.svg', `<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg width="100%" height="100%" viewBox="0 0 567 225" version="1.1" ${NS} xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:affinity="https://www.affinity.studio/" style="fill-rule:evenodd;clip-rule:evenodd;"><rect width="567" height="225" fill="#000"/></svg>`);
 const PLAIN = svgFile('plain-px.svg', `<svg ${NS} width="377.953" height="188.976" viewBox="0 0 100 50"><rect width="100" height="50" fill="#000"/></svg>`);
 
 test('stickers: an Illustrator px file comes in at 120 × 80 mm (was 50 mm high), real size button puts it back', async ({ page }) => {
@@ -95,5 +98,15 @@ test('SVG to PLT: live text is pointed out, louder when drawn like a cut line; a
   // 300 mm at 96 dpi = 1133.858 px, from Inkscape: read as 300 mm (the 72 dpi default would make it 400 mm)
   await page.setInputFiles('#spFile', [file('ink.svg', '', `xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" inkscape:version="1.2" width="1133.858" height="1133.858"`)]);
   await expect(page.locator('#msg')).toContainText('ink: 300 × 300 mm (size in px, read as 96 per inch)');
+  noProblems(problems);
+});
+
+test('stickers: an Affinity export is read at 300 dpi (its export setting): 567 × 225 is 48 × 19 mm, not 4× bigger', async ({ page }) => {
+  const problems = await openApp(page);
+  await page.setInputFiles('#files', [AFF]);
+  const row = page.locator('#list li.design');
+  await expect(row.locator('.fsize')).toContainText('file 48 × 19.1 mm');
+  await expect(row.locator('.fsize')).toContainText('Affinity');
+  await expect(row.locator('.fsize')).not.toHaveClass(/warn/);
   noProblems(problems);
 });

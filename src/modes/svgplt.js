@@ -124,7 +124,7 @@ async function spLoad(file) {
   try { sp.text = await file.text(); sp.file = file; }
   catch (e) { sp.text = null; sp.file = null; }
   // a size in px (or none): read by the program that wrote the file when that is known (Illustrator 72, Inkscape 96 per inch)
-  { const g = svgGenerator(sp.text); if (g.sure && (g.dpi === 72 || g.dpi === 96)) byId('spDpi').value = String(g.dpi); }
+  { const g = svgGenerator(sp.text); if (g.sure && [72, 96, 300].includes(g.dpi)) byId('spDpi').value = String(g.dpi); }
   analyseSvgPlt();
   if (sp.text == null) sp.err = `Couldn’t read ${file.name}.`;
   state.view = null;

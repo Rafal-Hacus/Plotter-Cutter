@@ -22,9 +22,9 @@ describe('svgGenerator', () => {
     expect(svgGenerator('<svg inkscape:version="0.91 r13725">')).toEqual({ name: 'Inkscape', dpi: 90, sure: true });
     expect(svgGenerator('<svg xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd">')).toEqual({ name: 'Inkscape', dpi: 96, sure: false });
   });
-  it('Affinity 72 (a guess: its export can be set), anything else 96 (a guess)', () => {
-    expect(svgGenerator(`<svg ${NS} xmlns:serif="http://www.serif.com/">`)).toEqual({ name: 'Affinity', dpi: 72, sure: false });
-    expect(svgGenerator(`<svg ${NS} xmlns:affinity="https://www.affinity.studio/">`)).toEqual({ name: 'Affinity', dpi: 72, sure: false });
+  it('Affinity 300 (the shop\'s export setting), anything else 96 (a guess)', () => {
+    expect(svgGenerator(`<svg ${NS} xmlns:serif="http://www.serif.com/">`)).toEqual({ name: 'Affinity', dpi: 300, sure: true });
+    expect(svgGenerator(`<svg ${NS} xmlns:affinity="https://www.affinity.studio/">`)).toEqual({ name: 'Affinity', dpi: 300, sure: true });
     expect(svgGenerator(`<svg ${NS} width="100" height="100">`)).toEqual({ name: null, dpi: 96, sure: false });
   });
 });

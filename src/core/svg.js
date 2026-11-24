@@ -35,7 +35,7 @@ export function readViewBox(root) {
   return null;
 }
 // The program that wrote an SVG, from its marks in the file: what a px (or a plain number) is in it.
-// Illustrator: 72 per inch; Affinity: 72 by default; Inkscape 0.92 and later and most others: 96; older Inkscape: 90.
+// Illustrator: 72 per inch; Affinity: 300 (the shop's export setting); Inkscape 0.92 and later and most others: 96; older Inkscape: 90.
 export function svgGenerator(text) {
   const s = String(text || '');
   if (/Generator:\s*Adobe Illustrator|ns\.adobe\.com\/AdobeIllustrator|&ns_ai;/i.test(s)) return { name: 'Illustrator', dpi: 72, sure: true };
@@ -46,8 +46,9 @@ export function svgGenerator(text) {
     const v = s.match(/inkscape:version="(\d+)\.(\d+)/);
     return { name: 'Inkscape', dpi: v && +v[1] === 0 && +v[2] < 92 ? 90 : 96, sure: !!v };
   }
-  // (Affinity writes its document resolution, 72 by default and often 300, so this one is always a guess)
-  if (/xmlns:serif="http:\/\/www\.serif\.com|xmlns:affinity="https?:\/\/www\.affinity\.studio/.test(s)) return { name: 'Affinity', dpi: 72, sure: false };
+  // Affinity (xmlns:affinity in Affinity, xmlns:serif in Affinity Designer/Publisher 1 and 2, which nothing else
+  // writes) puts its export resolution into the viewBox with width/height 100%: the shop exports at 300 dpi
+  if (/xmlns:serif="http:\/\/www\.serif\.com|xmlns:affinity="https?:\/\/www\.affinity\.studio/.test(s)) return { name: 'Affinity', dpi: 300, sure: true };
   return { name: null, dpi: 96, sure: false };
 }
 // The real size of an SVG in mm: physical units as given; px and plain numbers by the program that wrote it; a file
