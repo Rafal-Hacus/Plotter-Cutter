@@ -62,7 +62,14 @@ export async function imagesToCardPdf(src) {
     const S = Math.max(0, Math.min(v('icSafe') || 0, W / 2 - 1, H / 2 - 1)), cw = W - 2 * S, ch = H - 2 * S;
     if (fit === 'stretch') { iw = cw; ih = ch; }
     else if (fit === 'fill') { const k = Math.max(cw / im.w, ch / im.h); iw = im.w * k; ih = im.h * k; }
-    else { dpi = im.dpi || dpiSet; iw = im.w / dpi * 25.4; ih = im.h / dpi * 25.4; }
+    else {
+      // the dpi stored in the file, unless it makes the picture far bigger than the card (more than 6 mm of bleed: a 72
+      // or 96 dpi screen default) while the resolution setting fits it: then the setting, else it has no effect at all
+      const fits = d => [(im.w / d * 25.4 - W) / 2, (im.h / d * 25.4 - H) / 2].every(e => e >= -TOL && e <= 6);
+      const tooBig = d => Math.max(im.w / d * 25.4 - W, im.h / d * 25.4 - H) / 2 > 6;
+      dpi = im.dpi && !(tooBig(im.dpi) && fits(dpiSet)) ? im.dpi : dpiSet;
+      iw = im.w / dpi * 25.4; ih = im.h / dpi * 25.4;
+    }
     return { im, W, H, iw, ih, dpi, bx: (iw - W) / 2, by: (ih - H) / 2 };
   });
   // one bleed for every page (front and back must match): the most any image brings, at most 6 mm
@@ -125,7 +132,7 @@ export async function imagesToCardPdf(src) {
       continue;
     }
     const side = b => b < -TOL ? `short by ${r2(-b)} mm per side` : b <= TOL ? 'none' : `${r2(b)} mm`;
-    let t = `${im.name}: ${mm1(iw)} × ${mm1(ih)} mm${p.dpi ? ` at ${num(Math.round(p.dpi))} dpi${im.dpi ? ' (from the file)' : ''}` : ''}, cut ${num(W)} × ${num(H)} mm. Bleed top and bottom: ${side(p.by)}, left and right: ${side(p.bx)}`;
+    let t = `${im.name}: ${mm1(iw)} × ${mm1(ih)} mm${p.dpi ? ` at ${num(Math.round(p.dpi))} dpi${!im.dpi ? '' : p.dpi === im.dpi ? ' (from the file)' : ` (the file says ${num(Math.round(im.dpi))} dpi, which would make it ${mm1(im.w / im.dpi * 25.4)} × ${mm1(im.h / im.dpi * 25.4)} mm: the resolution setting is used)`}` : ''}, cut ${num(W)} × ${num(H)} mm. Bleed top and bottom: ${side(p.by)}, left and right: ${side(p.bx)}`;
     if (!(p.bx > TOL && p.by > TOL)) t += extend && B > TOL && p.bx >= -TOL && p.by >= -TOL ? (how === 'ai' ? ' (missing bleed filled by AI)' : ' (missing bleed filled by repeating the edge pixels)') : '';
     t += '.';
     if (p.bx < -TOL || p.by < -TOL) t += ' The image is smaller than the card: check the card size and the dpi, otherwise a white edge ends up inside the card.';
